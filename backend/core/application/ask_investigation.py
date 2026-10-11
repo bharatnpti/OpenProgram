@@ -34,6 +34,7 @@ from core.application.ask_service import (
     ANSWER_FORMAT_RULES,
     ASK_TOOL_GUIDANCE,
     FOLLOW_UPS_FIELD,
+    OWN_FIELDS_RULE,
     AnswerReader,
     AskResponseView,
     AskService,
@@ -119,7 +120,8 @@ ANSWER_RULES = (
     "known:' line -- references, an array of the ids of the nodes the answer names, "
     "and only those, copied from the notes' references, and "
     + FOLLOW_UPS_FIELD
-    + " Do not restate references inside answer."
+    + " "
+    + OWN_FIELDS_RULE
 )
 
 # Said again right before the answer is written: a rule read just before the
@@ -129,7 +131,8 @@ ANSWER_REMINDER = (
     "Answer the question from these notes alone, in the required shape: the verdict, 2 to "
     "6 '• ' bullets with their evidence, then any 'Not known:' line. Each person, issue and "
     "number stays with the item its note ties it to. Whether a date will be made or missed "
-    "is said only when a note says it; a red or amber status alone does not."
+    "is said only when a note says it; a red or amber status alone does not. Questions to "
+    "ask next go in follow_ups, never inside answer."
 )
 
 TIMED_OUT = (

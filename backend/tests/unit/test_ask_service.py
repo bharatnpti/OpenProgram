@@ -1548,6 +1548,16 @@ async def test_an_empty_reply_says_no_answer_came_back() -> None:
 @pytest.mark.parametrize(
     ("reply", "answer", "references", "cited"),
     [
+        # The follow-ups list as the answer field's last line, seen live
+        # (test_ask_follow_ups_in_answer holds every shape of it).
+        (
+            '{"answer": "CHK-8 is due early because:\\n• ETA 14 Oct\\n\\n'
+            'follow_ups: [\\"Who owns CHK-8?\\",\\"Is it at risk?\\"]", '
+            '"references": ["CHK-8"]}',
+            "CHK-8 is due early because:\n• ETA 14 Oct",
+            ("CHK-8",),
+            (),
+        ),
         # Cut off before the object closed.
         (
             '{"answer": "Program is red because:\\n• Blocker: CHK-8", '

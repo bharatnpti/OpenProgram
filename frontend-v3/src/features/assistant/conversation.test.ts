@@ -7,6 +7,7 @@ import {
   conversationFor,
   freshMemory,
   nextQuestions,
+  readAnswer,
   remember,
   turnsOf,
   uniqueSources,
@@ -108,4 +109,29 @@ test("a source is listed once by the words it reads as", () => {
     ]).map((s) => s.id),
     ["CHK-102", "U1004", "x-1"],
   );
+});
+
+// Ora once showed 'follow_ups: ["What is Noah Weber's workload?", ...]' as the
+// last line of an answer, and offered the page's questions instead of those.
+const SHOWN = "CHK-8 has an early due date because:\n• ETA 14 Oct\nNothing else found.";
+const ASKED = ["What is Noah Weber's workload?", "How many tasks are open?"];
+
+test("a follow-ups list written into an answer never shows, and its questions are offered", () => {
+  for (const leaked of [
+    `${SHOWN}\n\nfollow_ups: ["What is Noah Weber's workload?","How many tasks are open?"]`,
+    `${SHOWN}\nfollow_ups:\n- What is Noah Weber's workload?\n- "How many tasks are open?"`,
+    `${SHOWN}\n"followUps": [\n  "What is Noah Weber's workload?",\n  "How many tasks are open?"\n]`,
+    `${SHOWN} follow_ups: ["What is Noah Weber's workload?", "How many tasks are open?"]`,
+    `${SHOWN}\nfollow_ups: ["What is Noah Weber's workload?", 'How many tasks are open?']`,
+  ]) {
+    assert.deepEqual(readAnswer(leaked, []), { text: SHOWN, followUps: ASKED }, leaked);
+  }
+  // The reply's own follow-ups win; the list still goes from the text.
+  assert.deepEqual(readAnswer(`${SHOWN}\nfollow_ups: ["Who?"]`, ["Since when?"]), {
+    text: SHOWN,
+    followUps: ["Since when?"],
+  });
+  // An answer's own line that only starts like one stays.
+  const own = `${SHOWN}\nFollow-ups: 2 open, the oldest on CHK-8`;
+  assert.deepEqual(readAnswer(own, undefined), { text: own, followUps: [] });
 });

@@ -117,6 +117,13 @@ FOLLOW_UPS_FIELD = (
 )
 MAX_FOLLOW_UPS = 3
 _MAX_FOLLOW_UP_CHARS = 140
+# A reply once ended its answer on a 'follow_ups: ["...", ...]' line and the
+# reader saw the list raw, so the reply's other fields are named as fields.
+OWN_FIELDS_RULE = (
+    "answer holds the answer's own lines and nothing else: references and follow_ups are "
+    "fields of the object beside it, so never write them, or a 'follow_ups:' or "
+    "'References:' line, inside answer."
+)
 
 ASK_SYSTEM_PROMPT = (
     "You answer program-management questions over a delivery graph. "
@@ -127,9 +134,7 @@ ASK_SYSTEM_PROMPT = (
     + " "
     "Once you have the facts, reply with a single JSON object and nothing else: "
     "answer holds the text, with a newline between lines, references an array "
-    "of the node ids it rests on, and "
-    + FOLLOW_UPS_FIELD
-    + " Do not restate references inside answer."
+    "of the node ids it rests on, and " + FOLLOW_UPS_FIELD + " " + OWN_FIELDS_RULE
 )
 
 # Named periods a time-window question maps onto, resolved against the as-of
@@ -238,6 +243,31 @@ _REFERENCES_FIELD = re.compile(
 )
 _ITEM_SPLIT = re.compile(r"\s*(?:[,;\n]|\s·\s)\s*")
 _ITEM_EDGES = " \t\"'`*_"
+# A follow-ups list written into the answer instead of beside it, as Ora once
+# showed one: 'follow_ups: ["What is Noah Weber\'s workload?", ...]' under the
+# answer. The field's own name marks the list in any spelling -- follow_ups,
+# followUps, follow_up_questions, quoted as a JSON key -- and so does a heading
+# in words ("**Follow-up questions:**", "Suggested follow-ups:"), but only over
+# questions: a singular "Follow up:" or a "Follow-ups: 2 open" line is the
+# answer's own.
+_FOLLOW_UPS_KEY = r"follow_?ups|follow_?up_?questions"
+_FOLLOW_UPS_WORDS = (
+    r"(?:suggested\s+|next\s+)?follow[\s-]ups|follow[\s-]up\s+questions"
+    r"|(?:next|suggested)\s+questions|questions\s+to\s+ask\s+next"
+)
+_FOLLOW_UPS_HEADING = re.compile(
+    r"^\s*(?:[-*•]\s*)?[*_`\"']*"
+    rf"(?:(?P<field>{_FOLLOW_UPS_KEY})|(?P<words>{_FOLLOW_UPS_WORDS}))"
+    r"[*_`\"']*\s*[:：=]\s*[*_`]*(?P<items>.*?)[*_`]*\s*,?\s*$",
+    re.IGNORECASE,
+)
+# "... for this task. follow_ups: [...]", or a '{"follow_ups": [...]}' fragment.
+_TRAILING_FOLLOW_UPS = re.compile(
+    r"\s*\{?\s*[\"']?\b(?:" + _FOLLOW_UPS_KEY + r")[\"']?\s*[:：=]\s*"
+    r"(?P<items>\[[^\[\]]*\]?)\s*\}?\s*[,.]?\s*$",
+    re.IGNORECASE,
+)
+_AFTER_QUESTION = re.compile(r"(?<=\?)[\"'`]?[\s,;]+")
 # Text in brackets inside one item: "Zoe Almeida (U0AA1ZOE001)".
 _BRACKETED = re.compile(r"[(\[]\s*(?P<inner>[^()\[\]]+?)\s*[)\]]")
 # The node kinds an answer names, as the references rule lists them.
@@ -1611,6 +1641,7 @@ def _prompt(question: str, as_of: date) -> str:
         "bullets, 80 words at most -- naming people, issues and merge requests (MRs, never PRs) "
         "rather than ids, and "
         "list the id of every node the answer names in references. "
+        "Questions to ask next go in follow_ups, never inside answer. "
         f"Question: {question}"
     )
 
@@ -1647,17 +1678,108 @@ def _parse_answer(text: str) -> ParsedAnswer:
     each case a "References: [...]" line is cut out of the answer and its items
     kept in ``cited``, so the reader never sees the line and sources still get
     what it listed. A fenced or prose-wrapped object used to be shown whole,
-    and a prose reply showed its references line.
+    and a prose reply showed its references line. A follow-ups list written
+    into the answer, or beside the object, is cut out the same way, and its
+    questions are the follow-ups when the reply has no follow_ups field.
     """
     answer, references, beside = _reply_parts(text)
+    answer, asked = _cut_follow_ups(answer)
+    beside, asked_beside = _cut_follow_ups(beside)
     answer, cited = _clean_answer(answer)
     _, cited_beside = _clean_answer(beside)
     return ParsedAnswer(
         answer=answer,
         references=_unique(references),
         cited=_unique((*cited, *cited_beside)),
-        follow_ups=_follow_ups(text),
+        follow_ups=_follow_ups(text) or _unique((*asked, *asked_beside)),
     )
+
+
+def _cut_follow_ups(text: str) -> tuple[str, list[str]]:
+    """``text`` without any follow-ups list written into it, and that list's questions.
+
+    The list comes inline ('follow_ups: ["A?", "B?"]'), as a JSON array over
+    several lines, YAML-ish (a bare "follow_ups:" with a "- A?" line per
+    question), or at the end of a line. A heading in words counts only when
+    every item under it is a question; otherwise its lines stay as they were.
+    """
+    lines = text.splitlines()
+    kept: list[str] = []
+    asked: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        index += 1
+        heading = _FOLLOW_UPS_HEADING.match(line)
+        if heading is None:
+            trailing = _TRAILING_FOLLOW_UPS.search(line)
+            if trailing is not None:
+                asked.extend(_question_items(trailing.group("items")))
+                line = line[: trailing.start()]
+            kept.append(line)
+            continue
+        block = [line]
+        listed = heading.group("items")
+        questions: list[str] = []
+        if not listed.strip():
+            # A bare heading: the list is on the lines under it.
+            while index < len(lines) and not lines[index].strip():
+                block.append(lines[index])
+                index += 1
+            if index < len(lines) and lines[index].strip().startswith("["):
+                listed = lines[index]
+                block.append(lines[index])
+                index += 1
+            else:
+                while index < len(lines) and (entry := _LIST_ITEM.match(lines[index])):
+                    questions.append(_question(entry.group("item")))
+                    block.append(lines[index])
+                    index += 1
+        while _opens_list(listed) and index < len(lines):
+            listed = f"{listed}\n{lines[index]}"
+            block.append(lines[index])
+            index += 1
+        questions = [*_question_items(listed), *(item for item in questions if item)]
+        if heading.group("field") or (questions and all(q.endswith("?") for q in questions)):
+            asked.extend(questions)
+        else:
+            kept.extend(block)
+    return "\n".join(kept), asked
+
+
+def _question_items(text: str) -> list[str]:
+    """The questions of a written list: a JSON array, quoted strings, or bare questions.
+
+    A list cut off part way keeps the questions it finished.
+    """
+    listed = text.strip().rstrip(",.").strip()
+    if not listed:
+        return []
+    if listed.startswith("["):
+        try:
+            decoded = _JSON.decode(listed)
+        except json.JSONDecodeError:
+            decoded = None
+        if isinstance(decoded, list):
+            return [item.strip() for item in decoded if isinstance(item, str) and item.strip()]
+    bare = listed.strip("[]")
+    # Every item in double quotes, the last perhaps never closed.
+    leftover = _QUOTED.sub("", bare).strip(" \t\n,")
+    if listed.startswith(("[", '"')) and (
+        not leftover or (leftover.startswith('"') and leftover.count('"') == 1)
+    ):
+        return [item for item in (_json_string(raw) for raw in _QUOTED.findall(bare)) if item]
+    # Bare, or quoted the Python way: ['Why?', "Who's next?"].
+    split = _AFTER_QUESTION if "?" in bare else _ITEM_SPLIT
+    return [item for item in (_question(part) for part in split.split(bare)) if item]
+
+
+def _question(item: str) -> str:
+    """One written question without its quotes, marks or trailing comma."""
+    text = item.strip().rstrip(",").strip()
+    if len(text) >= 2 and text.startswith('"') and text.endswith('"'):
+        return _json_string(text[1:-1])
+    return text.strip(_ITEM_EDGES).strip()
 
 
 def _follow_ups(text: str) -> tuple[str, ...]:
