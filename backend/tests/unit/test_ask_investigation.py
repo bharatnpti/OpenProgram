@@ -360,10 +360,11 @@ def test_step_notes_read_the_object_wherever_it_is_and_lines_when_there_is_none(
 
 
 def test_the_answer_rules_keep_every_quick_rule_but_the_shape() -> None:
-    shape, no_forecast, *quick = INVESTIGATE_FORMAT_RULES
+    shape, no_forecast, first_action, *quick = INVESTIGATE_FORMAT_RULES
     assert tuple(quick) == ANSWER_FORMAT_RULES[1:]
     assert shape != ANSWER_FORMAT_RULES[0]
     assert "a colour is not a forecast" in no_forecast
+    assert first_action.startswith("When the question asks what to do")
     for rule in INVESTIGATE_FORMAT_RULES:
         assert rule in ANSWER_RULES
     assert "a red or amber status alone does not" in ANSWER_REMINDER

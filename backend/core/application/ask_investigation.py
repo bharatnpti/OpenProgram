@@ -57,6 +57,19 @@ from core.ports.llm import LlmProvider
 
 _logger = structlog.get_logger(__name__)
 
+# A question that asks what to do gets one. Asked why a project was at risk and
+# what to do first, an answer said "Not known: No recommendations or next steps
+# are stated in the notes" -- the notes are facts, and a first action is chosen
+# from them, not found in them.
+FIRST_ACTION_RULE = (
+    "When the question asks what to do, or what to do first, add one line after the "
+    "bullets starting 'First:' that names the one action the notes most support -- the "
+    "missing blocking criterion, the oldest blocker, or the requirements with no ETA or due "
+    "date, whichever holds the most up -- and who acts on it where a note says. It is "
+    "chosen from the notes, so it is never 'Not known' while they hold a gap, a blocker or "
+    "an undated requirement."
+)
+
 # The answer's shape. The quick answer's rules hold, except its first: an
 # investigation's answer may give each driver its evidence and say what led to
 # what, so it is allowed more bullets and more words.
@@ -71,6 +84,7 @@ INVESTIGATE_FORMAT_RULES: tuple[str, ...] = (
     "Never predict a date, a slip or a miss that no note states: a colour is not a "
     "forecast, so when the question asks about a date the notes do not hold, the 'Not "
     "known:' line says so.",
+    FIRST_ACTION_RULE,
     *ANSWER_FORMAT_RULES[1:],
 )
 
@@ -88,7 +102,14 @@ STEP_GUIDANCE = (
     "50% and 85% finish dates and the verdict. A question about what blocks or holds "
     "something up, or about risk, gets a step of its own for the open blockers of each pod "
     "involved, or of every pod -- what is blocked, whose blocker it is, for how many days, "
-    "and what it waits on. A "
+    "and what it waits on. A question about release readiness -- is it ready, can it go "
+    "to production, what is missing before the release -- gets a step for the release "
+    "readiness of each project, release or pod it names: each criterion, which are missing "
+    "or unsure, and their evidence. A question about what to do, or what to do first, or "
+    "why something is at risk and what to do about it, covers every kind of thing that "
+    "can hold the date up, a step each: the delivery forecast and the requirements with no "
+    "ETA or due date; the release readiness; and the open blockers and risks of the pods "
+    "involved -- so the answer can weigh them and name the first action. A "
     "question about every project covers each of them, its status, forecast and blockers. "
     "No two steps cover the same ground, and a question one look-up answers gets one step."
 )
@@ -125,9 +146,9 @@ ANSWER_RULES = (
     "Write the answer to these rules: "
     + " ".join(INVESTIGATE_FORMAT_RULES)
     + " Reply with a single JSON object and nothing else: answer, an array of strings with "
-    "one line of the answer each -- the verdict first, then each bullet, then any 'Not "
-    "known:' line -- references, an array of the ids of the nodes the answer names, "
-    "and only those, copied from the notes' references, and "
+    "one line of the answer each -- the verdict first, then each bullet, then any 'First:' "
+    "line, then any 'Not known:' line -- references, an array of the ids of the nodes the "
+    "answer names, and only those, copied from the notes' references, and "
     + FOLLOW_UPS_FIELD
     + " "
     + OWN_FIELDS_RULE
@@ -138,11 +159,26 @@ ANSWER_RULES = (
 # claimed a red project "will not make its date" with no forecast in any note.
 ANSWER_REMINDER = (
     "Answer the question from these notes alone, in the required shape: the verdict, 2 to "
-    "6 '• ' bullets with their evidence, then any 'Not known:' line. Each person, issue and "
+    "6 '• ' bullets with their evidence, then a 'First:' line if the question asks what to "
+    "do, then any 'Not known:' line. Each person, issue and "
     "number stays with the item its note ties it to. Whether a date will be made or missed "
     "is said only when a note says it; a red or amber status alone does not. Questions to "
     "ask next go in follow_ups, never inside answer."
 )
+
+# Said once, when the planner would answer from one step, or from a step that
+# came back thin (no findings, failed, or with gaps): an investigation of "why
+# is it at risk, and what should we do first?" ran one step and answered
+# without the forecast, the readiness gap or a first action.
+PLAN_MORE_REMINDER = (
+    "Before you answer: {reason}. Check what the question needs that the notes do not "
+    "cover yet -- for a question about a date, risk, readiness or what to do: the delivery "
+    "forecast and the requirements with no ETA or due date, the release readiness, and the "
+    "open blockers and risks -- and send a step for each with the task tool. Answer now "
+    "only if the notes already cover what the question needs."
+)
+ONE_STEP_REASON = "you have checked one step only"
+THIN_STEP_REASON = "a step came back with little or nothing"
 
 TIMED_OUT = (
     "The investigation took too long and was stopped. Ask again, or ask a narrower question."

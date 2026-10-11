@@ -399,7 +399,9 @@ def test_investigate_streams_the_plan_each_step_and_the_answer_as_json_lines(
     step = "Which risks are open?"
     task = {"description": step, "subagent_type": "researcher"}
     # One step, so the calls come in a fixed order: the main agent delegates, the
-    # researcher looks up and writes its notes, the main agent answers.
+    # researcher looks up and writes its notes, the main agent answers -- and,
+    # having checked one step only, is asked once for more and answers again.
+    answered = _response(text=json.dumps({"answer": "Nothing is at risk.", "references": []}))
     llm = FakeLlmProvider(
         responses=[
             _response(
@@ -411,7 +413,8 @@ def test_investigate_streams_the_plan_each_step_and_the_answer_as_json_lines(
             ),
             _response(tool_calls=(LlmToolCall(id="call-1", name="open_risks", arguments={}),)),
             _response(text=json.dumps({"findings": ["No open risks"], "references": []})),
-            _response(text=json.dumps({"answer": "Nothing is at risk.", "references": []})),
+            answered,
+            answered,
         ]
     )
     monkeypatch.setattr(app.state.registry, "llm_provider", lambda: llm)
@@ -439,6 +442,7 @@ def test_investigate_streams_the_plan_each_step_and_the_answer_as_json_lines(
     assert "pod_checkins" not in {tool.name for tool in llm.requests[1].tools}
     risks = json.loads(next(t.content for t in llm.requests[2].turns if t.role == "tool"))
     assert risks["as_of"] == AS_OF
+    assert llm.requests[4].turns[-1].content.startswith("Before you answer: you have checked")
 
 
 def test_investigate_is_refused_before_streaming_to_a_role_that_may_not_ask(
