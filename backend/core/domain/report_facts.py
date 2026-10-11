@@ -155,6 +155,8 @@ class AskFacts:
     needed_most: bool
     #: It is a question the report lists under Open questions.
     open_question: bool
+    #: Due to go up, with nobody above this person: "Nobody above Asha Rao is told."
+    nobody_above: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -856,3 +856,147 @@ async def test_a_recorded_reason_is_worded_with_the_age_on_the_day_read(
 
     assert finding.age_days == 5
     assert finding.reason == expected
+
+
+# ---- watermelons: the owner says on track while the signals disagree, on the same work
+
+
+async def _seed_sso_pod(store: InMemoryGraphStore) -> str:
+    """The Identity shape of the QA tenant: a pod holding IDP-6, IDP-7 and IDP-9 and two people.
+
+    A blocker counts as attributed only when its issue sits with a pod; with no
+    pod it is unattributed and vouches for anything, which would hide the bug.
+    """
+    from core.domain.graph import Developer, EdgeKind, GraphEdge, Pod, Task
+
+    await _add_project(store, "proj-id", "acme/sso-gateway")
+    await store.upsert_node(Pod(tenant_id=TENANT, id="pod-id", name="Identity Pod"))
+    for person, name in (("dev-omar", "Omar"), ("dev-sofia", "Sofia")):
+        await store.upsert_node(Developer(tenant_id=TENANT, id=person, name=name))
+        await store.add_edge(
+            GraphEdge(
+                tenant_id=TENANT, from_node_id="pod-id", to_node_id=person, kind=EdgeKind.CONTAINS
+            )
+        )
+    for key, person in (("IDP-6", "dev-omar"), ("IDP-7", "dev-sofia"), ("IDP-9", "dev-omar")):
+        await store.upsert_node(Task(tenant_id=TENANT, id=key, name=f"{key} work"))
+        for edge in (
+            GraphEdge(
+                tenant_id=TENANT, from_node_id="proj-id", to_node_id=key, kind=EdgeKind.CONTAINS
+            ),
+            GraphEdge(
+                tenant_id=TENANT, from_node_id="pod-id", to_node_id=key, kind=EdgeKind.CONTAINS
+            ),
+            GraphEdge(
+                tenant_id=TENANT, from_node_id=person, to_node_id=key, kind=EdgeKind.ASSIGNED_TO
+            ),
+        ):
+            await store.add_edge(edge)
+    return "proj-id"
+
+
+async def _says(
+    store: InMemoryGraphStore, developer_id: str, summary: str, *blockers: tuple[str, str]
+) -> None:
+    """A confirmed check-in, with its blockers as ``(description, issue)`` rows."""
+    from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
+
+    rows = tuple(
+        DeveloperBlocker(
+            tenant_id=TENANT,
+            blocker_id=f"blk-{developer_id}-{issue}",
+            developer_id=developer_id,
+            description=description,
+            normalized_key=normalize_blocker_key(description),
+            work_item_id=issue,
+            pod_id=None,
+            source=BlockerSource.CHECKIN,
+            first_seen_on=AS_OF - timedelta(days=4),
+            last_seen_on=AS_OF,
+        )
+        for description, issue in blockers
+    )
+    await store.record_developer_status_with_blockers(
+        DeveloperStatus(
+            tenant_id=TENANT,
+            developer_id=developer_id,
+            as_of=AS_OF,
+            source=StatusSource.CONFIRMED,
+            blockers=tuple(row.description for row in rows),
+            summary=summary,
+            developer_confirmed=True,
+        ),
+        rows,
+    )
+
+
+async def _watermelons(service: RiskService, project_id: str) -> dict[str, tuple[bool, bool]]:
+    """Each open pull request finding as ``identifier: (has_blockers, is_watermelon)``.
+
+    Read the way the Signals list reads them, from the project and the portfolio alike.
+    """
+    from api.dtos import RiskFindingResponse
+
+    project = await service.project_risks(TENANT, project_id, AS_OF)
+    portfolio = await service.portfolio_risks(TENANT, AS_OF)
+    read = {
+        finding.evidence.identifier: (
+            finding.owner_status_has_blockers,
+            RiskFindingResponse.from_domain(finding).is_watermelon,
+        )
+        for finding in project
+    }
+    assert read == {
+        finding.evidence.identifier: (finding.owner_status_has_blockers, finding.is_watermelon)
+        for finding in portfolio
+    }
+    return read
+
+
+async def test_an_owner_who_reported_a_blocker_on_the_issue_is_not_a_watermelon() -> None:
+    """Omar's IDP-6 request is filed on him, not on IDP-6: his blocker names the issue it names.
+
+    On the QA tenant every request risk read as a watermelon, Omar's and Raj's
+    blocked ones too, because the blocker's IDP-6 was compared with his id.
+    """
+    store = InMemoryGraphStore()
+    project_id = await _seed_sso_pod(store)
+    await _pull_request_fact(
+        store, repo="acme/sso-gateway", pr_id="1", title="IDP-6 session refresh", author="dev-omar"
+    )
+    await _says(
+        store,
+        "dev-omar",
+        "Still waiting on review for IDP-6.",
+        ("Waiting on review for sso-gateway!1", "IDP-6"),
+    )
+    service = _service(store, default_pr_age_days=3)
+
+    delta = await service.assess_and_persist_project(TENANT, project_id, AS_OF)
+
+    (written,) = delta.newly_opened
+    assert written.entity_ref.kind is NodeKind.DEVELOPER
+    assert (written.owner_status_has_blockers, written.is_watermelon) == (True, False)
+    assert await _watermelons(service, project_id) == {"acme/sso-gateway#1": (True, False)}
+
+
+async def test_an_owner_on_track_with_an_idle_merge_request_is_a_watermelon() -> None:
+    store = InMemoryGraphStore()
+    project_id = await _seed_sso_pod(store)
+    await _pull_request_fact(
+        store, repo="acme/sso-gateway", pr_id="2", title="IDP-7 login copy", author="dev-sofia"
+    )
+    await _pull_request_fact(
+        store, repo="acme/sso-gateway", pr_id="1", title="IDP-6 session refresh", author="dev-omar"
+    )
+    await _says(store, "dev-sofia", "IDP-7 is on track.")
+    # Omar's blocker is on IDP-9: it says nothing about the request for IDP-6.
+    await _says(store, "dev-omar", "IDP-6 is on track.", ("Waiting on the vendor", "IDP-9"))
+    service = _service(store, default_pr_age_days=3)
+
+    await service.assess_and_persist_project(TENANT, project_id, AS_OF)
+
+    assert await _watermelons(service, project_id) == {
+        "acme/sso-gateway#1": (False, True),
+        "acme/sso-gateway#2": (False, True),
+    }

@@ -57,6 +57,24 @@ test("the answer settles the message with its text, sources and every step", () 
   assert.deepEqual(done.followUps, ["What blocks it?"]);
 });
 
+test("an investigated answer never shows a follow-ups list written into it", () => {
+  const done = applyEvent(answering(), {
+    type: "answer",
+    answer: {
+      answer: 'Payments Pod is late because:\n• CHK-103 blocked\nfollow_ups: ["What blocks it?"]',
+      references: [],
+      tools_used: [],
+      trace_id: "t",
+      sources: [],
+      follow_ups: [],
+      summarized_turns: 0,
+    },
+    steps: [],
+  });
+  assert.equal(done.text, "Payments Pod is late because:\n• CHK-103 blocked");
+  assert.deepEqual(done.followUps, ["What blocks it?"]);
+});
+
 test("a failure says why, keeping the steps it got to", () => {
   const planned = applyEvent(answering(), { type: "plan", steps: [step(0, "running")] });
   const failed = applyEvent(planned, { type: "failed", message: "Took too long.", steps: [] });

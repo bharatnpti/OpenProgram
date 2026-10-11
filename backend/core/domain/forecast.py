@@ -218,6 +218,9 @@ class TeamForecast:
     latest_key: str | None
     dated: int
     undated: int
+    #: The open requirements with neither a check-in ETA nor a due date, in key
+    #: order: the ones ``undated`` counts, so an answer can name them.
+    undated_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -361,7 +364,14 @@ def team_forecast(items: Iterable[OpenItem]) -> TeamForecast:
         latest_key=latest.key if latest is not None else None,
         dated=len(dated),
         undated=len(undated),
+        undated_keys=tuple(sorted((item.key for item in undated), key=_key_order)),
     )
+
+
+def _key_order(key: str) -> tuple[str, int, str]:
+    """CHK-2 before CHK-10: an issue key's project, then its number."""
+    head, _, tail = key.rpartition("-")
+    return (head, int(tail), key) if tail.isdigit() else (key, 0, key)
 
 
 def verdict(target: date | None, history: HistoryForecast, team: TeamForecast) -> Verdict:

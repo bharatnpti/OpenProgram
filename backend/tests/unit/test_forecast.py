@@ -140,7 +140,24 @@ def test_the_team_date_prefers_an_eta_over_a_due_date() -> None:
         ]
     )
 
-    assert team == TeamForecast(latest=date(2026, 10, 20), latest_key="A", dated=2, undated=1)
+    assert team == TeamForecast(
+        latest=date(2026, 10, 20), latest_key="A", dated=2, undated=1, undated_keys=("C",)
+    )
+
+
+def test_the_undated_requirements_are_named_in_key_order() -> None:
+    """The keys an answer names are the ones undated counts: no ETA and no due date."""
+    team = team_forecast(
+        [
+            OpenItem(key="CHK-10", eta=None, due=None),
+            OpenItem(key="CHK-2", eta=None, due=None),
+            OpenItem(key="CHK-3", eta=date(2026, 10, 20), due=None),
+            OpenItem(key="CHK-4", eta=None, due=date(2026, 10, 15)),
+            OpenItem(key="LCH-1", eta=None, due=None),
+        ]
+    )
+
+    assert (team.undated, team.undated_keys) == (3, ("CHK-2", "CHK-10", "LCH-1"))
 
 
 def _history(p50: date | None, p85: date | None, remaining: float = 5) -> HistoryForecast:

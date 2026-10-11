@@ -51,10 +51,14 @@ from langgraph.types import Command
 from langsmith.run_helpers import tracing_context
 
 from core.application.ask_investigation import (
-    ANSWER_REMINDER,
     ANSWER_RULES,
+    ONE_STEP_REASON,
+    PLAN_MORE_REMINDER,
     RESEARCH_SYSTEM_PROMPT,
     STEP_GUIDANCE,
+    THIN_STEP_REASON,
+    answer_reminder,
+    step_notes,
 )
 from core.application.ask_service import RecordedTool, date_context
 from core.ports.investigation import (
@@ -64,6 +68,7 @@ from core.ports.investigation import (
     EngineStepDone,
     EngineStepFailed,
     InvestigationRun,
+    no_facts,
 )
 from core.ports.tools import AgentTool
 from infra.adapters.llm.langchain_bridge import PROVIDER, OpenProgramChatModel
@@ -79,6 +84,9 @@ MAIN_MODEL_CALLS: Final = 6
 # A backstop under the time limit: the main graph's own steps.
 RECURSION_LIMIT: Final = 60
 _LIMIT_REACHED = "Model call limits exceeded"
+# What a step that failed says to the main agent, and a step past the limit.
+_STEP_ERROR = "This step could not be looked up"
+_CALL_LIMIT = "Tool call limit exceeded"
 
 MAIN_SYSTEM_PROMPT = (
     "You investigate a program-management question over a delivery graph for the person "
@@ -88,7 +96,9 @@ MAIN_SYSTEM_PROMPT = (
     "fewest steps that together answer it more deeply than one look-up would. "
     + STEP_GUIDANCE
     + " Send your first steps, at most {max_steps}, together in one turn. When their notes "
-    "raise a question the answer needs, you may send up to {follow_ups} more. Each result "
+    "raise a question the answer needs, or a step comes back thin -- no findings, a failure, "
+    "or gaps on ground the question needs -- send up to {follow_ups} more for what is still "
+    "unknown before you answer; never answer from one thin step. Each result "
     "is that researcher's notes: its findings, the node ids they rest on, and its gaps. "
     "Earlier turns of the conversation, when given, say what the question refers to; "
     "write every step so that a researcher who never saw them can answer it. "
@@ -204,7 +214,8 @@ def build_agent(run: InvestigationRun) -> CompiledStateGraph[Any, Any, Any, Any]
         ModelCallLimitMiddleware(run_limit=MAIN_MODEL_CALLS, exit_behavior="error"),
         # A step that fails goes back to the main agent as a failed step.
         ToolErrorMiddleware(on_error=_step_error, tools=[TASK_TOOL]),
-        AnswerReminderMiddleware(),
+        AnswerReminderMiddleware(facts=run.answer_facts),
+        PlanMoreMiddleware(step_limit=run.max_steps + FOLLOW_UP_STEPS),
     ]
     return create_deep_agent(
         model=model("investigation_main"),
@@ -218,13 +229,18 @@ def build_agent(run: InvestigationRun) -> CompiledStateGraph[Any, Any, Any, Any]
 
 
 class AnswerReminderMiddleware(AgentMiddleware[Any, Any, Any]):
-    """Says the answer rules again right after the researchers' notes.
+    """Says the answer rules again right after the researchers' notes, with the tools' facts.
 
     The rules sit at the top of a long system prompt, and answers written from
     the notes claimed a red project "will not make its date". Read just before
-    the answer is written, the same rules held in the other engine. The
-    reminder goes into that one model call only, never into the run's state.
+    the answer is written, the same rules held in the other engine. The facts
+    the steps' tools returned (InvestigationRun.answer_facts) are read at that
+    moment and said with them, so the answer has them whatever the notes kept.
+    The reminder goes into that one model call only, never into the run's state.
     """
+
+    def __init__(self, *, facts: Callable[[], tuple[str, ...]] = no_facts) -> None:
+        self._facts = facts
 
     async def awrap_model_call(
         self,
@@ -232,10 +248,80 @@ class AnswerReminderMiddleware(AgentMiddleware[Any, Any, Any]):
         handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
     ) -> ModelResponse[Any]:
         if _after_notes(request.messages):
-            request = request.override(
-                messages=[*request.messages, HumanMessage(content=ANSWER_REMINDER)]
-            )
+            reminder = HumanMessage(content=answer_reminder(self._facts()))
+            request = request.override(messages=[*request.messages, reminder])
         return await handler(request)
+
+
+class PlanMoreMiddleware(AgentMiddleware[Any, Any, Any]):
+    """Asks the main agent once to send more steps before it answers from too little.
+
+    An investigation of "why is it at risk, and what should we do first?" ran
+    one step and answered without the forecast, the readiness gap or a first
+    action. When the main agent answers -- a turn with no tool calls -- after
+    only one step, or after a step that came back thin (no findings, a failure
+    or gaps), and the run may still send steps, the same call is made again
+    once with PLAN_MORE_REMINDER after the notes; whatever it does then stands.
+    One per run, so it never loops; the reminder goes into that call only,
+    never into the run's state. It sits inside AnswerReminderMiddleware, so it
+    is said last.
+    """
+
+    def __init__(self, *, step_limit: int) -> None:
+        self._step_limit = step_limit
+        self._reminded = False
+
+    async def awrap_model_call(
+        self,
+        request: ModelRequest[Any],
+        handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
+    ) -> ModelResponse[Any]:
+        response = await handler(request)
+        if self._reminded or _calls_tools(response):
+            return response
+        reason = _plan_more_reason(request.messages, self._step_limit)
+        if reason is None:
+            return response
+        self._reminded = True
+        reminder = HumanMessage(content=PLAN_MORE_REMINDER.format(reason=reason))
+        return await handler(request.override(messages=[*request.messages, reminder]))
+
+
+def _calls_tools(response: ModelResponse[Any]) -> bool:
+    return any(isinstance(m, AIMessage) and m.tool_calls for m in response.result)
+
+
+def _plan_more_reason(messages: Sequence[BaseMessage], step_limit: int) -> str | None:
+    """Why the main agent should send another step first, or None when it may answer.
+
+    None before any step's notes are in, and once the run has sent every step
+    it may.
+    """
+    # Every step sent, counted by call: a refused one counts against the limit too.
+    steps = [
+        call["id"]
+        for message in messages
+        if isinstance(message, AIMessage)
+        for call in message.tool_calls
+        if call["name"] == TASK_TOOL
+    ]
+    notes = [m for m in messages if isinstance(m, ToolMessage) and m.tool_call_id in set(steps)]
+    if not notes or len(steps) >= step_limit:
+        return None
+    if len(steps) == 1:
+        return ONE_STEP_REASON
+    if any(_thin(note) for note in notes):
+        return THIN_STEP_REASON
+    return None
+
+
+def _thin(note: ToolMessage) -> bool:
+    """A step's result that holds little: a failure, no findings, or gaps."""
+    text = _text(note)
+    if note.status == "error" or text.startswith((_LIMIT_REACHED, _STEP_ERROR, _CALL_LIMIT)):
+        return True
+    found = step_notes(text)
+    return not found.findings or bool(found.gaps)
 
 
 def _after_notes(messages: Sequence[BaseMessage]) -> bool:
@@ -359,16 +445,20 @@ class _Tracker:
             return []
         message = _tool_message(output)
         text = _text(message) if message is not None else str(output or "")
-        if (message is not None and message.status == "error") or text.startswith(_LIMIT_REACHED):
+        if text.startswith(_LIMIT_REACHED):
+            return self._failed(index, out_of_steps=True)
+        if message is not None and message.status == "error":
             return self._failed(index)
         self._ended.add(index)
         return [EngineStepDone(index=index, notes=text, tools_used=self._used(index))]
 
-    def _failed(self, index: int) -> list[EngineEvent]:
+    def _failed(self, index: int, *, out_of_steps: bool = False) -> list[EngineEvent]:
         if index in self._ended:
             return []
         self._ended.add(index)
-        return [EngineStepFailed(index=index, tools_used=self._used(index))]
+        return [
+            EngineStepFailed(index=index, tools_used=self._used(index), out_of_steps=out_of_steps)
+        ]
 
     def _plan(self, question: str) -> int:
         self.questions.append(question)
@@ -386,7 +476,7 @@ def _untraced() -> contextvars.Context:
 
 
 def _step_error(exc: Exception, request: ToolCallRequest) -> str:
-    return f"This step could not be looked up ({type(exc).__name__})."
+    return f"{_STEP_ERROR} ({type(exc).__name__})."
 
 
 def _description(args: Mapping[str, Any]) -> str:

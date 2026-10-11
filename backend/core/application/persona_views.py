@@ -148,6 +148,12 @@ class FocusView:
 
 
 @dataclass(frozen=True, kw_only=True)
+class BlockerPodView:
+    id: str
+    name: str
+
+
+@dataclass(frozen=True, kw_only=True)
 class BlockerView:
     id: str
     blocker_id: str
@@ -162,6 +168,13 @@ class BlockerView:
     pod_ref: EntityRef | None
     unattributed: bool
     first_seen_on: date
+    #: Whether the pod whose list holds it counts it: its blocked work sits there
+    #: (``BlockerResolutionService`` pod_ids). False for a blocker on a task the pod
+    #: lists whose blocked work sits with another pod: listed, so the list says what
+    #: the task list says, but counted only where it sits.
+    counted_here: bool = True
+    #: The pods it counts in instead, when ``counted_here`` is False.
+    counted_in: tuple[BlockerPodView, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -495,21 +508,49 @@ class PersonaViewService:
         )
 
     async def pod_blockers(self, tenant_id: str, pod_id: str, as_of: date) -> PodBlockersView:
+        """A pod's open blockers: those it counts, and those on a task it lists.
+
+        A blocker counts where its blocked work sits (``BlockerResolutionService``
+        pod_ids), and only that feeds the pod's rollup, colour and the day
+        report. The task list marks a task blocked by a member's blocker on it
+        whichever pod that counts in (``pod_tasks``), so a list of the counted
+        ones alone said "No open blockers" under a task row that read blocked:
+        IDP-6 on the Platform Pod, whose blocker counts in the Identity Pod. A
+        member's blocker on a task this pod lists is listed too, with
+        ``counted_here`` False and the pods it counts in; it is still counted
+        once, there.
+        """
         tree = await self._pod_tree(tenant_id, pod_id, as_of)
-        developers = _developers(tree)
-        blockers: list[BlockerView] = []
-        for developer in developers:
+        found: list[tuple[GraphNode, DeveloperStatus | None, ResolvedBlocker]] = []
+        for developer in _developers(tree):
             status = await self._status_repository.latest_developer_status(
                 tenant_id, developer.id, as_of
             )
             resolved = await self._blocker_resolution.open_blockers_for_developer(
                 tenant_id, developer.id, as_of
             )
-            blockers.extend(
-                _blocker_view(developer, status, blocker, as_of)
-                for blocker in resolved
-                if tree.root.id in blocker.pod_ids
+            found.extend((developer, status, blocker) for blocker in resolved)
+        here = tree.root.id
+        on_listed_tasks: frozenset[str] = frozenset()
+        nodes_by_id: Mapping[str, GraphNode] = {}
+        # Only a blocker counted elsewhere needs the task list; most pods have none.
+        if any(here not in blocker.pod_ids and blocker.work_item_ref for *_, blocker in found):
+            listed, nodes_by_id = await self._listed_tasks(
+                tenant_id, tree, _pod_members(tree), as_of
             )
+            on_listed_tasks = frozenset(item for task in listed for item in task.attributable)
+        blockers: list[BlockerView] = []
+        for developer, status, blocker in found:
+            if here in blocker.pod_ids:
+                blockers.append(_blocker_view(developer, status, blocker, as_of))
+            elif blocker.work_item_ref and blocker.work_item_ref.id in on_listed_tasks:
+                blockers.append(
+                    replace(
+                        _blocker_view(developer, status, blocker, as_of),
+                        counted_here=False,
+                        counted_in=_blocker_pods(blocker.pod_ids, nodes_by_id),
+                    )
+                )
         return PodBlockersView(
             pod_id=tree.root.id,
             pod_name=tree.root.name,
@@ -572,38 +613,42 @@ class PersonaViewService:
         members' work, and another pod serving the same workstream lists its
         own.
 
-        A task is ``blocked`` when it is red, or when one of the pod's open
-        blockers is attributed to it: to the task itself, or to the work item
-        it implements. Blocked tasks come first, then worst status first.
+        A task is ``blocked`` when it is red, or when an open blocker of one of
+        the pod's members is attributed to it: to the task itself, or to the
+        work item it implements, whichever pod the blocker counts in. That is
+        one answer per task, whichever pod lists it. The pod's rollup still
+        counts a blocker only in the pods its blocked work sits with
+        (``BlockerResolutionService``), and its blocker list marks one it
+        lists for a task here but counts elsewhere (``pod_blockers``); read by
+        placement here, a member in two pods whose remits both hold the task
+        saw it blocked in one pod and clear in the other (IDP-6, Identity and
+        Platform). Blocked tasks come first, then worst status first.
         """
         tree = await self._graph_repository.get_program_tree(tenant_id, pod_id, as_of)
         pod = tree.root
         if pod.kind is not NodeKind.POD:
             raise GraphNotFound(f"{pod_id} is a {pod.kind.value}, not a pod")
         members = _pod_members(tree)
-        assignees = _member_assignments(tree, members)
-        if not assignees:
+        listed, _ = await self._listed_tasks(tenant_id, tree, members, as_of)
+        if not listed:
             return PodTasksView(pod_id=pod.id, pod_name=pod.name, as_of=as_of, tasks=())
 
-        nodes_by_id, parents = await self._tenant_contains(tenant_id, as_of)
-        kinds = {node_id: node.kind for node_id, node in nodes_by_id.items()}
-        remit = _pod_remit(tree, parents, kinds)
-
+        # Every open blocker of a member, wherever it is placed: one on a task
+        # marks it in each pod that lists it, not only in the pod it counts in.
         blockers: list[ResolvedBlocker] = []
         for member in members.values():
-            resolved = await self._blocker_resolution.open_blockers_for_developer(
-                tenant_id, member.id, as_of
+            blockers.extend(
+                await self._blocker_resolution.open_blockers_for_developer(
+                    tenant_id, member.id, as_of
+                )
             )
-            blockers.extend(blocker for blocker in resolved if pod.id in blocker.pod_ids)
         blockers.sort(key=lambda item: (item.first_seen_on, item.blocker_id))
 
         nodes = {node.id: node for node in tree.nodes}
         tasks: list[PodTaskView] = []
-        for task_id, owners in assignees.items():
-            owner_ids, attributable_ids = _task_owners(task_id, parents, kinds)
-            if owner_ids and owner_ids.isdisjoint(remit):
-                continue
-            node = nodes[task_id]
+        for listed_task in listed:
+            owners = listed_task.owners
+            node = nodes[listed_task.task_id]
             status = await self._task_status(node, as_of)
             facts = await task_facts(self._time_series_repository, node, as_of)
             said = _owners_last_statement(facts, owners, as_of)
@@ -616,7 +661,7 @@ class PersonaViewService:
                 )
                 for blocker in blockers
                 if blocker.work_item_ref is not None
-                and blocker.work_item_ref.id in attributable_ids
+                and blocker.work_item_ref.id in listed_task.attributable
             )
             tasks.append(
                 PodTaskView(
@@ -640,6 +685,35 @@ class PersonaViewService:
             )
         tasks.sort(key=lambda task: (not task.blocked, _TRIAGE_RANK[task.rag], task.name, task.id))
         return PodTasksView(pod_id=pod.id, pod_name=pod.name, as_of=as_of, tasks=tuple(tasks))
+
+    async def _listed_tasks(
+        self,
+        tenant_id: str,
+        tree: GraphTree,
+        members: dict[str, GraphNode],
+        as_of: date,
+    ) -> tuple[tuple[_ListedTask, ...], Mapping[str, GraphNode]]:
+        """The tasks a pod lists, by ``pod_tasks``' rule, and the tenant's nodes by id.
+
+        One rule for the task list and for the blockers ``pod_blockers`` lists
+        on its tasks, so the two can never disagree about which tasks are the
+        pod's. The nodes are empty when no member holds a task.
+        """
+        assignees = _member_assignments(tree, members)
+        if not assignees:
+            return (), {}
+        nodes_by_id, parents = await self._tenant_contains(tenant_id, as_of)
+        kinds = {node_id: node.kind for node_id, node in nodes_by_id.items()}
+        remit = _pod_remit(tree, parents, kinds)
+        listed: list[_ListedTask] = []
+        for task_id, owners in assignees.items():
+            owner_ids, attributable_ids = _task_owners(task_id, parents, kinds)
+            if owner_ids and owner_ids.isdisjoint(remit):
+                continue
+            listed.append(
+                _ListedTask(task_id=task_id, owners=tuple(owners), attributable=attributable_ids)
+            )
+        return tuple(listed), nodes_by_id
 
     async def _pod_tree(self, tenant_id: str, pod_id: str, as_of: date) -> GraphTree:
         """The subtree under a pod, or GraphNotFound if `pod_id` is not a pod.
@@ -1427,6 +1501,27 @@ def _project_jira_key(project: GraphNode) -> str | None:
         if isinstance(value, str) and value.strip():
             return value.strip().upper()
     return None
+
+
+@dataclass(frozen=True, kw_only=True)
+class _ListedTask:
+    """A task a pod lists: who of its members holds it, and the ids a blocker marks it by."""
+
+    task_id: str
+    owners: tuple[GraphNode, ...]
+    #: The task and the work item it implements (``_task_owners``).
+    attributable: frozenset[str]
+
+
+def _blocker_pods(
+    pod_ids: Iterable[str], nodes_by_id: Mapping[str, GraphNode]
+) -> tuple[BlockerPodView, ...]:
+    """The pods a blocker counts in, by name; an id the graph does not name stays an id."""
+    return tuple(
+        BlockerPodView(id=pod_id, name=node.name if node is not None else pod_id)
+        for pod_id in pod_ids
+        for node in (nodes_by_id.get(pod_id),)
+    )
 
 
 def _pod_members(tree: GraphTree) -> dict[str, GraphNode]:

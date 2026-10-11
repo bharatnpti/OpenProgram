@@ -730,6 +730,8 @@ export type AskRow = {
   waited: string;
   neededMost: boolean;
   escalation: string | null;
+  /** Due to go up with nobody above: "Nobody above Asha Rao is told", as the text says. */
+  stop: string | null;
 };
 
 export type LaneView = { heading: string; named: boolean; asks: AskRow[] };
@@ -819,6 +821,7 @@ function askRow(ask: AskFacts, max: number): AskRow {
     escalation: ask.escalated_to
       ? `Escalated to ${ask.escalated_to}${ask.escalation_label ? ` (${ask.escalation_label})` : ""}`
       : null,
+    stop: !ask.escalated_to && ask.nobody_above ? `Nobody above ${ask.nobody_above} is told` : null,
   };
 }
 

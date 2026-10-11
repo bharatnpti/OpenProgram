@@ -368,6 +368,8 @@ const blocker = (id, description, age, owner, wi) => ({
   pod_ref: ref("pod", "pod-payments"),
   unattributed: false,
   first_seen_on: new Date(Date.parse(at("09:00")) - age * 864e5).toISOString().slice(0, 10),
+  counted_here: true,
+  counted_in: [],
 });
 export function podBlockers(podId) {
   const list =

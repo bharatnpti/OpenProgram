@@ -113,17 +113,24 @@ const ASKS = [
     heading: "Zoe Almeida",
     named: true,
     asks: [
+      // Storefront's merge requests climb from Storefront, not from Zoe's first pod:
+      // it names no scrum master, and its manager's level is five days in.
       ask("fix", pr("CHK-11", "Cart price breakdown", "acme/storefront-web", 7), 4, {
-        ...toIra,
         needed_most: true,
       }),
-      ask("fix", pr("CHK-12", "Promo code validation", "acme/storefront-web", 5), 2, toIra),
+      ask("fix", pr("CHK-12", "Promo code validation", "acme/storefront-web", 5), 2),
     ],
   },
   {
     heading: "Asha Rao",
     named: true,
-    asks: [ask("review", "Mina Patel asked for a review", 6, { ...toIra, needed_most: true })],
+    // The manager's ask never goes down to a scrum master, and nobody stands above her.
+    asks: [
+      ask("review", "Mina Patel asked for a review", 6, {
+        nobody_above: "Asha Rao",
+        needed_most: true,
+      }),
+    ],
   },
   {
     heading: "Noah Weber",
@@ -133,9 +140,7 @@ const ASKS = [
   {
     heading: "Sofia Bergmann",
     named: true,
-    asks: [
-      ask("fix", pr("CHK-14", "Test plan: guest checkout", "acme/storefront-web", 7), 4, toIra),
-    ],
+    asks: [ask("fix", pr("CHK-14", "Test plan: guest checkout", "acme/storefront-web", 7), 4)],
   },
   {
     heading: "Mina Patel",
@@ -174,6 +179,7 @@ function askLine(item) {
   const words = { fix: "Fix", decision: "Decision", answer: "Answer", review: "Review" };
   let line = `${words[item.need]}: ${item.text}${context.length ? ` (${context.join("; ")})` : ""}.`;
   if (item.escalated_to) line += ` Escalated to ${item.escalated_to} (${item.escalation_label}).`;
+  else if (item.nobody_above) line += ` Nobody above ${item.nobody_above} is told.`;
   return line;
 }
 
@@ -214,7 +220,7 @@ function preview(history, release) {
     title: `${name}: day report, Tue 6 Oct 2026`,
     report_date: DAY,
     rag: "amber",
-    headline: "4 fixes, 1 answer and 4 reviews needed, 6 escalated.",
+    headline: "4 fixes, 1 answer and 4 reviews needed, 2 escalated.",
     percent_complete: 27.8,
     progress_line: progress,
     console_path: `/reports/project-checkout/daily?report=${reportId}`,

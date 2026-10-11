@@ -8,6 +8,7 @@ import type {
   InvestigateStepResponse,
 } from "../../api/schema";
 import { spaced } from "../../lib/words.ts";
+import { readAnswer } from "./conversation.ts";
 
 /** How a question is asked: one quick look-up (POST /ask), or an investigation in steps. */
 export type AskMode = "quick" | "investigate";
@@ -42,14 +43,16 @@ export function applyEvent(current: Answering, event: InvestigateEvent): Answeri
         ...current,
         steps: current.steps.map((step) => (step.index === event.step.index ? event.step : step)),
       };
-    case "answer":
+    case "answer": {
+      const { text, followUps } = readAnswer(event.answer.answer, event.answer.follow_ups);
       return {
         status: "answered",
-        text: event.answer.answer,
+        text,
         sources: event.answer.sources ?? [],
         steps: event.steps,
-        followUps: event.answer.follow_ups ?? [],
+        followUps,
       };
+    }
     case "failed":
       return {
         status: "failed",

@@ -11,7 +11,7 @@ import {
   type Control,
   type State,
 } from "./assistantContext";
-import { conversationFor, freshMemory, remember, type Memory } from "./conversation";
+import { conversationFor, freshMemory, readAnswer, remember, type Memory } from "./conversation";
 import { answering, applyEvent, streamEnded, type AskMode, type Answering } from "./investigate";
 import { askError, type AskSubject } from "./persona";
 
@@ -140,9 +140,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         keep(reply);
         settle({
           status: "answered",
-          text: reply.answer,
           sources: reply.sources ?? [],
-          followUps: reply.follow_ups ?? [],
+          ...readAnswer(reply.answer, reply.follow_ups),
         });
       })
       .catch((error: unknown) => settle({ status: "failed", text: askError(error) }));

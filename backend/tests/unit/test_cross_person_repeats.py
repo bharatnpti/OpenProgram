@@ -209,6 +209,108 @@ async def test_resolving_from_the_console_also_closes_the_copies() -> None:
     assert await _resolved_by(store) == {r1.id: ASHA, r2.id: ASHA}
 
 
+# --- a resolved ask tells its requester once, per ask (V2 A3) -------------------
+
+# Zoe asked Noah to review CHK-12 on 7 Oct and he resolved it that day. On 11 Oct
+# she asked again; Noah acknowledged and resolved the new request, and Zoe was
+# never told, because the 7 Oct ask looked like a copy of it.
+OLD_ASK = datetime(2026, 10, 7, 9, 31, tzinfo=UTC)
+OLD_DONE = datetime(2026, 10, 7, 14, 2, tzinfo=UTC)
+NEW_ASK = datetime(2026, 10, 11, 4, 16, 38, tzinfo=UTC)
+NEW_COPY = datetime(2026, 10, 11, 4, 18, tzinfo=UTC)
+NEW_DONE = datetime(2026, 10, 11, 4, 21, 32, tzinfo=UTC)
+CHK12_REVIEW = "Review storefront-web !5 for CHK-12"
+
+
+async def _closed_on_7_oct(store: InMemoryGraphStore, request_id: str, note: str) -> None:
+    """Zoe's older ask of Noah, resolved before any of the 11 Oct ones existed."""
+    old = await store.create(_stored(request_id, ZOE, NOAH, note, OLD_ASK))
+    closed = await store.update_status("demo", old.id, CrossPersonRequestStatus.RESOLVED, OLD_DONE)
+    assert closed is not None
+
+
+def _resolved_notices(chat: FakeChatProvider) -> list[tuple[str, str]]:
+    """(request id, text) of each resolution DM to a requester, in order."""
+    return [
+        (str(message.metadata["request_id"]), message.text)
+        for message in chat.sent
+        if message.metadata["purpose"] == "cross_person_request_resolved"
+    ]
+
+
+async def test_a_new_ask_after_an_older_resolved_one_is_told_when_noah_resolves_it() -> None:
+    service, store, chat = await _service(now=NEW_DONE)
+    await _closed_on_7_oct(store, "xreq-old", CHK12_REVIEW)
+    new = await _ask(service, ZOE, NOAH, CHK12_REVIEW, NEW_ASK, "r-new")
+    assert new.status is CrossPersonRequestStatus.OPEN
+
+    await service.update_status("demo", new.id, CrossPersonRequestStatus.ACKNOWLEDGED, actor=NOAH)
+    await service.update_status("demo", new.id, CrossPersonRequestStatus.RESOLVED, actor=NOAH)
+
+    assert _resolved_notices(chat) == [
+        (new.id, f"Noah Weber marked your review request resolved: {CHK12_REVIEW}")
+    ]
+
+
+async def test_an_older_resolved_ask_does_not_silence_a_reply_or_a_merge_either() -> None:
+    service, store, chat = await _service(now=NEW_DONE)
+    replied_note, merged_note = CHK12_REVIEW, "Review checkout-api !3 for CHK-6"
+    await _closed_on_7_oct(store, "xreq-old-replied", replied_note)
+    await _closed_on_7_oct(store, "xreq-old-merged", merged_note)
+    replied = await store.create(_stored("xreq-replied", ZOE, NOAH, replied_note, NEW_ASK))
+    merged = await store.create(_stored("xreq-merged", ZOE, NOAH, merged_note, NEW_ASK))
+    await _merge_request(
+        store, "acme/checkout-api", "3", "CHK-6 Refund edge cases", merged=True, at=NEW_DONE
+    )
+
+    await service.handle_counterpart_reply(_reply(NOAH, replied, "approved", NEW_DONE), replied)
+    resolved = await service.resolve_merged_work("demo")
+
+    assert [request.id for request in resolved] == [merged.id]
+    assert [request_id for request_id, _ in _resolved_notices(chat)] == [replied.id, merged.id]
+
+
+async def test_resolving_one_of_two_live_copies_tells_the_requester_once() -> None:
+    service, store, chat = await _service(now=NEW_DONE)
+    # One ask recorded twice, a day apart, as before asks were refreshed in place.
+    first = await store.create(_stored("xreq-first", ZOE, NOAH, CHK12_REVIEW, OLD_ASK))
+    second = await store.create(_stored("xreq-second", ZOE, NOAH, CHK12_REVIEW, NEW_ASK))
+
+    await service.update_status("demo", second.id, CrossPersonRequestStatus.RESOLVED, actor=NOAH)
+    # A second click, or the other copy's own resolution, adds nothing.
+    await service.update_status("demo", second.id, CrossPersonRequestStatus.RESOLVED, actor=NOAH)
+    await service.update_status("demo", first.id, CrossPersonRequestStatus.RESOLVED, actor=NOAH)
+
+    closed = await store.get("demo", first.id)
+    assert closed is not None and closed.status is CrossPersonRequestStatus.RESOLVED
+    assert [request_id for request_id, _ in _resolved_notices(chat)] == [second.id]
+
+
+async def test_a_copy_resolved_while_its_twin_was_open_counts_as_told() -> None:
+    service, store, chat = await _service(now=NEW_DONE)
+    # The older copy was resolved (Zoe was told) while the newer one was open.
+    older = await store.create(_stored("xreq-older", ZOE, NOAH, CHK12_REVIEW, OLD_ASK))
+    newer = await store.create(_stored("xreq-newer", ZOE, NOAH, CHK12_REVIEW, NEW_ASK))
+    await store.update_status("demo", older.id, CrossPersonRequestStatus.RESOLVED, NEW_COPY)
+
+    await service.update_status("demo", newer.id, CrossPersonRequestStatus.RESOLVED, actor=NOAH)
+
+    assert _resolved_notices(chat) == []
+
+
+async def test_an_old_closed_ask_beside_two_live_copies_still_tells_the_requester_once() -> None:
+    service, store, chat = await _service(now=NEW_DONE)
+    await _closed_on_7_oct(store, "xreq-old", CHK12_REVIEW)
+    first = await store.create(_stored("xreq-new-1", ZOE, NOAH, CHK12_REVIEW, NEW_ASK))
+    second = await store.create(_stored("xreq-new-2", ZOE, NOAH, CHK12_REVIEW, NEW_COPY))
+
+    await service.update_status("demo", second.id, CrossPersonRequestStatus.RESOLVED, actor=NOAH)
+
+    closed = await store.get("demo", first.id)
+    assert closed is not None and closed.status is CrossPersonRequestStatus.RESOLVED
+    assert [request_id for request_id, _ in _resolved_notices(chat)] == [second.id]
+
+
 # --- a merged merge request resolves the ask about it ---------------------------
 
 
@@ -327,7 +429,9 @@ def test_a_request_is_a_repeat_only_of_the_same_requester_and_person() -> None:
 # --- helpers --------------------------------------------------------------------
 
 
-async def _service() -> tuple[CrossPersonRequestService, InMemoryGraphStore, FakeChatProvider]:
+async def _service(
+    now: datetime = R1,
+) -> tuple[CrossPersonRequestService, InMemoryGraphStore, FakeChatProvider]:
     store = InMemoryGraphStore()
     directory = InMemoryDirectoryUserRepository(store)
     await directory.upsert_users(
@@ -342,7 +446,7 @@ async def _service() -> tuple[CrossPersonRequestService, InMemoryGraphStore, Fak
         chat_provider=chat,
         directory_repository=directory,
         time_series_repository=store,
-        clock=lambda: R1,
+        clock=lambda: now,
     )
     return service, store, chat
 
@@ -431,8 +535,8 @@ async def _merge_request(
     title: str,
     *,
     merged: bool = False,
+    at: datetime = datetime(2026, 10, 4, 0, 5, 39, tzinfo=UTC),
 ) -> None:
-    at = datetime(2026, 10, 4, 0, 5, 39, tzinfo=UTC)
     await store.append_fact(
         FactEvent(
             tenant_id="demo",

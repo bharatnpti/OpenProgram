@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
 
@@ -27,12 +27,19 @@ from core.application.portfolio_feed_service import (
     PortfolioFeedService,
     state_label,
 )
+from core.application.readiness_access import pod_viewer, project_viewer, reads_some_board
+from core.application.release_readiness_service import (
+    BoardView,
+    FindingView,
+    ReleaseReadinessService,
+)
 from core.application.risk_service import RiskService
 from core.application.rollup_service import NO_WORK_REASON
 from core.application.status_summaries import NO_REPLY_BLOCKER
 from core.domain.auth import Principal
+from core.domain.delivery import DeliveryStage
 from core.domain.errors import AuthorizationDenied, GraphNotFound
-from core.domain.forecast import Verdict
+from core.domain.forecast import Release, Verdict
 from core.domain.graph import (
     EdgeKind,
     GraphEdge,
@@ -41,7 +48,14 @@ from core.domain.graph import (
     NodeKind,
     workstreams_in_use,
 )
-from core.domain.llm import LlmMessage, LlmRequest
+from core.domain.llm import LlmMessage, LlmRequest, LlmToolCall
+from core.domain.release_readiness import (
+    Severity,
+    Urgency,
+    UrgencyKind,
+    name_in_sentence,
+    stage_words,
+)
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import FactorKind, Rag, RollupFactor
 from core.domain.status import StatusSource
@@ -94,11 +108,43 @@ ASK_TOOL_GUIDANCE = (
     "the committed date, history's 50% and 85% dates and the verdict. A colour is not a "
     "forecast, so never say a date will be made or missed unless delivery_forecast says "
     "so, and say when it has too little history to forecast. "
+    "How many open requirements have no ETA or due date, and which, is answered from "
+    "delivery_forecast's open_without_date and open_without_date_keys, never from release "
+    "readiness: a release criterion is not a requirement. "
+    "Whether a project, release or pod is ready for production -- what is still missing "
+    "before it can go live, whether it can be released -- is answered from "
+    "release_readiness: name each missing or unsure criterion, blocking ones first, with "
+    "what it rests on and the day it is needed by, and never call anything ready unless "
+    "release_readiness shows every criterion covered or not applicable. Say what is needed "
+    "by when in the words of the criterion's what_is_needed: the criterion is what is "
+    "needed, and the issue key in reached_stage_without_it is a requirement that already "
+    "reached that stage without it, never something that is needed. "
     "Relationships -- who is assigned to what, who belongs to which pod, what "
     "contains what -- live on edges, so call graph_neighbors before reporting that "
     "something has none, and never tell the user their data is missing or needs "
     "updating when you have not traversed its edges. "
+    "What blocks a project or pod is answered from pod_blockers: for each pod it names "
+    "or works through, or for every pod with pod_id unset. Never say anything has no "
+    "blockers, no risks or nothing missing unless a tool you called says so. "
     "Never mention raw DM/reply content. "
+)
+
+# The rounds a quick answer's tool loop may take before it must answer
+# (OPENPROGRAM_ASK_MAX_TOOL_ITERATIONS). Three ran out on "What is blocking
+# <project>?" in QA round V2: finding the project, its pods and their
+# blockers, with one look at its status first, is four. Five leaves one more
+# for following a blocker to its owner or issue; a round is one model call of
+# a few seconds, so even all five stay far inside the 120-second budget.
+ASK_MAX_TOOL_ITERATIONS = 5
+
+# Said to the model when its tool rounds ran out (ToolCallingAgent.cap_notice).
+ASK_CAP_NOTICE = (
+    "You have run out of tool steps. A tool result that says 'Not run' is a read that did "
+    "not happen, so nothing is known of what it would have shown. Answer from the results "
+    "you have, and make the answer's first line say what you could not check, e.g. 'I ran "
+    "out of steps before checking every pod's open blockers.' Never state a negative you "
+    "did not read -- no blockers, no risks, nothing missing -- and never fill the gap from "
+    "a colour or from the conversation."
 )
 
 # Earlier turns, when the console sends them (ask_conversation.py).
@@ -117,6 +163,13 @@ FOLLOW_UPS_FIELD = (
 )
 MAX_FOLLOW_UPS = 3
 _MAX_FOLLOW_UP_CHARS = 140
+# A reply once ended its answer on a 'follow_ups: ["...", ...]' line and the
+# reader saw the list raw, so the reply's other fields are named as fields.
+OWN_FIELDS_RULE = (
+    "answer holds the answer's own lines and nothing else: references and follow_ups are "
+    "fields of the object beside it, so never write them, or a 'follow_ups:' or "
+    "'References:' line, inside answer."
+)
 
 ASK_SYSTEM_PROMPT = (
     "You answer program-management questions over a delivery graph. "
@@ -127,9 +180,7 @@ ASK_SYSTEM_PROMPT = (
     + " "
     "Once you have the facts, reply with a single JSON object and nothing else: "
     "answer holds the text, with a newline between lines, references an array "
-    "of the node ids it rests on, and "
-    + FOLLOW_UPS_FIELD
-    + " Do not restate references inside answer."
+    "of the node ids it rests on, and " + FOLLOW_UPS_FIELD + " " + OWN_FIELDS_RULE
 )
 
 # Named periods a time-window question maps onto, resolved against the as-of
@@ -146,6 +197,8 @@ _MAX_REASONS = 15
 _MAX_PARTS = 20
 _MAX_SIGNALS = 10
 _MAX_PROJECTS = 20
+# The undated requirements a forecast names; open_without_date still counts them all.
+_MAX_UNDATED_KEYS = 25
 _RAG_ORDER: dict[Rag, int] = {Rag.RED: 0, Rag.AMBER: 1, Rag.UNKNOWN: 2, Rag.GREEN: 3}
 _AS_OF_PARAMETER: Mapping[str, object] = {
     "type": "string",
@@ -238,6 +291,96 @@ _REFERENCES_FIELD = re.compile(
 )
 _ITEM_SPLIT = re.compile(r"\s*(?:[,;\n]|\s·\s)\s*")
 _ITEM_EDGES = " \t\"'`*_"
+# A follow-ups list written into the answer instead of beside it, as Ora once
+# showed one: 'follow_ups: ["What is Noah Weber\'s workload?", ...]' under the
+# answer. The field's own name marks the list in any spelling -- follow_ups,
+# followUps, follow_up_questions, quoted as a JSON key -- and so does a heading
+# in words ("**Follow-up questions:**", "Suggested follow-ups:"), but only over
+# questions: a singular "Follow up:" or a "Follow-ups: 2 open" line is the
+# answer's own.
+_FOLLOW_UPS_KEY = r"follow_?ups|follow_?up_?questions"
+_FOLLOW_UPS_WORDS = (
+    r"(?:suggested\s+|next\s+)?follow[\s-]ups|follow[\s-]up\s+questions"
+    r"|(?:next|suggested)\s+questions|questions\s+to\s+ask\s+next"
+)
+_FOLLOW_UPS_HEADING = re.compile(
+    r"^\s*(?:[-*•]\s*)?[*_`\"']*"
+    rf"(?:(?P<field>{_FOLLOW_UPS_KEY})|(?P<words>{_FOLLOW_UPS_WORDS}))"
+    r"[*_`\"']*\s*[:：=]\s*[*_`]*(?P<items>.*?)[*_`]*\s*,?\s*$",
+    re.IGNORECASE,
+)
+# "... for this task. follow_ups: [...]", or a '{"follow_ups": [...]}' fragment.
+_TRAILING_FOLLOW_UPS = re.compile(
+    r"\s*\{?\s*[\"']?\b(?:" + _FOLLOW_UPS_KEY + r")[\"']?\s*[:：=]\s*"
+    r"(?P<items>\[[^\[\]]*\]?)\s*\}?\s*[,.]?\s*$",
+    re.IGNORECASE,
+)
+_AFTER_QUESTION = re.compile(r"(?<=\?)[\"'`]?[\s,;]+")
+
+# An answer that says it could not check everything, in the words the cap
+# notice asks for or close to them.
+_RAN_OUT = re.compile(
+    r"\bran out of (?:tool )?steps\b"
+    r"|\bcould(?: not|n't) (?:check|look up|read|be (?:checked|looked up|read))\b",
+    re.IGNORECASE,
+)
+# Claims that something is absent, each with the reads that can show it. One
+# of them stands in an answer written at the cap only when a read of its kind
+# ran and none was left unrun; otherwise the sentence goes. "<Project> has no
+# blockers reported today" came 2 seconds after the cap in QA round V2, with a
+# blocker open in one of its pods.
+_ABSENT_QUALIFIERS = r"(?:(?:open|active|current|known|reported|new|other|outstanding)\s+)*"
+_UNREAD_NEGATIVES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
+    (
+        frozenset({"pod_blockers", "status_reasons"}),
+        re.compile(
+            rf"\b(?:no|zero|0)\s+{_ABSENT_QUALIFIERS}block(?:ers?\b|ing\b|ed\b)"
+            r"|\bnothing\s+(?:is\s+)?(?:currently\s+)?block(?:ing|ed)\b"
+            r"|\b(?:no\s*one|nobody|none)\b[^.;\n]{0,40}\bblocked\b"
+            r"|(?:\bnot|n't)\s+(?:currently\s+)?blocked\b|\bunblocked\b"
+            r"|(?:\bnot|n't)\b[^.;\n]{0,15}\bany\s+blockers?\b"
+            r"|\bwithout\s+(?:any\s+)?blockers?\b|\bblockers?\s*[:：]\s*(?:none|0)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        frozenset({"open_risks", "status_reasons"}),
+        re.compile(
+            rf"\bno\s+{_ABSENT_QUALIFIERS}risks?\b|\bnothing\s+(?:is\s+)?at\s+risk\b"
+            r"|(?:\bnot|n't)\s+at\s+risk\b|\brisks?\s*[:：]\s*(?:none|0)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        frozenset({"release_readiness"}),
+        re.compile(
+            r"\bnothing\s+(?:else\s+)?(?:is\s+)?(?:still\s+)?missing\b"
+            rf"|\bno\s+{_ABSENT_QUALIFIERS}(?:gaps?|criteria\s+(?:are\s+)?missing)\b"
+            r"|\bready\s+(?:for|to\s+go\s+to)\s+production\b",
+            re.IGNORECASE,
+        ),
+    ),
+)
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+# The words for what a read covers, for "I ran out of steps before checking ...".
+_READ_WORDS: Mapping[str, str] = {
+    "search_graph_nodes": "a name look-up",
+    "graph_neighbors": "the links",
+    "recent_facts": "recent activity",
+    "workstream_flow": "the flow",
+    "portfolio_flow": "the portfolio's flow",
+    "workstream_progress": "the progress",
+    "status_reasons": "the status reasons",
+    "portfolio_heatmap": "the portfolio heatmap",
+    "open_risks": "the open risks",
+    "pod_checkins": "the check-ins",
+    "pod_blockers": "the open blockers",
+    "delivery_forecast": "the delivery forecast",
+    "release_readiness": "the release readiness",
+}
+_EVERY_POD_READS = frozenset({"pod_checkins", "pod_blockers"})
+_NODE_ARGUMENTS = ("node_id", "pod_id", "project_id", "workstream_id", "program_root_id")
+_MAX_LOOKUP_CHARS = 60
 # Text in brackets inside one item: "Zoe Almeida (U0AA1ZOE001)".
 _BRACKETED = re.compile(r"[(\[]\s*(?P<inner>[^()\[\]]+?)\s*[)\]]")
 # The node kinds an answer names, as the references rule lists them.
@@ -1066,7 +1209,10 @@ class PodBlockersTool:
     description: str = (
         "Blockers open today in a pod, oldest first: what is blocked, for how many "
         "days, whose blocker it is and which work item it is attributed to. Omit "
-        "pod_id to cover every pod."
+        "pod_id to cover every pod. A blocker counts in the pod its blocked work sits "
+        "with; one on a task a pod lists that counts in another pod comes with "
+        "counted_in_this_pod false and the pods it counts in. Over several pods each "
+        "blocker is listed once."
     )
     parameters: Mapping[str, object] = field(
         default_factory=lambda: {
@@ -1089,13 +1235,24 @@ class PodBlockersTool:
         if isinstance(pods, str):
             return json.dumps({"error": pods})
         limit = _bounded_int(arguments.get("limit"), default=20, maximum=50)
+        views = [
+            await self.service.pod_blockers(self.tenant_id, pod.id, self.as_of) for pod in pods
+        ]
         blockers = [
             (view.pod_id, view.pod_name, blocker)
-            for view in [
-                await self.service.pod_blockers(self.tenant_id, pod.id, self.as_of) for pod in pods
-            ]
+            for view in views
             for blocker in view.blockers
+            if blocker.counted_here
         ]
+        # A pod lists a blocker on a task of its own that counts in another pod
+        # (PersonaViewService.pod_blockers). Over several pods it stays where it
+        # counts, so a project's blockers are never counted twice.
+        counted = {blocker.blocker_id for _pod_id, _pod_name, blocker in blockers}
+        for view in views:
+            for blocker in view.blockers:
+                if not blocker.counted_here and blocker.blocker_id not in counted:
+                    counted.add(blocker.blocker_id)
+                    blockers.append((view.pod_id, view.pod_name, blocker))
         blockers.sort(key=lambda item: -item[2].age_days)
         return json.dumps(
             {
@@ -1115,6 +1272,12 @@ class PodBlockersTool:
                             blocker.work_item_ref.id if blocker.work_item_ref else None
                         ),
                         "unattributed": blocker.unattributed,
+                        "counted_in_this_pod": blocker.counted_here,
+                        **(
+                            {}
+                            if blocker.counted_here
+                            else {"counts_in": [pod.name for pod in blocker.counted_in]}
+                        ),
                     }
                     for pod_id, pod_name, blocker in blockers[:limit]
                 ],
@@ -1151,7 +1314,9 @@ class DeliveryForecastTool:
         "today unless as_of names an earlier one: the committed date and how often it "
         "moved, history's 50% and 85% likely finish dates (forecast_p50, forecast_p85), "
         "the verdict against the date and what it rests on, whether there is enough "
-        "history to forecast, the team's latest ETA or due date, and the reasons in "
+        "history to forecast, the team's latest ETA or due date, the open requirements "
+        "with no ETA or due date (open_without_date, and their keys in "
+        "open_without_date_keys), and the reasons in "
         "Delivery's own words. A project comes with its pods' and releases' verdicts, a "
         "pod with its part of each project it works on, a program with each of its "
         "projects; leave node_id unset to cover every project. Use it for 'will X make "
@@ -1295,6 +1460,103 @@ class DeliveryForecastTool:
 
 
 @dataclass(frozen=True, kw_only=True)
+class ReleaseReadinessTool:
+    """What a project, one of its releases, or a pod still needs before production.
+
+    Asked what was missing before a project could go to production, Ask had no
+    readiness to read: it explained the project's colour and never named the
+    blocking criterion the readiness board showed missing. This hands over that
+    board -- each criterion, whether it is covered, missing or unsure, the
+    evidence and candidate issue keys, when it is needed by, and the drafted
+    issue's status -- from ReleaseReadinessService.project_board or pod_board,
+    the reads behind /projects/{id}/readiness and /pods/{id}/readiness, after the
+    same check those routes make (readiness_access). A read the route would
+    refuse comes back in the route's own words, never as data; an executive
+    gets the rows without drafts, as the route gives them. It writes nothing.
+    Ask is not for developers (may_ask), so they never get here.
+    """
+
+    principal: Principal
+    service: ReleaseReadinessService
+    forecasts: ForecastService
+    repository: GraphRepository
+    #: The day asked about. Readiness keeps no history, so a board checked after
+    #: it says so rather than passing for that day's.
+    as_of: date
+
+    name: str = "release_readiness"
+    description: str = (
+        "Whether a project, one of its releases, or a pod is ready for production, as "
+        "Release readiness checks it: each release criterion (its name, blocking or "
+        "advisory, the stage it is needed before), whether it is covered, missing, unsure "
+        "or not applicable and why, the evidence issue keys and how each was found, what "
+        "is still needed by when (what_is_needed, needed_by), any requirement that already "
+        "reached the stage without it (reached_stage_without_it), and the status of the "
+        "issue drafted for a missing one. A "
+        "project comes with each of its releases' counts; give release_id for one "
+        "release's criteria. Use it for 'is X ready for production', 'what is missing "
+        "before X can go live', 'can we release' and 'what must happen before the "
+        "release'; search_graph_nodes turns a name into the node_id."
+    )
+    parameters: Mapping[str, object] = field(
+        default_factory=lambda: {
+            "type": "object",
+            "properties": {
+                "node_id": {
+                    "type": "string",
+                    "description": "The project or pod to check.",
+                },
+                "release_id": {
+                    "type": "string",
+                    "description": "One release of the project, from a project's releases.",
+                },
+            },
+            "required": ["node_id"],
+            "additionalProperties": False,
+        }
+    )
+
+    async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
+        node_id = _required_string(arguments.get("node_id"), "node_id")
+        release_id = _string_argument(arguments.get("release_id"))
+        tenant_id = self.principal.tenant_id
+        node = await self.repository.get_node(tenant_id, node_id)
+        if node is None:
+            raise GraphNotFound(
+                f"{node_id} not found; search_graph_nodes finds a project or pod by name"
+            )
+        try:
+            if node.kind is NodeKind.PROJECT:
+                viewer = await project_viewer(
+                    self.principal, self.forecasts, self.service, node.id, reading=True
+                )
+                release = await self._release(node.id, release_id) if release_id else None
+                board = await self.service.project_board(
+                    tenant_id, node.id, viewer, release=release
+                )
+            elif node.kind is NodeKind.POD:
+                viewer = await pod_viewer(self.principal, self.forecasts, node.id)
+                board = await self.service.pod_board(tenant_id, node.id, viewer)
+            else:
+                return json.dumps(
+                    {
+                        "error": f"{node_id} is a {node.kind.value}; release_readiness covers "
+                        "a project, one of its releases, or a pod"
+                    }
+                )
+        except AuthorizationDenied as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+        return json.dumps(_readiness_payload(board, self.as_of), ensure_ascii=False)
+
+    async def _release(self, project_id: str, release_id: str) -> Release:
+        """The project's release, as the route finds it: another project's is no release."""
+        release = await self.forecasts.release(self.principal.tenant_id, release_id)
+        if release.project_id != project_id:
+            raise GraphNotFound(f"{release_id} is no release of {project_id}")
+        return release
+
+
+@dataclass(frozen=True, kw_only=True)
 class RecordedTool:
     """Runs a tool and notes that it ran.
 
@@ -1366,6 +1628,82 @@ class AnswerReader:
     def readable(self, text: str) -> str:
         return _without_raw_ids(_tidy_lines(text), self.nodes)
 
+    def cut_short(
+        self, view: AskResponseView, *, read: Iterable[str], unrun: Sequence[LlmToolCall]
+    ) -> AskResponseView:
+        """An answer written when the tool rounds ran out, held to what was read.
+
+        A claim that something is absent goes unless a read of its kind ran and
+        none was left unrun (``without_unread_negatives``), and the answer opens
+        by saying what it could not check, unless it already says so.
+        """
+        answer = without_unread_negatives(
+            view.answer, read=frozenset(read), pending=frozenset(call.name for call in unrun)
+        )
+        if not said_it_ran_out(answer):
+            answer = "\n".join(line for line in (self.ran_out(unrun), answer) if line)
+        return replace(view, answer=answer)
+
+    def ran_out(self, unrun: Sequence[LlmToolCall]) -> str:
+        """'I ran out of steps before checking the open blockers of Payments Pod.'"""
+        checks = list(dict.fromkeys(self._unchecked(call) for call in unrun))
+        if not checks:
+            return ""
+        listed = checks[0] if len(checks) == 1 else f"{', '.join(checks[:-1])} and {checks[-1]}"
+        return self.readable(f"I ran out of steps before checking {listed}.")
+
+    def _unchecked(self, call: LlmToolCall) -> str:
+        noun = _READ_WORDS.get(call.name, call.name.replace("_", " "))
+        for key in _NODE_ARGUMENTS:
+            value = call.arguments.get(key)
+            if isinstance(value, str) and value.strip():
+                node = self.nodes.get(value.strip())
+                label = node_label(node) if node is not None else None
+                # Never a raw id: a node it cannot name is left unnamed.
+                return f"{noun} of {label}" if label else noun
+        query = call.arguments.get("query")
+        if call.name == "search_graph_nodes" and isinstance(query, str) and query.strip():
+            return f"{noun} for {' '.join(query.split())[:_MAX_LOOKUP_CHARS]}"
+        if call.name in _EVERY_POD_READS:
+            return f"{noun} of every pod"
+        return noun
+
+
+def said_it_ran_out(answer: str) -> bool:
+    """Whether an answer says it could not check everything."""
+    return _RAN_OUT.search(answer) is not None
+
+
+def without_unread_negatives(
+    answer: str, *, read: Collection[str], pending: Collection[str] = ()
+) -> str:
+    """``answer`` without a claim that something is absent which no finished read shows.
+
+    For an answer written after its reads were cut short. A claim of no
+    blockers, no risks or nothing missing stays only when a tool that reads
+    that kind ran (``read``) and none was left unrun (``pending``); otherwise
+    its sentence goes, and a line left empty with it.
+    """
+    unread = [
+        pattern
+        for tools, pattern in _UNREAD_NEGATIVES
+        if not tools & frozenset(read) or tools & frozenset(pending)
+    ]
+    if not unread:
+        return answer
+    kept: list[str] = []
+    for line in answer.splitlines():
+        bullet = _BULLET.match(line)
+        body = line[bullet.end() :] if bullet else line
+        text = " ".join(
+            sentence
+            for sentence in _SENTENCE_END.split(body.strip())
+            if not any(pattern.search(sentence) for pattern in unread)
+        ).strip()
+        if text:
+            kept.append(f"• {text}" if bullet else text)
+    return "\n".join(kept)
+
 
 def remembered(view: AskResponseView, context: AskContext) -> AskResponseView:
     """The view, with the new summary when the conversation was compacted for it."""
@@ -1421,8 +1759,10 @@ class AskService:
         risk_service: RiskService,
         forecast_service: ForecastService,
         delivery_scope_service: DeliveryScopeService,
+        release_readiness_service: ReleaseReadinessService,
         model: str,
         tool_agent: ToolCallingAgent | None = None,
+        max_tool_iterations: int = ASK_MAX_TOOL_ITERATIONS,
     ) -> None:
         self._llm_provider = llm_provider
         self._graph_repository = graph_repository
@@ -1432,8 +1772,13 @@ class AskService:
         self._risk_service = risk_service
         self._forecast_service = forecast_service
         self._delivery_scope_service = delivery_scope_service
+        self._release_readiness_service = release_readiness_service
         self._model = model
-        self._tool_agent = tool_agent or ToolCallingAgent(llm_provider=llm_provider)
+        self._tool_agent = tool_agent or ToolCallingAgent(
+            llm_provider=llm_provider,
+            max_tool_iterations=max_tool_iterations,
+            cap_notice=ASK_CAP_NOTICE,
+        )
 
     async def ask(
         self,
@@ -1469,9 +1814,12 @@ class AskService:
         tools = tuple(
             RecordedTool(inner=tool, calls=calls) for tool in self.tools_for(principal, asked_for)
         )
-        response = await self._tool_agent.run(request, tools)
+        result = await self._tool_agent.run_loop(request, tools)
         reader = await self.reader(principal.tenant_id, asked_for)
+        response = result.response
         view = reader.view(response.text, trace_id=response.trace_id, tools_used=calls)
+        if result.cap_reached:
+            view = reader.cut_short(view, read=calls, unrun=result.unrun)
         return remembered(view, context)
 
     async def reader(self, tenant_id: str, as_of: date) -> AnswerReader:
@@ -1587,6 +1935,19 @@ class AskService:
                 ),
                 _reads_delivery,
             ),
+            # /projects/{id}/readiness and /pods/{id}/readiness: offered when a
+            # board answers the role somewhere, and per project or pod only
+            # where it does (readiness_access), as delivery_forecast is.
+            (
+                ReleaseReadinessTool(
+                    principal=principal,
+                    service=self._release_readiness_service,
+                    forecasts=self._forecast_service,
+                    repository=graph,
+                    as_of=as_of,
+                ),
+                reads_some_board,
+            ),
         )
         return tuple(tool for tool, allowed in offered if allowed(principal))
 
@@ -1611,6 +1972,7 @@ def _prompt(question: str, as_of: date) -> str:
         "bullets, 80 words at most -- naming people, issues and merge requests (MRs, never PRs) "
         "rather than ids, and "
         "list the id of every node the answer names in references. "
+        "Questions to ask next go in follow_ups, never inside answer. "
         f"Question: {question}"
     )
 
@@ -1647,17 +2009,108 @@ def _parse_answer(text: str) -> ParsedAnswer:
     each case a "References: [...]" line is cut out of the answer and its items
     kept in ``cited``, so the reader never sees the line and sources still get
     what it listed. A fenced or prose-wrapped object used to be shown whole,
-    and a prose reply showed its references line.
+    and a prose reply showed its references line. A follow-ups list written
+    into the answer, or beside the object, is cut out the same way, and its
+    questions are the follow-ups when the reply has no follow_ups field.
     """
     answer, references, beside = _reply_parts(text)
+    answer, asked = _cut_follow_ups(answer)
+    beside, asked_beside = _cut_follow_ups(beside)
     answer, cited = _clean_answer(answer)
     _, cited_beside = _clean_answer(beside)
     return ParsedAnswer(
         answer=answer,
         references=_unique(references),
         cited=_unique((*cited, *cited_beside)),
-        follow_ups=_follow_ups(text),
+        follow_ups=_follow_ups(text) or _unique((*asked, *asked_beside)),
     )
+
+
+def _cut_follow_ups(text: str) -> tuple[str, list[str]]:
+    """``text`` without any follow-ups list written into it, and that list's questions.
+
+    The list comes inline ('follow_ups: ["A?", "B?"]'), as a JSON array over
+    several lines, YAML-ish (a bare "follow_ups:" with a "- A?" line per
+    question), or at the end of a line. A heading in words counts only when
+    every item under it is a question; otherwise its lines stay as they were.
+    """
+    lines = text.splitlines()
+    kept: list[str] = []
+    asked: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        index += 1
+        heading = _FOLLOW_UPS_HEADING.match(line)
+        if heading is None:
+            trailing = _TRAILING_FOLLOW_UPS.search(line)
+            if trailing is not None:
+                asked.extend(_question_items(trailing.group("items")))
+                line = line[: trailing.start()]
+            kept.append(line)
+            continue
+        block = [line]
+        listed = heading.group("items")
+        questions: list[str] = []
+        if not listed.strip():
+            # A bare heading: the list is on the lines under it.
+            while index < len(lines) and not lines[index].strip():
+                block.append(lines[index])
+                index += 1
+            if index < len(lines) and lines[index].strip().startswith("["):
+                listed = lines[index]
+                block.append(lines[index])
+                index += 1
+            else:
+                while index < len(lines) and (entry := _LIST_ITEM.match(lines[index])):
+                    questions.append(_question(entry.group("item")))
+                    block.append(lines[index])
+                    index += 1
+        while _opens_list(listed) and index < len(lines):
+            listed = f"{listed}\n{lines[index]}"
+            block.append(lines[index])
+            index += 1
+        questions = [*_question_items(listed), *(item for item in questions if item)]
+        if heading.group("field") or (questions and all(q.endswith("?") for q in questions)):
+            asked.extend(questions)
+        else:
+            kept.extend(block)
+    return "\n".join(kept), asked
+
+
+def _question_items(text: str) -> list[str]:
+    """The questions of a written list: a JSON array, quoted strings, or bare questions.
+
+    A list cut off part way keeps the questions it finished.
+    """
+    listed = text.strip().rstrip(",.").strip()
+    if not listed:
+        return []
+    if listed.startswith("["):
+        try:
+            decoded = _JSON.decode(listed)
+        except json.JSONDecodeError:
+            decoded = None
+        if isinstance(decoded, list):
+            return [item.strip() for item in decoded if isinstance(item, str) and item.strip()]
+    bare = listed.strip("[]")
+    # Every item in double quotes, the last perhaps never closed.
+    leftover = _QUOTED.sub("", bare).strip(" \t\n,")
+    if listed.startswith(("[", '"')) and (
+        not leftover or (leftover.startswith('"') and leftover.count('"') == 1)
+    ):
+        return [item for item in (_json_string(raw) for raw in _QUOTED.findall(bare)) if item]
+    # Bare, or quoted the Python way: ['Why?', "Who's next?"].
+    split = _AFTER_QUESTION if "?" in bare else _ITEM_SPLIT
+    return [item for item in (_question(part) for part in split.split(bare)) if item]
+
+
+def _question(item: str) -> str:
+    """One written question without its quotes, marks or trailing comma."""
+    text = item.strip().rstrip(",").strip()
+    if len(text) >= 2 and text.startswith('"') and text.endswith('"'):
+        return _json_string(text[1:-1])
+    return text.strip(_ITEM_EDGES).strip()
 
 
 def _follow_ups(text: str) -> tuple[str, ...]:
@@ -2426,6 +2879,147 @@ async def _pods(
     return (node,)
 
 
+def _readiness_payload(board: BoardView, as_of: date) -> dict[str, object]:
+    """A readiness board for the model: every criterion's state, evidence and draft, by name.
+
+    The counts are the board's own (ReadinessBoardResponse.summary); a person is
+    named, never given by id; an empty board says why, so it never reads as ready.
+    """
+    states = [view.shown_state for view in board.findings]
+    checked = board.last_run.finished_at if board.last_run else None
+    payload: dict[str, object] = {
+        "scope_name": board.scope_name,
+        "project_id": board.project_id,
+        "pod_id": board.pod_id,
+        "release_id": board.release_id,
+        "checks_on": board.settings.enabled,
+        "last_checked": checked.isoformat() if checked else None,
+        "jira_data_as_of": board.jira.as_of.isoformat() if board.jira.as_of else None,
+        "jira_data_stale": board.jira.stale,
+        "blocking_missing": sum(
+            1
+            for view in board.findings
+            if view.shown_state == "missing" and view.criterion.severity is Severity.BLOCKING
+        ),
+        "missing": states.count("missing"),
+        "unsure": states.count("unsure"),
+        "covered": states.count("covered"),
+        "not_applicable": states.count("not_applicable"),
+        "criteria": [_finding_payload(view, board.names) for view in board.findings],
+        "releases": [
+            {
+                "release_id": line.release_id,
+                "release_name": line.name,
+                "missing": line.missing,
+                "unsure": line.unsure,
+                "criteria": line.total,
+            }
+            for line in board.releases[:_MAX_PARTS]
+        ],
+        "day_report_lines": list(board.important),
+    }
+    if checked is not None and checked.date() > as_of:
+        payload["history"] = (
+            f"Release readiness keeps no history: this is the check of {checked.date()}, "
+            f"which may not be how it stood on {as_of.isoformat()}."
+        )
+    if not board.findings:
+        payload["no_criteria"] = (
+            "No release criterion applies here, so nothing is checked: this says nothing "
+            "about whether it is ready."
+            if board.settings.enabled
+            else "Release readiness checks are off for this tenant, so nothing is checked."
+        )
+    return payload
+
+
+_READY_STATES = frozenset({"covered", "not_applicable"})
+
+
+def what_is_needed(
+    criterion: str, needed_before: DeliveryStage, urgency: Urgency, *, ready: bool
+) -> str | None:
+    """What a criterion still needs before its stage, and by when, in a sentence to quote.
+
+    The finding used to give the requirement that reached the stage as
+    requirement_at_stage, beside needed_by, and an answer read the key as the
+    thing needed: "(CHK-3 needed by 2026-11-24)". The criterion is what is
+    needed; the key is a requirement that already reached the stage without it.
+    None once the criterion is covered or not applicable.
+    """
+    if ready:
+        return None
+    what = f"The {name_in_sentence(criterion)}"
+    stage = stage_words(needed_before)
+    due = urgency.due_on
+    if urgency.kind is UrgencyKind.OVERDUE and due is not None:
+        line = f"{what} was needed before {stage} by {due.isoformat()}, and that day has passed"
+    elif due is not None:
+        line = f"{what} is needed before {stage}, by {due.isoformat()}"
+    else:
+        line = f"{what} is needed before {stage}"
+    if urgency.kind is UrgencyKind.STAGE_REACHED and urgency.stage_key:
+        line += f"; {urgency.stage_key} already reached {stage} without it"
+    return line + "."
+
+
+def _finding_payload(view: FindingView, names: Mapping[str, str]) -> dict[str, object]:
+    finding, criterion, suggestion = view.finding, view.criterion, view.suggestion
+    person = finding.person
+    urgency = finding.urgency
+    entry: dict[str, object] = {
+        "criterion": criterion.name,
+        "severity": criterion.severity.value,
+        "needed_before": stage_words(criterion.required_before),
+        "scope_kind": finding.scope.kind.value,
+        "scope_name": view.scope_name,
+        "state": state_label(view.shown_state),
+        "reason": _clip(finding.reason),
+        "evidence": [
+            {
+                "issue_key": item.issue_key or None,
+                "title": _clip(item.title),
+                "status": state_label(item.status) if item.status else None,
+                "done": item.done,
+                "how_found": item.how,
+            }
+            for item in finding.evidence[:_MAX_SIGNALS]
+        ],
+        "candidates": [
+            {"issue_key": item.issue_key, "title": _clip(item.title), "why": item.why.value}
+            for item in finding.candidates[:_MAX_SIGNALS]
+        ],
+        "urgency": urgency.kind.value,
+        "what_is_needed": what_is_needed(
+            criterion.name,
+            criterion.required_before,
+            urgency,
+            ready=view.shown_state in _READY_STATES,
+        ),
+        "needed_by": _iso(urgency.due_on),
+        "working_days_left": view.working_days_left,
+        "reached_stage_without_it": (
+            urgency.stage_key if urgency.kind is UrgencyKind.STAGE_REACHED else None
+        ),
+        "held_for_fresh_jira_data": finding.held,
+    }
+    if person is not None:
+        entry["decision"] = {
+            "kind": state_label(person.kind.value),
+            "by": names.get(person.by),
+            "reason": _clip(person.reason) or None,
+            "issue_key": person.issue_key or None,
+        }
+    if suggestion is not None:
+        entry["draft"] = {
+            "status": state_label(suggestion.status.value),
+            "summary": _clip(suggestion.draft.summary),
+            "jira_project": suggestion.draft.project_key,
+            "created_issue_key": suggestion.created_issue_key,
+        }
+    return entry
+
+
 def _forecast_payload(view: ScopeDeliveryView) -> dict[str, object]:
     """One scope's date and forecast, as Delivery shows it, with its reasons."""
     history = view.history
@@ -2445,7 +3039,10 @@ def _forecast_payload(view: ScopeDeliveryView) -> dict[str, object]:
         "finished_in_history": _number(history.completed_in_sample),
         "team_latest_date": _iso(team.latest),
         "team_latest_issue": team.latest_key,
+        # The count and the keys of the same requirements: Investigate once said
+        # one requirement had no ETA while Delivery showed six.
         "open_without_date": team.undated,
+        "open_without_date_keys": list(team.undated_keys[:_MAX_UNDATED_KEYS]),
         "requirements": view.total,
         # Its reasons would say every requirement is in production.
         "reasons": (
