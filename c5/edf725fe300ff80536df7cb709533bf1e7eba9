@@ -1,0 +1,61 @@
+backend/infra/adapters/agents/deep_investigation.py
+  s_3101dec2ee3c53::t_3c0a7f0dff593b 217
+  s_3101dec2ee3c53::t_65f699b932ad32 60
+  s_3101dec2ee3c53::t_7fb94cc78399a7 71
+  s_3101dec2ee3c53::t_c75cf64463d655 232,236-239,242-244,251-252
+backend/tests/unit/test_forecast.py
+  s_3101dec2ee3c53::t_2d12858c1815d9 143-160
+features.md
+  s_3101dec2ee3c53::t_cf09cb74a73419 489
+backend/core/domain/forecast.py
+  s_3101dec2ee3c53::t_88eae1a7dcb0b5 221-223
+  s_3101dec2ee3c53::t_dddb6928255b93 367,371-374
+  s_3101dec2ee3c53::t_e5f2d2e402086a 375-376
+backend/core/application/ask_service.py
+  s_3101dec2ee3c53::t_6d5f3d20f98136 200-201
+  s_3101dec2ee3c53::t_1c61cf8b66ee8f 111-113
+  s_3101dec2ee3c53::t_2d9b5af0b797df 3042-3043,3045
+  s_3101dec2ee3c53::t_954ccb70115694 1317-1319
+backend/tests/unit/test_investigation_undated_facts.py
+  s_3101dec2ee3c53::t_eb91c789a63dd9 23,31
+  s_3101dec2ee3c53::t_e2d879c5e3339e 1-22,24-30,32-137,140,144,147-172,179-192,203-238,241,243-265,267-330,334-375
+  s_3101dec2ee3c53::t_52936125341b4d 173-178,266,331-333
+  s_3101dec2ee3c53::t_9946be42c208fc 138-139,141-143,145-146
+  s_3101dec2ee3c53::t_4091907fcb2467 193-202
+  s_3101dec2ee3c53::t_bc75f8e32b50d5 239-240,242
+backend/core/ports/investigation.py
+  s_3101dec2ee3c53::t_1ed2251c6c5da5 37-39
+  s_3101dec2ee3c53::t_5ef5a027651001 13-16
+  s_3101dec2ee3c53::t_569ad45fd5aec4 3
+  s_3101dec2ee3c53::t_78ad7f4cb97394 40
+backend/core/application/ask_investigation.py
+  s_3101dec2ee3c53::t_e1d885e266c1f8 501-620,628-739,742-743,745-778
+  s_3101dec2ee3c53::t_d7284173b7951a 374
+  s_3101dec2ee3c53::t_a8643dafe2f81c 406,411-412
+  s_3101dec2ee3c53::t_91d78605913b6b 329-330,338-340,344
+  s_3101dec2ee3c53::t_5f316c664f5c71 621-627
+  s_3101dec2ee3c53::t_523a746502251f 59
+  s_3101dec2ee3c53::t_1bf14ef9aaa4fe 740-741,744
+  s_3101dec2ee3c53::t_529bb91a412859 454-455
+  s_3101dec2ee3c53::t_9fba47c2e0be92 47
+  s_3101dec2ee3c53::t_4105e309d8bab6 23,26
+  s_3101dec2ee3c53::t_33568cc1304e0d 172-180
+backend/tests/unit/test_ask_delivery_forecast.py
+  s_3101dec2ee3c53::t_f96d3231f42d6b 252-267
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c5edf725fe300ff80536df7cb709533bf1e7eba9",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
