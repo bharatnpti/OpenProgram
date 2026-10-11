@@ -39,6 +39,8 @@ from core.application.ask_service import (
     AskResponseView,
     AskService,
     remembered,
+    said_it_ran_out,
+    without_unread_negatives,
 )
 from core.domain.auth import Principal
 from core.domain.llm import LlmRequest, LlmResponse
@@ -101,6 +103,10 @@ RESEARCH_SYSTEM_PROMPT = (
     "pod, person, issue or merge request, look that up too. "
     "Name people by display name, issues by key and merge requests by the ref the data "
     "gives, and call a merge request an MR, never a PR. "
+    "When a tool result says the tool call limit is exceeded, or says 'Not run', you have "
+    "run out of steps: write your notes from what you did read, put each read you could "
+    "not make in gaps as 'Ran out of steps before checking …', and write no finding about "
+    "what it would have shown -- never a negative such as no blockers or nothing missing. "
     "Once you have the facts, reply with a single JSON object and nothing else: findings, "
     "an array of at most 6 short factual lines, each with the counts, dates and days the "
     "tools gave; references, an array of the node ids the findings rest on, copied exactly "
@@ -113,6 +119,9 @@ ANSWER_RULES = (
     "people, issues, merge requests and numbers its note gives it -- never move one from "
     "an item to another -- keep each number counting what its note says it counts (days "
     "without a change are not days blocked), and where two notes disagree, say so. "
+    "A step that failed, ran out of steps or lists gaps leaves its ground unchecked: say so "
+    "in the 'Not known:' line, e.g. 'I ran out of steps before checking …', and never state "
+    "a negative -- no blockers, no risks, nothing missing -- that no note establishes. "
     "Write the answer to these rules: "
     + " ".join(INVESTIGATE_FORMAT_RULES)
     + " Reply with a single JSON object and nothing else: answer, an array of strings with "
@@ -141,6 +150,7 @@ TIMED_OUT = (
 ANSWER_FAILED = "The answer could not be written from what was found. Please ask again."
 STEP_TIMED_OUT = "Ran out of time."
 STEP_FAILED = "Could not be looked up."
+STEP_OUT_OF_STEPS = "Ran out of steps."
 
 _MAX_FINDINGS = 6
 _MAX_FINDING_CHARS = 400
@@ -283,6 +293,7 @@ class InvestigationService:
         deadline = asyncio.get_running_loop().time() + self._limits.timeout_seconds
         started = perf_counter()
         steps: list[InvestigationStep] = []
+        gaps: dict[int, tuple[str, ...]] = {}
         outcome = "failed"
         try:
             async with aclosing(self._engine.run(run)) as events:
@@ -307,7 +318,7 @@ class InvestigationService:
                         )
                         yield FailedEvent(message=ANSWER_FAILED, steps=tuple(steps))
                         return
-                    shown = _shown(event, steps, reader)
+                    shown = _shown(event, steps, reader, gaps)
                     if shown is None:
                         continue
                     if isinstance(shown, AnswerEvent):
@@ -335,11 +346,15 @@ class InvestigationService:
 
 
 def _shown(
-    event: EngineEvent, steps: list[InvestigationStep], reader: AnswerReader
+    event: EngineEvent,
+    steps: list[InvestigationStep],
+    reader: AnswerReader,
+    gaps: dict[int, tuple[str, ...]],
 ) -> InvestigationEvent | None:
-    """What the reader is shown of an engine's event; ``steps`` keeps up with it.
+    """What the reader is shown of an engine's event; ``steps`` and ``gaps`` keep up with it.
 
-    A step the plan never named is nothing to show.
+    A step the plan never named is nothing to show. A step still running when
+    the answer comes never ran: the engine ran out of steps for it.
     """
     if isinstance(event, EngineStepDone | EngineStepFailed) and not 0 <= event.index < len(steps):
         return None
@@ -361,20 +376,70 @@ def _shown(
                 findings=tuple(line for line in readable if line),
             )
             steps[event.index] = step
+            gaps[event.index] = notes.gaps
             return StepEvent(step=step)
         case EngineStepFailed():
             step = replace(
                 steps[event.index],
                 status="failed",
                 tools_used=tuple(dict.fromkeys(event.tools_used)),
-                error=STEP_FAILED,
+                error=STEP_OUT_OF_STEPS if event.out_of_steps else STEP_FAILED,
             )
             steps[event.index] = step
             return StepEvent(step=step)
         case EngineAnswer():
+            steps[:] = [
+                replace(step, status="failed", error=STEP_OUT_OF_STEPS)
+                if step.status == "running"
+                else step
+                for step in steps
+            ]
             tools_used = (tool for step in steps for tool in step.tools_used)
             view = reader.view(event.text, trace_id=event.trace_id, tools_used=tools_used)
-            return AnswerEvent(view=view, steps=tuple(steps))
+            return AnswerEvent(view=held_to_the_notes(view, steps, gaps), steps=tuple(steps))
+
+
+def held_to_the_notes(
+    view: AskResponseView,
+    steps: Sequence[InvestigationStep],
+    gaps: Mapping[int, Sequence[str]],
+) -> AskResponseView:
+    """An answer whose steps were cut short, saying so and claiming no unread absence.
+
+    A step was cut short when it failed, never ran, or its researcher ran out
+    of steps (a gap says so). Then a claim of no blockers, no risks or nothing
+    missing stays only where a finished step read that kind
+    (``without_unread_negatives``), and a 'Not known:' line names what went
+    unchecked unless the answer already says it could not check everything.
+    """
+    out_of_steps = [
+        step.question
+        for step in steps
+        if step.error == STEP_OUT_OF_STEPS
+        or (step.status == "done" and any(said_it_ran_out(gap) for gap in gaps.get(step.index, ())))
+    ]
+    failed = [
+        step.question
+        for step in steps
+        if step.status == "failed" and step.error != STEP_OUT_OF_STEPS
+    ]
+    if not out_of_steps and not failed:
+        return view
+    read = {tool for step in steps if step.status == "done" for tool in step.tools_used}
+    answer = without_unread_negatives(view.answer, read=read)
+    if not said_it_ran_out(answer):
+        said = []
+        if out_of_steps:
+            said.append(f"I ran out of steps before checking {_quoted(out_of_steps)}")
+        if failed:
+            said.append(f"{_quoted(failed)} could not be looked up")
+        answer = "\n".join(line for line in (answer, f"Not known: {'; '.join(said)}.") if line)
+    return replace(view, answer=answer)
+
+
+def _quoted(questions: Sequence[str]) -> str:
+    quoted = [f"\u201c{question.strip()}\u201d" for question in dict.fromkeys(questions)]
+    return quoted[0] if len(quoted) == 1 else f"{', '.join(quoted[:-1])} and {quoted[-1]}"
 
 
 def _cut_off(steps: Sequence[InvestigationStep]) -> tuple[InvestigationStep, ...]:

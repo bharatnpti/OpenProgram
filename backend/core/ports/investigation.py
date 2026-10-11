@@ -51,6 +51,8 @@ class EngineStepDone:
 class EngineStepFailed:
     index: int
     tools_used: tuple[str, ...] = ()
+    # It stopped at its call budget, not on an error: it ran out of steps.
+    out_of_steps: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)

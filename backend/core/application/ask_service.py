@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
 
@@ -41,7 +41,7 @@ from core.domain.graph import (
     NodeKind,
     workstreams_in_use,
 )
-from core.domain.llm import LlmMessage, LlmRequest
+from core.domain.llm import LlmMessage, LlmRequest, LlmToolCall
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import FactorKind, Rag, RollupFactor
 from core.domain.status import StatusSource
@@ -98,7 +98,28 @@ ASK_TOOL_GUIDANCE = (
     "contains what -- live on edges, so call graph_neighbors before reporting that "
     "something has none, and never tell the user their data is missing or needs "
     "updating when you have not traversed its edges. "
+    "What blocks a project or pod is answered from pod_blockers: for each pod it names "
+    "or works through, or for every pod with pod_id unset. Never say anything has no "
+    "blockers, no risks or nothing missing unless a tool you called says so. "
     "Never mention raw DM/reply content. "
+)
+
+# The rounds a quick answer's tool loop may take before it must answer
+# (OPENPROGRAM_ASK_MAX_TOOL_ITERATIONS). Three ran out on "What is blocking
+# <project>?" in QA round V2: finding the project, its pods and their
+# blockers, with one look at its status first, is four. Five leaves one more
+# for following a blocker to its owner or issue; a round is one model call of
+# a few seconds, so even all five stay far inside the 120-second budget.
+ASK_MAX_TOOL_ITERATIONS = 5
+
+# Said to the model when its tool rounds ran out (ToolCallingAgent.cap_notice).
+ASK_CAP_NOTICE = (
+    "You have run out of tool steps. A tool result that says 'Not run' is a read that did "
+    "not happen, so nothing is known of what it would have shown. Answer from the results "
+    "you have, and make the answer's first line say what you could not check, e.g. 'I ran "
+    "out of steps before checking every pod's open blockers.' Never state a negative you "
+    "did not read -- no blockers, no risks, nothing missing -- and never fill the gap from "
+    "a colour or from the conversation."
 )
 
 # Earlier turns, when the console sends them (ask_conversation.py).
@@ -268,6 +289,71 @@ _TRAILING_FOLLOW_UPS = re.compile(
     re.IGNORECASE,
 )
 _AFTER_QUESTION = re.compile(r"(?<=\?)[\"'`]?[\s,;]+")
+
+# An answer that says it could not check everything, in the words the cap
+# notice asks for or close to them.
+_RAN_OUT = re.compile(
+    r"\bran out of (?:tool )?steps\b"
+    r"|\bcould(?: not|n't) (?:check|look up|read|be (?:checked|looked up|read))\b",
+    re.IGNORECASE,
+)
+# Claims that something is absent, each with the reads that can show it. One
+# of them stands in an answer written at the cap only when a read of its kind
+# ran and none was left unrun; otherwise the sentence goes. "<Project> has no
+# blockers reported today" came 2 seconds after the cap in QA round V2, with a
+# blocker open in one of its pods.
+_ABSENT_QUALIFIERS = r"(?:(?:open|active|current|known|reported|new|other|outstanding)\s+)*"
+_UNREAD_NEGATIVES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
+    (
+        frozenset({"pod_blockers", "status_reasons"}),
+        re.compile(
+            rf"\b(?:no|zero|0)\s+{_ABSENT_QUALIFIERS}block(?:ers?\b|ing\b|ed\b)"
+            r"|\bnothing\s+(?:is\s+)?(?:currently\s+)?block(?:ing|ed)\b"
+            r"|\b(?:no\s*one|nobody|none)\b[^.;\n]{0,40}\bblocked\b"
+            r"|(?:\bnot|n't)\s+(?:currently\s+)?blocked\b|\bunblocked\b"
+            r"|(?:\bnot|n't)\b[^.;\n]{0,15}\bany\s+blockers?\b"
+            r"|\bwithout\s+(?:any\s+)?blockers?\b|\bblockers?\s*[:：]\s*(?:none|0)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        frozenset({"open_risks", "status_reasons"}),
+        re.compile(
+            rf"\bno\s+{_ABSENT_QUALIFIERS}risks?\b|\bnothing\s+(?:is\s+)?at\s+risk\b"
+            r"|(?:\bnot|n't)\s+at\s+risk\b|\brisks?\s*[:：]\s*(?:none|0)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        frozenset({"release_readiness"}),
+        re.compile(
+            r"\bnothing\s+(?:else\s+)?(?:is\s+)?(?:still\s+)?missing\b"
+            rf"|\bno\s+{_ABSENT_QUALIFIERS}(?:gaps?|criteria\s+(?:are\s+)?missing)\b"
+            r"|\bready\s+(?:for|to\s+go\s+to)\s+production\b",
+            re.IGNORECASE,
+        ),
+    ),
+)
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+# The words for what a read covers, for "I ran out of steps before checking ...".
+_READ_WORDS: Mapping[str, str] = {
+    "search_graph_nodes": "a name look-up",
+    "graph_neighbors": "the links",
+    "recent_facts": "recent activity",
+    "workstream_flow": "the flow",
+    "portfolio_flow": "the portfolio's flow",
+    "workstream_progress": "the progress",
+    "status_reasons": "the status reasons",
+    "portfolio_heatmap": "the portfolio heatmap",
+    "open_risks": "the open risks",
+    "pod_checkins": "the check-ins",
+    "pod_blockers": "the open blockers",
+    "delivery_forecast": "the delivery forecast",
+    "release_readiness": "the release readiness",
+}
+_EVERY_POD_READS = frozenset({"pod_checkins", "pod_blockers"})
+_NODE_ARGUMENTS = ("node_id", "pod_id", "project_id", "workstream_id", "program_root_id")
+_MAX_LOOKUP_CHARS = 60
 # Text in brackets inside one item: "Zoe Almeida (U0AA1ZOE001)".
 _BRACKETED = re.compile(r"[(\[]\s*(?P<inner>[^()\[\]]+?)\s*[)\]]")
 # The node kinds an answer names, as the references rule lists them.
@@ -1396,6 +1482,82 @@ class AnswerReader:
     def readable(self, text: str) -> str:
         return _without_raw_ids(_tidy_lines(text), self.nodes)
 
+    def cut_short(
+        self, view: AskResponseView, *, read: Iterable[str], unrun: Sequence[LlmToolCall]
+    ) -> AskResponseView:
+        """An answer written when the tool rounds ran out, held to what was read.
+
+        A claim that something is absent goes unless a read of its kind ran and
+        none was left unrun (``without_unread_negatives``), and the answer opens
+        by saying what it could not check, unless it already says so.
+        """
+        answer = without_unread_negatives(
+            view.answer, read=frozenset(read), pending=frozenset(call.name for call in unrun)
+        )
+        if not said_it_ran_out(answer):
+            answer = "\n".join(line for line in (self.ran_out(unrun), answer) if line)
+        return replace(view, answer=answer)
+
+    def ran_out(self, unrun: Sequence[LlmToolCall]) -> str:
+        """'I ran out of steps before checking the open blockers of Payments Pod.'"""
+        checks = list(dict.fromkeys(self._unchecked(call) for call in unrun))
+        if not checks:
+            return ""
+        listed = checks[0] if len(checks) == 1 else f"{', '.join(checks[:-1])} and {checks[-1]}"
+        return self.readable(f"I ran out of steps before checking {listed}.")
+
+    def _unchecked(self, call: LlmToolCall) -> str:
+        noun = _READ_WORDS.get(call.name, call.name.replace("_", " "))
+        for key in _NODE_ARGUMENTS:
+            value = call.arguments.get(key)
+            if isinstance(value, str) and value.strip():
+                node = self.nodes.get(value.strip())
+                label = node_label(node) if node is not None else None
+                # Never a raw id: a node it cannot name is left unnamed.
+                return f"{noun} of {label}" if label else noun
+        query = call.arguments.get("query")
+        if call.name == "search_graph_nodes" and isinstance(query, str) and query.strip():
+            return f"{noun} for {' '.join(query.split())[:_MAX_LOOKUP_CHARS]}"
+        if call.name in _EVERY_POD_READS:
+            return f"{noun} of every pod"
+        return noun
+
+
+def said_it_ran_out(answer: str) -> bool:
+    """Whether an answer says it could not check everything."""
+    return _RAN_OUT.search(answer) is not None
+
+
+def without_unread_negatives(
+    answer: str, *, read: Collection[str], pending: Collection[str] = ()
+) -> str:
+    """``answer`` without a claim that something is absent which no finished read shows.
+
+    For an answer written after its reads were cut short. A claim of no
+    blockers, no risks or nothing missing stays only when a tool that reads
+    that kind ran (``read``) and none was left unrun (``pending``); otherwise
+    its sentence goes, and a line left empty with it.
+    """
+    unread = [
+        pattern
+        for tools, pattern in _UNREAD_NEGATIVES
+        if not tools & frozenset(read) or tools & frozenset(pending)
+    ]
+    if not unread:
+        return answer
+    kept: list[str] = []
+    for line in answer.splitlines():
+        bullet = _BULLET.match(line)
+        body = line[bullet.end() :] if bullet else line
+        text = " ".join(
+            sentence
+            for sentence in _SENTENCE_END.split(body.strip())
+            if not any(pattern.search(sentence) for pattern in unread)
+        ).strip()
+        if text:
+            kept.append(f"• {text}" if bullet else text)
+    return "\n".join(kept)
+
 
 def remembered(view: AskResponseView, context: AskContext) -> AskResponseView:
     """The view, with the new summary when the conversation was compacted for it."""
@@ -1453,6 +1615,7 @@ class AskService:
         delivery_scope_service: DeliveryScopeService,
         model: str,
         tool_agent: ToolCallingAgent | None = None,
+        max_tool_iterations: int = ASK_MAX_TOOL_ITERATIONS,
     ) -> None:
         self._llm_provider = llm_provider
         self._graph_repository = graph_repository
@@ -1463,7 +1626,11 @@ class AskService:
         self._forecast_service = forecast_service
         self._delivery_scope_service = delivery_scope_service
         self._model = model
-        self._tool_agent = tool_agent or ToolCallingAgent(llm_provider=llm_provider)
+        self._tool_agent = tool_agent or ToolCallingAgent(
+            llm_provider=llm_provider,
+            max_tool_iterations=max_tool_iterations,
+            cap_notice=ASK_CAP_NOTICE,
+        )
 
     async def ask(
         self,
@@ -1499,9 +1666,12 @@ class AskService:
         tools = tuple(
             RecordedTool(inner=tool, calls=calls) for tool in self.tools_for(principal, asked_for)
         )
-        response = await self._tool_agent.run(request, tools)
+        result = await self._tool_agent.run_loop(request, tools)
         reader = await self.reader(principal.tenant_id, asked_for)
+        response = result.response
         view = reader.view(response.text, trace_id=response.trace_id, tools_used=calls)
+        if result.cap_reached:
+            view = reader.cut_short(view, read=calls, unrun=result.unrun)
         return remembered(view, context)
 
     async def reader(self, tenant_id: str, as_of: date) -> AnswerReader:

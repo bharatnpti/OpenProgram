@@ -8,7 +8,7 @@ from typing import cast
 import pytest
 
 from core.application.agents import tool_loop as tool_loop_module
-from core.application.agents.tool_loop import ToolCallingAgent
+from core.application.agents.tool_loop import NOT_RUN, ToolCallingAgent
 from core.application.tools.conversation_history import ConversationHistoryTool
 from core.application.tools.git_activity import GitActivityTool
 from core.application.tools.issue_tracker import IssueTrackerTool
@@ -331,10 +331,17 @@ async def test_tool_calling_agent_stops_at_iteration_cap(
     assert response.tool_calls == ()
     assert len(provider.requests) == 3
     assert provider.requests[2].tools == ()
+    # The call past the cap is answered as not run, so the model knows it never happened.
     assert provider.requests[2].tool_calls == (
         LlmToolCall(id="call-1", name="echo_tool", arguments={"value": "one"}),
+        LlmToolCall(id="call-2", name="echo_tool", arguments={"value": "two"}),
     )
-    assert provider.requests[2].tool_results[0].content == "echo: one"
+    assert [result.content for result in provider.requests[2].tool_results] == [
+        "echo: one",
+        NOT_RUN,
+    ]
+    # No caller notice was set, so the system prompt is the caller's own.
+    assert provider.requests[2].system is None
     assert logger.events == [
         {
             "event": "tool_loop_cap_reached",

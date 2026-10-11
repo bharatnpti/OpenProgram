@@ -359,16 +359,20 @@ class _Tracker:
             return []
         message = _tool_message(output)
         text = _text(message) if message is not None else str(output or "")
-        if (message is not None and message.status == "error") or text.startswith(_LIMIT_REACHED):
+        if text.startswith(_LIMIT_REACHED):
+            return self._failed(index, out_of_steps=True)
+        if message is not None and message.status == "error":
             return self._failed(index)
         self._ended.add(index)
         return [EngineStepDone(index=index, notes=text, tools_used=self._used(index))]
 
-    def _failed(self, index: int) -> list[EngineEvent]:
+    def _failed(self, index: int, *, out_of_steps: bool = False) -> list[EngineEvent]:
         if index in self._ended:
             return []
         self._ended.add(index)
-        return [EngineStepFailed(index=index, tools_used=self._used(index))]
+        return [
+            EngineStepFailed(index=index, tools_used=self._used(index), out_of_steps=out_of_steps)
+        ]
 
     def _plan(self, question: str) -> int:
         self.questions.append(question)

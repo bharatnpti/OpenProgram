@@ -254,6 +254,7 @@ def get_ask_service(request: Request) -> AskService:
         forecast_service=get_forecast_service(request),
         delivery_scope_service=get_delivery_scope_service(request),
         model=settings.default_llm_model,
+        max_tool_iterations=settings.ask_max_tool_iterations,
     )
 
 
