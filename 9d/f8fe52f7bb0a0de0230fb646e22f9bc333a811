@@ -1,0 +1,71 @@
+frontend-v3/src/api/openapi.json
+  s_3101dec2ee3c53::t_1d33c361c5d51a 12028-12038,12055-12057,12061-12074
+  s_3101dec2ee3c53::t_5e5bacc6a63c3d 12075
+frontend-v3/src/lib/words.ts
+  s_3101dec2ee3c53::t_4b306a00f21d9c 229-246
+frontend-v2/src/api/generated.ts
+  s_3101dec2ee3c53::t_1d33c361c5d51a 2975-2985
+backend/core/application/ask_service.py
+  s_3101dec2ee3c53::t_d7a7b85aea00ac 1260-1265
+  s_3101dec2ee3c53::t_9bfd4895b72756 1223-1225
+  s_3101dec2ee3c53::t_b5d132d0881d37 1197-1200
+  s_3101dec2ee3c53::t_ae71f5edd47bb5 1228,1230,1232-1240
+frontend-v3/scripts/mock-console.mjs
+  s_3101dec2ee3c53::t_c6c4f77720db92 371-372
+frontend-v3/src/api/generated.ts
+  s_3101dec2ee3c53::t_1d33c361c5d51a 2975-2985
+frontend-v3/src/lib/words.test.ts
+  s_3101dec2ee3c53::t_56e40cc3fffe0a 37-52
+  s_3101dec2ee3c53::t_0c7b7acc90a328 6
+features.md
+  s_3101dec2ee3c53::t_e0960f26c3b141 242
+frontend/src/api/generated.ts
+  s_3101dec2ee3c53::t_1d33c361c5d51a 2975-2985
+frontend-v2/src/api/openapi.json
+  s_3101dec2ee3c53::t_1d33c361c5d51a 12028-12038,12055-12057,12061-12074
+  s_3101dec2ee3c53::t_e3aea2b108841b 12075
+frontend-v3/src/features/delivery/PodPanel.tsx
+  s_3101dec2ee3c53::t_d33459fc18b1e5 96-98
+  s_3101dec2ee3c53::t_18322cbef7e07a 153-161
+  s_3101dec2ee3c53::t_3d3e4615611bea 12
+frontend-v3/src/features/today/ScrumMasterToday.tsx
+  s_3101dec2ee3c53::t_6edd17a0312275 173-174
+  s_3101dec2ee3c53::t_bf098d6276a49e 17
+backend/api/dtos.py
+  s_3101dec2ee3c53::t_c3eba083305f7a 1018-1024,1041-1045,1067-1068
+backend/core/application/persona_views.py
+  s_3101dec2ee3c53::t_ccfbad6e5c0aac 151-155,171-177
+  s_3101dec2ee3c53::t_0ce54599b65b64 619-625
+  s_3101dec2ee3c53::t_3c6ed0d4b39c9d 632-633
+  s_3101dec2ee3c53::t_e52a6e66eaec9b 649-651,664
+  s_3101dec2ee3c53::t_d22b9f12e94a96 689-717
+  s_3101dec2ee3c53::t_77c75557e0cfe6 150,1506-1526
+  s_3101dec2ee3c53::t_9b753b3fbff263 511-522,524-525,532-539,541-553
+frontend/src/api/openapi.json
+  s_3101dec2ee3c53::t_1d33c361c5d51a 12028-12038,12055-12057,12061-12074
+  s_3101dec2ee3c53::t_1252575fc79355 12075
+backend/tests/unit/test_pod_tasks.py
+  s_3101dec2ee3c53::t_263db079428e55 247-249,252-259
+  s_3101dec2ee3c53::t_1ed3df1094860c 175-177,206,208-246,260-287,289-290,316-339
+  s_3101dec2ee3c53::t_32441a4b50dd8e 291-315
+  s_3101dec2ee3c53::t_08a8bd3633a5a4 31
+  s_3101dec2ee3c53::t_2b9159be0df7ec 1
+  s_3101dec2ee3c53::t_2c3a4069a7d42b 6,15
+  s_3101dec2ee3c53::t_60a468311a1b05 161-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9df8fe52f7bb0a0de0230fb646e22f9bc333a811",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
