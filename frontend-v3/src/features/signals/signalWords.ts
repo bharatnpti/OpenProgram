@@ -3,6 +3,7 @@
 import type { DriftFindingResponse, Rag, RiskFindingResponse } from "../../api/schema";
 import { ownerSourceWords, statedSourceWords } from "../../lib/checkinWords.ts";
 import { ragSeverity } from "../../lib/status.ts";
+import { plural } from "../../lib/words.ts";
 
 /** A risk or a drift finding, as one row of the list. */
 export type Finding =
@@ -103,10 +104,22 @@ function worstOf(findings: Finding[]): Rag {
   );
 }
 
-/** The header's count: "7 open risks", and "· 2 drift" only when there is some. */
-export function riskCountLine(risks: number, drift: number): string {
-  const open = `${risks} open ${risks === 1 ? "risk" : "risks"}`;
-  return drift > 0 ? `${open} · ${drift} drift` : open;
+/**
+ * The header's count, from the portfolio read: "7 open risks · 2 watermelons",
+ * and "· 1 drift" only when there is some. A watermelon is a risk whose owner
+ * says all is well, with no blocker on that work (the server's `is_watermelon`).
+ * Its count shows beside any open risk, 0 included, so a reader can tell none
+ * from not counted.
+ */
+export function riskCountLine(read: Findings): string {
+  const risks = read.risks.length;
+  const parts = [plural(risks, "open risk", "open risks")];
+  if (risks > 0) {
+    const watermelons = read.risks.filter((risk) => risk.is_watermelon).length;
+    parts.push(plural(watermelons, "watermelon", "watermelons"));
+  }
+  if (read.drift.length > 0) parts.push(`${read.drift.length} drift`);
+  return parts.join(" · ");
 }
 
 /**
