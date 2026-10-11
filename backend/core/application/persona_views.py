@@ -572,9 +572,15 @@ class PersonaViewService:
         members' work, and another pod serving the same workstream lists its
         own.
 
-        A task is ``blocked`` when it is red, or when one of the pod's open
-        blockers is attributed to it: to the task itself, or to the work item
-        it implements. Blocked tasks come first, then worst status first.
+        A task is ``blocked`` when it is red, or when an open blocker of one of
+        the pod's members is attributed to it: to the task itself, or to the
+        work item it implements, whichever pod the blocker counts in. That is
+        one answer per task, whichever pod lists it. The pod's blocker list
+        and rollup still count a blocker only in the pods its blocked work
+        sits with (``BlockerResolutionService``); read that way here, a member
+        in two pods whose remits both hold the task saw it blocked in one pod
+        and clear in the other (IDP-6, Identity and Platform). Blocked tasks
+        come first, then worst status first.
         """
         tree = await self._graph_repository.get_program_tree(tenant_id, pod_id, as_of)
         pod = tree.root
@@ -589,12 +595,15 @@ class PersonaViewService:
         kinds = {node_id: node.kind for node_id, node in nodes_by_id.items()}
         remit = _pod_remit(tree, parents, kinds)
 
+        # Every open blocker of a member, wherever it is placed: one on a task
+        # marks it in each pod that lists it, not only in the pod it counts in.
         blockers: list[ResolvedBlocker] = []
         for member in members.values():
-            resolved = await self._blocker_resolution.open_blockers_for_developer(
-                tenant_id, member.id, as_of
+            blockers.extend(
+                await self._blocker_resolution.open_blockers_for_developer(
+                    tenant_id, member.id, as_of
+                )
             )
-            blockers.extend(blocker for blocker in resolved if pod.id in blocker.pod_ids)
         blockers.sort(key=lambda item: (item.first_seen_on, item.blocker_id))
 
         nodes = {node.id: node for node in tree.nodes}

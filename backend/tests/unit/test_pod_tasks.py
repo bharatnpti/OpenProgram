@@ -148,6 +148,64 @@ async def test_pod_tasks_never_absorb_another_pods_work_through_a_shared_member(
     assert [item.description for item in pod_b.tasks[0].open_blockers] == ["waiting on review"]
 
 
+async def test_a_task_two_pods_list_reads_blocked_in_both_for_a_member_of_both() -> None:
+    """IDP-6 on the QA tenant: one answer per task, whichever pod lists it.
+
+    The Identity project contains both pods, and the Jira sync puts IDP-6 in
+    the project and in the Identity Pod. Omar is in both pods, so both list
+    it: Platform through its project. His blocker on IDP-6 counts where the
+    blocked work sits, the Identity Pod, so Platform's task row read it clear.
+    """
+    store = InMemoryGraphStore()
+    project = Project(tenant_id="demo", id="project-identity", name="Identity Platform")
+    identity = Pod(tenant_id="demo", id="pod-identity", name="Identity Pod")
+    platform = Pod(tenant_id="demo", id="pod-platform", name="Platform Pod")
+    omar = Developer(tenant_id="demo", id="dev-omar", name="Omar")
+    task = Task(tenant_id="demo", id="IDP-6", name="SSO session refresh")
+    await _add(store, project, identity, platform, omar, task)
+    for parent, child in (
+        (project.id, identity.id),
+        (project.id, platform.id),
+        (identity.id, omar.id),
+        (platform.id, omar.id),
+        (project.id, task.id),
+        (identity.id, task.id),
+    ):
+        await _edge(store, parent, child)
+    await _edge(store, omar.id, task.id, kind=EdgeKind.ASSIGNED_TO)
+    await store.record_developer_status_with_blockers(
+        _status(omar.id),
+        (
+            _blocker(
+                omar.id,
+                "Waiting on review for sso-gateway!1",
+                work_item_id=task.id,
+                first_seen_on=AS_OF - timedelta(days=4),
+            ),
+        ),
+    )
+    service = _service(store)
+
+    reads = {
+        pod.id: (await service.pod_tasks("demo", pod.id, AS_OF)).tasks
+        for pod in (identity, platform)
+    }
+
+    for pod_id, tasks in reads.items():
+        (row,) = tasks
+        assert (row.id, row.blocked) == ("IDP-6", True), pod_id
+        assert [(item.description, item.age_days) for item in row.open_blockers] == [
+            ("Waiting on review for sso-gateway!1", 4)
+        ], pod_id
+    # The pods' blocker lists keep placement: the blocker counts in Identity only.
+    identity_blockers = await service.pod_blockers("demo", identity.id, AS_OF)
+    platform_blockers = await service.pod_blockers("demo", platform.id, AS_OF)
+    assert [item.description for item in identity_blockers.blockers] == [
+        "Waiting on review for sso-gateway!1"
+    ]
+    assert platform_blockers.blockers == ()
+
+
 async def test_pod_tasks_include_another_projects_workstream_the_pod_serves() -> None:
     """Shared pods are legitimate: serving a workstream makes its members' tasks the pod's."""
     store = InMemoryGraphStore()
