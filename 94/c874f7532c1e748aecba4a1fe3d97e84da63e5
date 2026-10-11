@@ -1,0 +1,23 @@
+backend/core/application/cross_person_service.py
+  s_3101dec2ee3c53::t_0d682941613465 374-380,384
+backend/tests/unit/test_cross_person_repeats.py
+  s_3101dec2ee3c53::t_1ca9184652690a 212-213,217-219,221-224,230-241,244-254,256,262-272,274,276-279,281-288,290,295,300,312-313,432-434,449,538
+  s_3101dec2ee3c53::t_9e97569062ea26 220,289,291-294,296,301
+  s_3101dec2ee3c53::t_c373682db9ec30 214-216,225-229,242-243,255,257-261,273,275,280,297-299,302-311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "94c874f7532c1e748aecba4a1fe3d97e84da63e5",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
