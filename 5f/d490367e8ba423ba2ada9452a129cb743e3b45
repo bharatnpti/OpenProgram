@@ -1,0 +1,23 @@
+backend/core/application/persona_views.py
+  s_3101dec2ee3c53::t_d09168d217b53c 575-583
+  s_3101dec2ee3c53::t_bdfcb2c36e4a63 603-604
+  s_3101dec2ee3c53::t_55cc96f0701b30 598-599,602,605
+backend/tests/unit/test_pod_tasks.py
+  s_3101dec2ee3c53::t_349f7bff6ae00b 151-208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5fd490367e8ba423ba2ada9452a129cb743e3b45",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
