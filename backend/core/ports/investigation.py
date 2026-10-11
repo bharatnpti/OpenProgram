@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass
 from datetime import date
 from typing import Protocol
@@ -8,6 +8,10 @@ from typing import Protocol
 from core.domain.llm import LlmMessage
 from core.ports.llm import LlmProvider
 from core.ports.tools import AgentTool
+
+
+def no_facts() -> tuple[str, ...]:
+    return ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -30,6 +34,10 @@ class InvestigationRun:
     max_tool_iterations: int
     # The conversation before the question, oldest first: what it refers to.
     history: tuple[LlmMessage, ...] = ()
+    # Facts the tools returned so far, as sentences the answer must quote as
+    # they are: read again just before the answer is written, so it holds what
+    # the steps read whatever their notes kept (ask_investigation.AnswerFacts).
+    answer_facts: Callable[[], tuple[str, ...]] = no_facts
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -108,6 +108,9 @@ ASK_TOOL_GUIDANCE = (
     "the committed date, history's 50% and 85% dates and the verdict. A colour is not a "
     "forecast, so never say a date will be made or missed unless delivery_forecast says "
     "so, and say when it has too little history to forecast. "
+    "How many open requirements have no ETA or due date, and which, is answered from "
+    "delivery_forecast's open_without_date and open_without_date_keys, never from release "
+    "readiness: a release criterion is not a requirement. "
     "Whether a project, release or pod is ready for production -- what is still missing "
     "before it can go live, whether it can be released -- is answered from "
     "release_readiness: name each missing or unsure criterion, blocking ones first, with "
@@ -194,6 +197,8 @@ _MAX_REASONS = 15
 _MAX_PARTS = 20
 _MAX_SIGNALS = 10
 _MAX_PROJECTS = 20
+# The undated requirements a forecast names; open_without_date still counts them all.
+_MAX_UNDATED_KEYS = 25
 _RAG_ORDER: dict[Rag, int] = {Rag.RED: 0, Rag.AMBER: 1, Rag.UNKNOWN: 2, Rag.GREEN: 3}
 _AS_OF_PARAMETER: Mapping[str, object] = {
     "type": "string",
@@ -1309,7 +1314,9 @@ class DeliveryForecastTool:
         "today unless as_of names an earlier one: the committed date and how often it "
         "moved, history's 50% and 85% likely finish dates (forecast_p50, forecast_p85), "
         "the verdict against the date and what it rests on, whether there is enough "
-        "history to forecast, the team's latest ETA or due date, and the reasons in "
+        "history to forecast, the team's latest ETA or due date, the open requirements "
+        "with no ETA or due date (open_without_date, and their keys in "
+        "open_without_date_keys), and the reasons in "
         "Delivery's own words. A project comes with its pods' and releases' verdicts, a "
         "pod with its part of each project it works on, a program with each of its "
         "projects; leave node_id unset to cover every project. Use it for 'will X make "
@@ -3032,7 +3039,10 @@ def _forecast_payload(view: ScopeDeliveryView) -> dict[str, object]:
         "finished_in_history": _number(history.completed_in_sample),
         "team_latest_date": _iso(team.latest),
         "team_latest_issue": team.latest_key,
+        # The count and the keys of the same requirements: Investigate once said
+        # one requirement had no ETA while Delivery showed six.
         "open_without_date": team.undated,
+        "open_without_date_keys": list(team.undated_keys[:_MAX_UNDATED_KEYS]),
         "requirements": view.total,
         # Its reasons would say every requirement is in production.
         "reasons": (

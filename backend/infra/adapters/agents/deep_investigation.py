@@ -51,13 +51,13 @@ from langgraph.types import Command
 from langsmith.run_helpers import tracing_context
 
 from core.application.ask_investigation import (
-    ANSWER_REMINDER,
     ANSWER_RULES,
     ONE_STEP_REASON,
     PLAN_MORE_REMINDER,
     RESEARCH_SYSTEM_PROMPT,
     STEP_GUIDANCE,
     THIN_STEP_REASON,
+    answer_reminder,
     step_notes,
 )
 from core.application.ask_service import RecordedTool, date_context
@@ -68,6 +68,7 @@ from core.ports.investigation import (
     EngineStepDone,
     EngineStepFailed,
     InvestigationRun,
+    no_facts,
 )
 from core.ports.tools import AgentTool
 from infra.adapters.llm.langchain_bridge import PROVIDER, OpenProgramChatModel
@@ -213,7 +214,7 @@ def build_agent(run: InvestigationRun) -> CompiledStateGraph[Any, Any, Any, Any]
         ModelCallLimitMiddleware(run_limit=MAIN_MODEL_CALLS, exit_behavior="error"),
         # A step that fails goes back to the main agent as a failed step.
         ToolErrorMiddleware(on_error=_step_error, tools=[TASK_TOOL]),
-        AnswerReminderMiddleware(),
+        AnswerReminderMiddleware(facts=run.answer_facts),
         PlanMoreMiddleware(step_limit=run.max_steps + FOLLOW_UP_STEPS),
     ]
     return create_deep_agent(
@@ -228,13 +229,18 @@ def build_agent(run: InvestigationRun) -> CompiledStateGraph[Any, Any, Any, Any]
 
 
 class AnswerReminderMiddleware(AgentMiddleware[Any, Any, Any]):
-    """Says the answer rules again right after the researchers' notes.
+    """Says the answer rules again right after the researchers' notes, with the tools' facts.
 
     The rules sit at the top of a long system prompt, and answers written from
     the notes claimed a red project "will not make its date". Read just before
-    the answer is written, the same rules held in the other engine. The
-    reminder goes into that one model call only, never into the run's state.
+    the answer is written, the same rules held in the other engine. The facts
+    the steps' tools returned (InvestigationRun.answer_facts) are read at that
+    moment and said with them, so the answer has them whatever the notes kept.
+    The reminder goes into that one model call only, never into the run's state.
     """
+
+    def __init__(self, *, facts: Callable[[], tuple[str, ...]] = no_facts) -> None:
+        self._facts = facts
 
     async def awrap_model_call(
         self,
@@ -242,9 +248,8 @@ class AnswerReminderMiddleware(AgentMiddleware[Any, Any, Any]):
         handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
     ) -> ModelResponse[Any]:
         if _after_notes(request.messages):
-            request = request.override(
-                messages=[*request.messages, HumanMessage(content=ANSWER_REMINDER)]
-            )
+            reminder = HumanMessage(content=answer_reminder(self._facts()))
+            request = request.override(messages=[*request.messages, reminder])
         return await handler(request)
 
 
