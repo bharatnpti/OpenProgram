@@ -10,6 +10,7 @@ from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.checkin_drift import eta_duration_days
 from core.application.conversation_history import llm_messages_from_turns
 from core.application.json_parsing import extract_json_object
+from core.application.reply_without_status import reads_without_status
 from core.domain.blockers import BlockerReport, DeveloperBlocker, normalize_blocker_key
 from core.domain.conversation import ConversationTurn
 from core.domain.cross_person import CrossPersonRequestKind, is_placeholder_name
@@ -187,8 +188,22 @@ class ClarificationEvaluator:
         tools: Iterable[AgentTool] = (),
         prior_blockers: Sequence[DeveloperBlocker] = (),
         tracker_write_back: bool = False,
+        checkin_text: str | None = None,
+        has_own_work: bool | None = None,
     ) -> ClarificationDecision:
-        if _is_trivial_non_status_reply(raw_reply):
+        """Read whether ``raw_reply`` gives a status, and whether it is enough to finalize.
+
+        Rules first, the model only when they cannot tell (V2 B16b): a reply
+        whose words carry no status ("thanks, nothing from me today") is never
+        the model's to call a status. The rules read ``checkin_text``, all of the
+        person's messages on this check-in with this one last, when given, so a
+        short answer to a follow-up after a status is still the model's.
+        ``has_own_work`` is whether the tracker lists open work for the person,
+        None when unknown (see reply_without_status.reads_without_status).
+        """
+        if _is_trivial_non_status_reply(raw_reply) or reads_without_status(
+            raw_reply if checkin_text is None else checkin_text, has_own_work=has_own_work
+        ):
             return ClarificationDecision(sufficient=False, is_status_update=False)
 
         prior_text, handles = _prior_blocker_prompt(prior_blockers)
