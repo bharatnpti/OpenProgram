@@ -4365,6 +4365,9 @@ class ReportAskFactsResponse(BaseModel):
     needed_most: bool
     #: A question the report also lists under Open questions.
     open_question: bool
+    #: Due to go up, with nobody above this person on the escalation matrix:
+    #: the text says "Nobody above <name> is told." Null otherwise.
+    nobody_above: str | None = None
 
     @classmethod
     def from_domain(cls, facts: AskFacts) -> ReportAskFactsResponse:
@@ -4378,6 +4381,7 @@ class ReportAskFactsResponse(BaseModel):
             escalation_label=facts.escalation_label,
             needed_most=facts.needed_most,
             open_question=facts.open_question,
+            nobody_above=facts.nobody_above,
         )
 
 

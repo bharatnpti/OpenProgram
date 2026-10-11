@@ -77,6 +77,10 @@ export function WhoActs({ owners, emptyText }: { owners: OwnerAsks[]; emptyText:
                         Needed most
                       </span>
                     ) : null}
+                    {/* Not escalated, so no flag: grey words, as the sent text says it. */}
+                    {ask.stop ? (
+                      <span className="text-[12px] text-(--op-day-secondary)">{ask.stop}</span>
+                    ) : null}
                   </p>
                   <div className="dv-wait" title={ask.waited}>
                     <span className="dv-track">

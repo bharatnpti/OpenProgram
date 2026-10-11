@@ -396,10 +396,12 @@ const asks: OwnerAsks[] = [
         detail: "",
         waited_days: 6,
         issue_key: null,
-        escalated_to: "Ira Novak",
-        escalation_label: "Scrum master",
+        // The manager's ask: never down to the scrum master, and nobody stands above her.
+        escalated_to: null,
+        escalation_label: null,
         needed_most: true,
         open_question: false,
+        nobody_above: "Asha Rao",
       },
     ],
   },
@@ -444,8 +446,13 @@ test("who acts: one line for the escalations, a lane per person, bars against on
 
   assert.equal(
     view.escalated,
-    "4 escalated: 3 to Ira Novak (Scrum master), 1 to Asha Rao (Manager)",
+    "3 escalated: 2 to Ira Novak (Scrum master), 1 to Asha Rao (Manager)",
   );
+  // Due with nobody above: no flag, the text's words instead.
+  const stopped = view.lanes[2].asks[0];
+  assert.equal(stopped.escalation, null);
+  assert.equal(stopped.stop, "Nobody above Asha Rao is told");
+  assert.equal(view.lanes[0].asks[0].stop, null);
   // Numbers only on the track, the unit once beside it: "4" and "6 days" crowded.
   assert.deepEqual(
     view.scale.ticks.map((tick) => tick.label),

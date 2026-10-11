@@ -6192,6 +6192,8 @@ export interface components {
       needed_most: boolean;
       /** Open Question */
       open_question: boolean;
+      /** Nobody Above */
+      nobody_above?: string | null;
     };
     /**
      * ReportAudienceResponse

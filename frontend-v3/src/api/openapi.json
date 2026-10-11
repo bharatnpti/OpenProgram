@@ -20386,6 +20386,17 @@
           "open_question": {
             "type": "boolean",
             "title": "Open Question"
+          },
+          "nobody_above": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nobody Above"
           }
         },
         "type": "object",

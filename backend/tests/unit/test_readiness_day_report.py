@@ -142,7 +142,7 @@ def _matrix(decision_owner: str | None = None) -> EscalationMatrix:
 
 def _climbed(owner: str | None, team: Team | None, days: int) -> str | None:
     ask = Ask(need=NeedType.DECISION, owner=owner, text="x", waited_days=days, team=team)
-    return escalated(ask, default_matrix(TENANT, "checkout"), NAMES).escalated_to
+    return escalated(ask, default_matrix(TENANT, "checkout"), _scope(PAY, DATA)).escalated_to
 
 
 def test_step_one_the_matrix_decision_owner_then_the_project_owner() -> None:
