@@ -1,0 +1,88 @@
+backend/api/dtos.py
+  s_22b399281058a2::t_b5a8689394ec17 34
+  s_22b399281058a2::t_92ffab0bca50a1 3069-3085
+  s_22b399281058a2::t_f418f6f19c3ad0 3086-3088
+frontend-v2/src/api/openapi.json
+  s_22b399281058a2::t_7105c9f863d803 2391-2438,17872-17892
+  s_22b399281058a2::t_fc808f2e0ba295 17893
+frontend-v3/src/lib/checkinWords.test.ts
+  s_22b399281058a2::t_4f523bac2d21bb 212-213,229-230,234-239,259-263
+  s_22b399281058a2::t_742d052cb7d2e1 271,284
+frontend-v3/src/lib/observedWords.ts
+  s_22b399281058a2::t_a3c66fb0667a88 71-93,99,101-105
+frontend-v3/src/api/generated.ts
+  s_22b399281058a2::t_7105c9f863d803 583-602,5073-5090,9932-9951,9954-9957,9959-9962
+  s_22b399281058a2::t_0290eced7e6a04 9952-9953,9958
+frontend-v3/src/features/today/CheckinsPanel.tsx
+  s_22b399281058a2::t_29d0c81362c17c 93-97
+  s_22b399281058a2::t_a3c66fb0667a88 80-85,90-92
+  s_22b399281058a2::t_d47e0567bb4e28 18,86-89
+frontend-v3/src/lib/checkinWords.ts
+  s_22b399281058a2::t_29d0c81362c17c 210
+  s_22b399281058a2::t_1012d1e65524bb 50-51,53
+  s_22b399281058a2::t_a3c66fb0667a88 4,213-218,221,223,225-227
+frontend-v3/src/features/today/CoverageNoData.tsx
+  s_22b399281058a2::t_659ffc384ac506 1-9,17-26
+  s_22b399281058a2::t_29d0c81362c17c 10-16
+frontend-v3/scripts/mock/observed-day.mjs
+  s_22b399281058a2::t_ba3bd4d8b652d0 68
+  s_22b399281058a2::t_0f85d4199ae884 119-124
+backend/core/application/config_service.py
+  s_22b399281058a2::t_92ffab0bca50a1 114-123,694-709,711-712
+  s_22b399281058a2::t_b5a8689394ec17 710
+  s_22b399281058a2::t_5269826c2fb933 113,713
+backend/api/routers/config.py
+  s_22b399281058a2::t_92ffab0bca50a1 536-547
+  s_22b399281058a2::t_b5a8689394ec17 34
+  s_22b399281058a2::t_acc4ad733137ed 548-549
+frontend-v3/src/api/schema.ts
+  s_22b399281058a2::t_1d677722b19bb6 104
+frontend-v3/src/api/openapi.json
+  s_22b399281058a2::t_7105c9f863d803 2391-2438,17872-17892
+  s_22b399281058a2::t_47737912ebb982 17893
+frontend-v3/src/features/admin/identityForm.ts
+  s_22b399281058a2::t_9530e191f3a28e 123
+  s_22b399281058a2::t_1d677722b19bb6 110-122,124-129
+frontend/src/api/openapi.json
+  s_22b399281058a2::t_7105c9f863d803 2391-2438,17872-17892
+  s_22b399281058a2::t_b125ab8f5ea7bb 17893
+frontend-v3/src/features/admin/DirectoryTab.tsx
+  s_22b399281058a2::t_1d677722b19bb6 18,376-379,441-445
+backend/tests/unit/test_observed_day_views.py
+  s_22b399281058a2::t_e642464e9f8db4 311-338
+frontend-v3/src/api/client.ts
+  s_22b399281058a2::t_1d677722b19bb6 84,885-886
+frontend-v3/src/lib/observedWords.test.ts
+  s_22b399281058a2::t_4f523bac2d21bb 4,88-104
+  s_22b399281058a2::t_9f51a75785dd07 105-106
+frontend-v3/src/features/admin/identityForm.test.ts
+  s_22b399281058a2::t_dbe3d3a93ac13a 116
+  s_22b399281058a2::t_4f523bac2d21bb 5,112-115,117-125
+  s_22b399281058a2::t_47bcfb27a7dcae 126
+frontend-v3/src/features/delivery/PodPanel.tsx
+  s_22b399281058a2::t_29d0c81362c17c 4
+  s_22b399281058a2::t_d47e0567bb4e28 10-11,127,184-194
+  s_22b399281058a2::t_21b81378afca99 195-196
+frontend-v2/src/api/generated.ts
+  s_22b399281058a2::t_7105c9f863d803 583-602,5073-5090,9932-9951,9954-9957,9959-9962
+  s_22b399281058a2::t_c511d06503ac1c 9952-9953,9958
+frontend/src/api/generated.ts
+  s_22b399281058a2::t_7105c9f863d803 583-602,5086-5103,9945-9964,9967-9970,9972-9975
+  s_22b399281058a2::t_53038e102214e0 9965-9966,9971
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "70df98b7208e36c54be060b4105153891fe755a7",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
