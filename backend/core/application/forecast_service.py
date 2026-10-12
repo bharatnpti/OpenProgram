@@ -888,6 +888,7 @@ def _restricted(snapshot: RequirementsSnapshot, keys: frozenset[str]) -> Require
         unmapped_statuses=(),
         items=items,
         titles={key: title for key, title in snapshot.titles.items() if key in keys},
+        details={key: item for key, item in snapshot.details.items() if key in keys},
         computed_at=snapshot.computed_at,
     )
 
