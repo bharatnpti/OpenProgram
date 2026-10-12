@@ -32,6 +32,7 @@ import * as forecastSettings from "./mock/forecast-settings.mjs";
 import * as scopedDelivery from "./mock/scoped-delivery.mjs";
 import * as releaseReadiness from "./mock/release-readiness.mjs";
 import * as jiraWrites from "./mock/jira-writes.mjs";
+import * as profilesMock from "./mock/profiles.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
@@ -230,6 +231,7 @@ function api(req, res, url) {
     return;
   if (adminConfig.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
   if (vizDaily.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
+  if (profilesMock.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
   if (p === "/api/v1/auth/status")
     return send(200, {
       authenticated: true,

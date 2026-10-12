@@ -10,6 +10,7 @@ import { boardMeta, boardRag, boardWord, repliedCount } from "../../lib/checkinW
 import { formatDay } from "../../lib/format";
 import { readState } from "../../lib/readState";
 import { countedElsewhere, plural } from "../../lib/words";
+import { PodPeoplePanel } from "../profiles/PodPeople";
 import { FactorsPanel, NodeHeader, Related, type OwnPanel } from "./NodeBits";
 import { PodDateStrips } from "./DeliveryStrips";
 import { PodTasksPanel } from "./PodTasks";
@@ -169,6 +170,7 @@ export function PodPanel({
             {rollup.data ? (
               <FactorsPanel factors={rollup.data.factors} names={rollup.data.source_names} />
             ) : null}
+            <PodPeoplePanel podId={pod.id} />
             <PodTasksPanel podId={pod.id} />
           </div>
         </PanelState>

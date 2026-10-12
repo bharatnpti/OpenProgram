@@ -21,6 +21,8 @@ import { PanelState } from "../../components/PanelState";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { STAGE_LABELS } from "../../components/viz/stages";
+import { profileOptions } from "../profiles/profiles";
+import { useProfileCatalog } from "../profiles/useProfiles";
 import { AdminDialog, Problems, TabIntro, hintClass, inputClass, labelClass } from "./AdminBits";
 import { errorText } from "./adminWords";
 import {
@@ -371,6 +373,7 @@ function CriterionDialog({
   onSaved: () => void;
 }) {
   const [attempted, setAttempted] = useState(false);
+  const catalog = useProfileCatalog();
   const problems = draftProblems(draft);
   const save = useMutation({
     mutationFn: () => apiClient.saveReadinessCriterion(criterionFromDraft(draft)),
@@ -481,6 +484,25 @@ function CriterionDialog({
         <p className={`${hintClass} -mt-2`}>
           A blocking gap close to its date goes into the day report with an ask; an advisory one
           shows on Overall only.
+        </p>
+        <Field id="rc-owner-profile" label="Who makes it (optional)">
+          <select
+            id="rc-owner-profile"
+            className={inputClass}
+            value={draft.ownerProfile}
+            onChange={(event) => set("ownerProfile", event.target.value)}
+          >
+            <option value="">Nobody named: only the decision is asked</option>
+            {profileOptions(catalog.data ?? [], draft.ownerProfile).map((option) => (
+              <option key={option.value} value={option.value} disabled={option.disabled}>
+                The pod&rsquo;s {option.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <p className={`${hintClass} -mt-2`}>
+          While it is missing, the person with this profile in the scope&rsquo;s pods is asked to
+          create or link it, beside the decision ask. A profile grants no rights.
         </p>
         <div className="flex flex-wrap gap-x-5 gap-y-2">
           <label className="flex items-center gap-1.5 text-[14px]">

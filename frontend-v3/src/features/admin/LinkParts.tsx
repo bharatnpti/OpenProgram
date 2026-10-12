@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -7,13 +7,15 @@ import { cn } from "../../lib/utils";
 import { refusal } from "./adminErrors";
 import { fieldInput } from "./AdminDialog";
 
-/** One thing a parent is linked to, with a button to take it away. */
+/** One thing a parent is linked to, with a button to take it away (and one to change it). */
 export function Chip({
   label,
   note,
   removeLabel,
   onRemove,
   disabled,
+  editLabel,
+  onEdit,
 }: {
   label: string;
   note?: string;
@@ -21,11 +23,26 @@ export function Chip({
   removeLabel: string;
   onRemove: () => void;
   disabled?: boolean;
+  /** What the change button says: "Change Kai Thompson's profile in Payments Pod". */
+  editLabel?: string;
+  onEdit?: () => void;
 }) {
   return (
     <li className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-grey-border bg-white py-1 pl-3 pr-1 text-[13px]">
       <span className="truncate font-bold">{label}</span>
       {note ? <span className="truncate text-grey-secondary">· {note}</span> : null}
+      {onEdit ? (
+        <button
+          type="button"
+          aria-label={editLabel}
+          title={editLabel}
+          disabled={disabled}
+          onClick={onEdit}
+          className="grid h-6 w-6 flex-none place-items-center rounded-full text-grey-secondary hover:bg-grey-fill hover:text-ink disabled:opacity-50"
+        >
+          <Pencil size={13} aria-hidden />
+        </button>
+      ) : null}
       <button
         type="button"
         aria-label={removeLabel}
