@@ -533,6 +533,22 @@ class SyncCursorRepository(Protocol):
         """Every stored cursor for a tenant, ordered by connector then scope."""
         ...
 
+    async def swap_cursor(
+        self,
+        tenant_id: str,
+        connector: str,
+        scope: str,
+        expected_value: str | None,
+        cursor: SyncCursor,
+    ) -> bool:
+        """Record ``cursor`` only while the stored cursor's value is ``expected_value``.
+
+        None expects no cursor (or one without a value). One conditional write:
+        of two callers swapping from the same value, one wins. True when this
+        call recorded it.
+        """
+        ...
+
 
 class IdentityLinkRepository(Protocol):
     """Persist provider-neutral identity links keyed by tenant and developer."""

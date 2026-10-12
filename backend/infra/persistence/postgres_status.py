@@ -1155,6 +1155,48 @@ class PostgresSyncCursorRepository:
                 ),
             )
 
+    async def swap_cursor(
+        self,
+        tenant_id: str,
+        connector: str,
+        scope: str,
+        expected_value: str | None,
+        cursor: SyncCursor,
+    ) -> bool:
+        values = (cursor.value, cursor.updated_at, _json_scalar_mapping(cursor.metadata))
+        with _tracer.start_as_current_span("postgres.cursor.swap_cursor"):
+            if expected_value is None:
+                rows = await self._executor.fetch(
+                    """
+                    INSERT INTO connector_sync_cursors (
+                        tenant_id, connector, scope, cursor_value, cursor_updated_at, metadata
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (tenant_id, connector, scope)
+                    DO UPDATE SET
+                        cursor_value = EXCLUDED.cursor_value,
+                        cursor_updated_at = EXCLUDED.cursor_updated_at,
+                        metadata = EXCLUDED.metadata,
+                        updated_at = now()
+                    WHERE connector_sync_cursors.cursor_value IS NULL
+                    RETURNING scope
+                    """,
+                    (tenant_id, connector, scope, *values),
+                )
+            else:
+                rows = await self._executor.fetch(
+                    """
+                    UPDATE connector_sync_cursors
+                    SET cursor_value = %s, cursor_updated_at = %s, metadata = %s,
+                        updated_at = now()
+                    WHERE tenant_id = %s AND connector = %s AND scope = %s
+                      AND cursor_value = %s
+                    RETURNING scope
+                    """,
+                    (*values, tenant_id, connector, scope, expected_value),
+                )
+        return bool(rows)
+
     async def list_cursors(self, tenant_id: str) -> list[SyncCursorRecord]:
         with _tracer.start_as_current_span("postgres.cursor.list_cursors"):
             rows = await self._executor.fetch(

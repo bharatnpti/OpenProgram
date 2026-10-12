@@ -841,6 +841,20 @@ class FakeSyncCursorRepository:
     ) -> None:
         self.cursors[(tenant_id, connector, scope)] = cursor
 
+    async def swap_cursor(
+        self,
+        tenant_id: str,
+        connector: str,
+        scope: str,
+        expected_value: str | None,
+        cursor: SyncCursor,
+    ) -> bool:
+        key = (tenant_id, connector, scope)
+        if self.cursors.get(key, SyncCursor()).value != expected_value:
+            return False
+        self.cursors[key] = cursor
+        return True
+
     async def list_cursors(self, tenant_id: str) -> list[SyncCursorRecord]:
         return [
             SyncCursorRecord(connector=connector, scope=scope, cursor=cursor)

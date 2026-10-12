@@ -1157,6 +1157,16 @@ async def assert_sync_cursor_repository_contract(repository: SyncCursorRepositor
     ]
     assert await repository.list_cursors("missing-tenant") == []
 
+    # A swap records only from the value it expects; None expects no cursor.
+    assert await repository.swap_cursor("demo", "marker", "issue:PO-1", None, cursor)
+    assert not await repository.swap_cursor("demo", "marker", "issue:PO-1", None, other)
+    assert not await repository.swap_cursor("demo", "marker", "issue:PO-1", "stale", other)
+    assert await repository.get_cursor("demo", "marker", "issue:PO-1") == cursor
+    assert await repository.swap_cursor("demo", "marker", "issue:PO-1", "cursor-1", other)
+    assert await repository.get_cursor("demo", "marker", "issue:PO-1") == other
+    assert not await repository.swap_cursor("demo", "marker", "issue:PO-2", "cursor-1", other)
+    assert await repository.get_cursor("demo", "marker", "issue:PO-2") == SyncCursor()
+
 
 async def assert_conversation_repository_contract(repository: ConversationRepository) -> None:
     first = ConversationTurn(

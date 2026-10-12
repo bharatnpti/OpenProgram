@@ -1170,6 +1170,20 @@ class InMemoryGraphStore:
     ) -> None:
         self._sync_cursors[(tenant_id, connector, scope)] = cursor
 
+    async def swap_cursor(
+        self,
+        tenant_id: str,
+        connector: str,
+        scope: str,
+        expected_value: str | None,
+        cursor: SyncCursor,
+    ) -> bool:
+        key = (tenant_id, connector, scope)
+        if self._sync_cursors.get(key, SyncCursor()).value != expected_value:
+            return False
+        self._sync_cursors[key] = cursor
+        return True
+
     async def list_cursors(self, tenant_id: str) -> list[SyncCursorRecord]:
         return [
             SyncCursorRecord(connector=connector, scope=scope, cursor=cursor)
