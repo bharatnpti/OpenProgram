@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 from core.domain.integrations import (
     BuildResult,
     CalendarEvent,
     Issue,
+    IssueChange,
+    IssueChangeField,
     IssueState,
     PullRequest,
     UserRef,
@@ -79,6 +81,18 @@ async def test_fake_issue_tracker_satisfies_contract() -> None:
             )
         },
         user_emails={"u123@example.com": "U123"},
+        changes={
+            "PO-1": [
+                IssueChange(
+                    history_id="1",
+                    author=user,
+                    at=datetime(2026, 1, 9, 9, 0, tzinfo=UTC),
+                    field=IssueChangeField.STATUS,
+                    from_value="To Do",
+                    to_value="In Progress",
+                )
+            ]
+        },
     )
     await assert_issue_tracker_contract(provider, known_email="u123@example.com")
 
