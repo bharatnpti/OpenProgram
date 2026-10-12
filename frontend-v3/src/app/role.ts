@@ -68,6 +68,8 @@ export type RoleContextValue = {
   canReadPortfolio: boolean;
   /** `SET_UP_DAY_REPORTS`: scrum master (own projects), manager, admin. */
   canSetUpDayReports: boolean;
+  /** `SET_POD_PROFILES`: admin, and a scrum master in the pods they run. */
+  canSetPodProfiles: boolean;
   /** The built-in chat is served (backend `chat_simulator_enabled`, local tenants). */
   chatEnabled: boolean;
   signIn: () => void;

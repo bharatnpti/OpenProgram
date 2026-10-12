@@ -109,6 +109,14 @@ class ReadinessCriterionDto(BaseModel):
     matchers: list[ReadinessMatcherDto] = Field(max_length=MAX_MATCHERS)
     draft: ReadinessDraftTemplateDto = Field(default_factory=ReadinessDraftTemplateDto)
     enabled: bool = True
+    owner_profile: str = Field(
+        default="",
+        max_length=32,
+        description=(
+            "A profile id (GET /profiles): while the criterion is missing, its holder in the "
+            "scope's pods is asked to create or link it. Empty asks only the decider."
+        ),
+    )
 
     @classmethod
     def from_domain(cls, criterion: ReleaseCriterion) -> ReadinessCriterionDto:
@@ -136,6 +144,7 @@ class ReadinessCriterionDto(BaseModel):
                 labels=list(criterion.draft.labels),
             ),
             enabled=criterion.enabled,
+            owner_profile=criterion.owner_profile,
         )
 
     def to_domain(self, tenant_id: str) -> ReleaseCriterion:
@@ -163,6 +172,7 @@ class ReadinessCriterionDto(BaseModel):
                 labels=tuple(self.draft.labels),
             ),
             enabled=self.enabled,
+            owner_profile=self.owner_profile,
         )
 
 

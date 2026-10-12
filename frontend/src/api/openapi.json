@@ -2559,6 +2559,7 @@
       "post": {
         "tags": ["config"],
         "summary": "Create Config Members From Directory",
+        "description": "Import people as members; with ``pod_id``, also put each in that pod.\n\nEach joins the pod with ``role`` (developer when not given) and, when\ngiven, ``profile`` (recorded as set by the import). Someone already in the\npod keeps their membership and role; only a given profile is recorded for\nthem. The pod and the profile are checked before anyone is imported.",
         "operationId": "create_config_members_from_directory_config_members_from_directory_post",
         "parameters": [
           {
@@ -3400,6 +3401,7 @@
       "post": {
         "tags": ["config"],
         "summary": "Link Config Pod Member",
+        "description": "Add the member to the pod with their role and, when given, their profile in it.\n\nThe profile is checked before the link is made, so a refused profile adds\nnobody. Without one, the membership's profile reads from its role until\nsomeone sets it.",
         "operationId": "link_config_pod_member_config_pods__pod_id__members__member_id__post",
         "parameters": [
           {
@@ -11134,6 +11136,533 @@
         }
       }
     },
+    "/profiles": {
+      "get": {
+        "tags": ["profiles"],
+        "summary": "List Profiles",
+        "description": "The tenant's profile catalog: the generic defaults with its own changes.",
+        "operationId": "list_profiles_profiles_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProfileResponse"
+                  },
+                  "title": "Response List Profiles Profiles Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/profiles/{slug}": {
+      "put": {
+        "tags": ["profiles"],
+        "summary": "Save Profile",
+        "description": "Rename, hide or add a catalog entry. Admins only.",
+        "operationId": "save_profile_config_profiles__slug__put",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pods/{pod_id}/profiles": {
+      "get": {
+        "tags": ["profiles"],
+        "summary": "Pod Profiles",
+        "description": "The pod's people, each with their role and profile in it: the pod panel's readers.",
+        "operationId": "pod_profiles_pods__pod_id__profiles_get",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodProfilesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/profiles": {
+      "get": {
+        "tags": ["profiles"],
+        "summary": "My Profiles",
+        "description": "The caller's own profile in each pod they are in, to read.",
+        "operationId": "my_profiles_me_profiles_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberProfileResponse"
+                  },
+                  "title": "Response My Profiles Me Profiles Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/pods/{pod_id}/members/{member_id}/profile": {
+      "get": {
+        "tags": ["profiles"],
+        "summary": "Membership Profile",
+        "description": "The membership's profile, its history, and a suggestion with its reasons.\n\nAlso for someone not in the pod yet, so the add dialog can preselect one;\n``role`` is the pod role they are about to get.",
+        "operationId": "membership_profile_config_pods__pod_id__members__member_id__profile_get",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipProfileResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["profiles"],
+        "summary": "Set Membership Profile",
+        "description": "Change the member's profile in the pod from today; earlier days keep theirs.",
+        "operationId": "set_membership_profile_config_pods__pod_id__members__member_id__profile_put",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetProfileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberProfileResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/profiles/review": {
+      "get": {
+        "tags": ["profiles"],
+        "summary": "Review Profiles",
+        "description": "Profiles nobody checked yet (from the pod role or the backfill), with suggestions.",
+        "operationId": "review_profiles_config_profiles_review_get",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/profiles/review/accept": {
+      "post": {
+        "tags": ["profiles"],
+        "summary": "Accept Profiles",
+        "description": "Accept the suggestions shown, each as its own dated row; nothing is set otherwise.",
+        "operationId": "accept_profiles_config_profiles_review_accept_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptProfilesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptProfilesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/test/chat-simulator/status": {
       "get": {
         "tags": ["test-support"],
@@ -11461,6 +11990,60 @@
   },
   "components": {
     "schemas": {
+      "AcceptProfileItem": {
+        "properties": {
+          "pod_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pod Id"
+          },
+          "member_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Member Id"
+          },
+          "profile": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Profile"
+          }
+        },
+        "type": "object",
+        "required": ["pod_id", "member_id", "profile"],
+        "title": "AcceptProfileItem"
+      },
+      "AcceptProfilesRequest": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AcceptProfileItem"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["items"],
+        "title": "AcceptProfilesRequest",
+        "description": "The suggestions the person saw and accepts, exactly as shown."
+      },
+      "AcceptProfilesResponse": {
+        "properties": {
+          "accepted": {
+            "items": {
+              "$ref": "#/components/schemas/MemberProfileResponse"
+            },
+            "type": "array",
+            "title": "Accepted"
+          }
+        },
+        "type": "object",
+        "required": ["accepted"],
+        "title": "AcceptProfilesResponse"
+      },
       "AppliesTo": {
         "type": "string",
         "enum": ["release", "project", "pod"],
@@ -17083,11 +17666,157 @@
             "type": "array",
             "minItems": 1,
             "title": "External Ids"
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
           }
         },
         "type": "object",
         "required": ["external_ids"],
         "title": "MemberFromDirectoryRequest"
+      },
+      "MemberProfileResponse": {
+        "properties": {
+          "pod_id": {
+            "type": "string",
+            "title": "Pod Id"
+          },
+          "pod_name": {
+            "type": "string",
+            "title": "Pod Name"
+          },
+          "member_id": {
+            "type": "string",
+            "title": "Member Id"
+          },
+          "member_name": {
+            "type": "string",
+            "title": "Member Name"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "code_work": {
+            "type": "boolean",
+            "title": "Code Work"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["pod_role", "backfill", "admin", "import", "suggestion_accepted"],
+            "title": "Source"
+          },
+          "checked": {
+            "type": "boolean",
+            "title": "Checked"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "set_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Set By Name"
+          },
+          "set_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Set At"
+          },
+          "is_lead": {
+            "type": "boolean",
+            "title": "Is Lead"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pod_id",
+          "pod_name",
+          "member_id",
+          "member_name",
+          "role",
+          "profile",
+          "label",
+          "code_work",
+          "source",
+          "checked",
+          "since",
+          "set_by_name",
+          "set_at",
+          "is_lead"
+        ],
+        "title": "MemberProfileResponse"
       },
       "MemberTaskAssignmentRequest": {
         "properties": {
@@ -17100,6 +17829,57 @@
         "type": "object",
         "required": ["task_id"],
         "title": "MemberTaskAssignmentRequest"
+      },
+      "MembershipProfileResponse": {
+        "properties": {
+          "pod_id": {
+            "type": "string",
+            "title": "Pod Id"
+          },
+          "pod_name": {
+            "type": "string",
+            "title": "Pod Name"
+          },
+          "member_id": {
+            "type": "string",
+            "title": "Member Id"
+          },
+          "member_name": {
+            "type": "string",
+            "title": "Member Name"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemberProfileResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileHistoryEntry"
+            },
+            "type": "array",
+            "title": "History"
+          },
+          "suggestion": {
+            "$ref": "#/components/schemas/ProfileSuggestionResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pod_id",
+          "pod_name",
+          "member_id",
+          "member_name",
+          "current",
+          "history",
+          "suggestion"
+        ],
+        "title": "MembershipProfileResponse"
       },
       "MyRequestRelation": {
         "type": "string",
@@ -17577,11 +18357,55 @@
             "type": "string",
             "minLength": 1,
             "title": "Role"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
           }
         },
         "type": "object",
         "required": ["role"],
         "title": "PodMemberLinkRequest"
+      },
+      "PodProfilesResponse": {
+        "properties": {
+          "pod_id": {
+            "type": "string",
+            "title": "Pod Id"
+          },
+          "pod_name": {
+            "type": "string",
+            "title": "Pod Name"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/MemberProfileResponse"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": ["pod_id", "pod_name", "as_of", "can_edit", "members"],
+        "title": "PodProfilesResponse"
       },
       "PodProjectDeliveryResponse": {
         "properties": {
@@ -18118,6 +18942,165 @@
         "type": "object",
         "required": ["as_of", "risks"],
         "title": "PortfolioRisksResponse"
+      },
+      "ProfileHistoryEntry": {
+        "properties": {
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Valid From"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["pod_role", "backfill", "admin", "import", "suggestion_accepted"],
+            "title": "Source"
+          },
+          "set_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Set At"
+          }
+        },
+        "type": "object",
+        "required": ["profile", "valid_from", "source", "set_at"],
+        "title": "ProfileHistoryEntry"
+      },
+      "ProfileResponse": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "code_work": {
+            "type": "boolean",
+            "title": "Code Work"
+          },
+          "title_words": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Title Words"
+          },
+          "sort": {
+            "type": "integer",
+            "title": "Sort"
+          },
+          "hidden": {
+            "type": "boolean",
+            "title": "Hidden"
+          },
+          "customized": {
+            "type": "boolean",
+            "title": "Customized"
+          }
+        },
+        "type": "object",
+        "required": ["slug", "label", "code_work", "title_words", "sort", "hidden", "customized"],
+        "title": "ProfileResponse"
+      },
+      "ProfileReviewItemResponse": {
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/MemberProfileResponse"
+          },
+          "suggestion": {
+            "$ref": "#/components/schemas/ProfileSuggestionResponse"
+          }
+        },
+        "type": "object",
+        "required": ["current", "suggestion"],
+        "title": "ProfileReviewItemResponse"
+      },
+      "ProfileReviewResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileReviewItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["items"],
+        "title": "ProfileReviewResponse"
+      },
+      "ProfileSuggestionResponse": {
+        "properties": {
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons"
+          }
+        },
+        "type": "object",
+        "required": ["profile", "label", "reasons"],
+        "title": "ProfileSuggestionResponse"
+      },
+      "ProfileUpdateRequest": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "code_work": {
+            "type": "boolean",
+            "title": "Code Work",
+            "default": false
+          },
+          "hidden": {
+            "type": "boolean",
+            "title": "Hidden",
+            "default": false
+          },
+          "title_words": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Title Words"
+          },
+          "sort": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Sort",
+            "default": 100
+          }
+        },
+        "type": "object",
+        "required": ["label"],
+        "title": "ProfileUpdateRequest",
+        "description": "A catalog entry as the tenant wants it: a rename, hiding it, or a new one."
       },
       "ProgramProjectLinkRequest": {
         "properties": {
@@ -19277,6 +20260,13 @@
             "type": "boolean",
             "title": "Enabled",
             "default": true
+          },
+          "owner_profile": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Owner Profile",
+            "description": "A profile id (GET /profiles): while the criterion is missing, its holder in the scope's pods is asked to create or link it. Empty asks only the decider.",
+            "default": ""
           }
         },
         "type": "object",
@@ -22059,6 +23049,24 @@
         "type": "object",
         "title": "SelfCheckinPreferenceUpdateRequest",
         "description": "The part of their own check-in preference a person may change.\n\nOnly the days they are asked and their time zone. The reply windows stay\nwith an admin (``PUT /config/members/{id}/checkin-preference``) because they\ndecide when a missed check-in reaches the scrum master and manager. The\ncheck-in time is left out because check-ins go out at one tenant-wide time,\nso a personal time would change nothing. A request carrying any other field\nis rejected, never silently ignored. A field sent as ``null`` goes back to\nthe team default."
+      },
+      "SetProfileRequest": {
+        "properties": {
+          "profile": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Profile"
+          },
+          "accepted_suggestion": {
+            "type": "boolean",
+            "title": "Accepted Suggestion",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["profile"],
+        "title": "SetProfileRequest"
       },
       "SettingSource": {
         "type": "string",

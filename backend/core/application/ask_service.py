@@ -27,6 +27,7 @@ from core.application.portfolio_feed_service import (
     PortfolioFeedService,
     state_label,
 )
+from core.application.profile_service import ProfileService
 from core.application.readiness_access import pod_viewer, project_viewer, reads_some_board
 from core.application.release_readiness_service import (
     BoardView,
@@ -49,6 +50,7 @@ from core.domain.graph import (
     workstreams_in_use,
 )
 from core.domain.llm import LlmMessage, LlmRequest, LlmToolCall
+from core.domain.profiles import ProfileDefinition
 from core.domain.release_readiness import (
     Severity,
     Urgency,
@@ -123,6 +125,10 @@ ASK_TOOL_GUIDANCE = (
     "contains what -- live on edges, so call graph_neighbors before reporting that "
     "something has none, and never tell the user their data is missing or needs "
     "updating when you have not traversed its edges. "
+    "Who is the security, QA, product or other person for a pod or project is answered "
+    "from team_profiles: each member's profile in each pod, and the profiles a project's "
+    "release criteria ask for that none of its pods holds. A profile is a role in that pod, "
+    "never a rating, and grants no rights. "
     "What blocks a project or pod is answered from pod_blockers: for each pod it names "
     "or works through, or for every pod with pod_id unset. Never say anything has no "
     "blockers, no risks or nothing missing unless a tool you called says so. "
@@ -377,6 +383,7 @@ _READ_WORDS: Mapping[str, str] = {
     "pod_blockers": "the open blockers",
     "delivery_forecast": "the delivery forecast",
     "release_readiness": "the release readiness",
+    "team_profiles": "the profiles",
 }
 _EVERY_POD_READS = frozenset({"pod_checkins", "pod_blockers"})
 _NODE_ARGUMENTS = ("node_id", "pod_id", "project_id", "workstream_id", "program_root_id")
@@ -1557,6 +1564,144 @@ class ReleaseReadinessTool:
 
 
 @dataclass(frozen=True, kw_only=True)
+class TeamProfilesTool:
+    """Who brings what to each pod: every member's role in it and their profile there.
+
+    For a project it also names the profiles its switched-on release criteria
+    ask for (``owner_profile``) that none of its pods holds, so "who does the
+    security review for X" can say nobody does yet. Names are directory data;
+    the read is behind Ask's own check (``may_ask``). It writes nothing, and a
+    profile is never a rating: no counts per person, no ranking.
+    """
+
+    tenant_id: str
+    service: ProfileService
+    repository: GraphRepository
+    readiness: ReleaseReadinessService | None
+    as_of: date
+
+    name: str = "team_profiles"
+    description: str = (
+        "Who brings what to each pod: every member with their role in the pod (developer, "
+        "scrum master, product owner, manager) and their profile there (development, QA and "
+        "test, security, product, design, TPM / delivery, ops, ...), whether someone chose it "
+        "(checked) or it only follows the pod role, and for a project the profiles its release "
+        "criteria ask for that none of its pods holds (missing). Give pod_id or project_id, "
+        "and profile to keep one (a profile id or its label, such as security or QA). Use it "
+        "for 'who is the security contact for X', 'who tests in Y', 'is there a QA in Z'."
+    )
+    parameters: Mapping[str, object] = field(
+        default_factory=lambda: {
+            "type": "object",
+            "properties": {
+                "pod_id": {"type": "string"},
+                "project_id": {"type": "string"},
+                "profile": {
+                    "type": "string",
+                    "description": "One profile, by id or label, such as security or QA.",
+                },
+            },
+            "additionalProperties": False,
+        }
+    )
+
+    async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
+        project_id = _string_argument(arguments.get("project_id"))
+        wanted = _string_argument(arguments.get("profile"))
+        catalog = await self.service.catalog(self.tenant_id)
+        slug = _profile_slug(wanted, catalog) if wanted else None
+        if wanted and slug is None:
+            return json.dumps(
+                {
+                    "error": f"no profile {wanted!r}; the profiles are "
+                    + ", ".join(f"{entry.slug} ({entry.label})" for entry in catalog)
+                },
+                ensure_ascii=False,
+            )
+        project: GraphNode | None = None
+        if project_id is not None:
+            project = await self.repository.get_node(self.tenant_id, project_id, as_of=self.as_of)
+            if project is None or project.kind is not NodeKind.PROJECT:
+                return json.dumps(
+                    {
+                        "error": f"project {project_id} not found; search_graph_nodes with "
+                        "kinds ['project'] finds its id"
+                    }
+                )
+            pods: Sequence[GraphNode] | str = await _project_pods(
+                self.repository, self.tenant_id, project.id, self.as_of
+            )
+        else:
+            pods = await _pods(self.repository, self.tenant_id, arguments.get("pod_id"))
+        if isinstance(pods, str):
+            return json.dumps({"error": pods})
+        held: set[str] = set()
+        rows: list[dict[str, object]] = []
+        for pod in pods:
+            view = await self.service.pod_profiles(self.tenant_id, pod.id, self.as_of)
+            held.update(member.profile for member in view.members)
+            rows.append(
+                {
+                    "pod_id": view.pod_id,
+                    "pod_name": view.pod_name,
+                    "members": [
+                        {
+                            "name": member.member_name,
+                            "role_in_pod": member.role,
+                            "profile": member.profile,
+                            "profile_label": member.label,
+                            "checked": member.checked,
+                        }
+                        for member in view.members
+                        if slug is None or member.profile == slug
+                    ][:40],
+                }
+            )
+        payload: dict[str, object] = {"as_of": self.as_of.isoformat(), "pods": rows}
+        if project is not None:
+            payload["project_name"] = project.name
+            asked = await self.readiness.asked_profiles(self.tenant_id) if self.readiness else {}
+            labels = {entry.slug: entry.label for entry in catalog}
+            payload["missing"] = [
+                {
+                    "profile": missing,
+                    "profile_label": labels.get(missing, missing),
+                    "asked_by_criteria": list(criteria),
+                }
+                for missing, criteria in sorted(asked.items())
+                if missing not in held and (slug is None or missing == slug)
+            ]
+        return json.dumps(payload, ensure_ascii=False)
+
+
+def _profile_slug(wanted: str, catalog: Sequence[ProfileDefinition]) -> str | None:
+    """A profile asked for by id or label ("QA", "qa and test"), or None when none matches."""
+    folded = " ".join(wanted.split()).casefold()
+    for entry in catalog:
+        if folded in {entry.slug.casefold(), entry.label.casefold()}:
+            return entry.slug
+    for entry in catalog:
+        if folded and (folded in entry.label.casefold() or folded in entry.title_words):
+            return entry.slug
+    return None
+
+
+async def _project_pods(
+    repository: GraphRepository, tenant_id: str, project_id: str, as_of: date
+) -> Sequence[GraphNode]:
+    pods: list[GraphNode] = []
+    for edge in await repository.list_edges(
+        tenant_id, from_node_id=project_id, kind=EdgeKind.CONTAINS
+    ):
+        if not edge.is_active_on(as_of):
+            continue
+        node = await repository.get_node(tenant_id, edge.to_node_id, as_of=as_of)
+        if node is not None and node.kind is NodeKind.POD:
+            pods.append(node)
+    return sorted(pods, key=lambda pod: (pod.name.casefold(), pod.id))[:_MAX_PODS]
+
+
+@dataclass(frozen=True, kw_only=True)
 class RecordedTool:
     """Runs a tool and notes that it ran.
 
@@ -1763,6 +1908,7 @@ class AskService:
         model: str,
         tool_agent: ToolCallingAgent | None = None,
         max_tool_iterations: int = ASK_MAX_TOOL_ITERATIONS,
+        profile_service: ProfileService | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._graph_repository = graph_repository
@@ -1773,6 +1919,7 @@ class AskService:
         self._forecast_service = forecast_service
         self._delivery_scope_service = delivery_scope_service
         self._release_readiness_service = release_readiness_service
+        self._profile_service = profile_service
         self._model = model
         self._tool_agent = tool_agent or ToolCallingAgent(
             llm_provider=llm_provider,
@@ -1949,6 +2096,22 @@ class AskService:
                 reads_some_board,
             ),
         )
+        if self._profile_service is not None:
+            # Names and pod roles are directory data, which every role reads: behind
+            # /ask's own check, as the graph reads are.
+            offered = (
+                *offered,
+                (
+                    TeamProfilesTool(
+                        tenant_id=tenant_id,
+                        service=self._profile_service,
+                        repository=graph,
+                        readiness=self._release_readiness_service,
+                        as_of=as_of,
+                    ),
+                    may_ask,
+                ),
+            )
         return tuple(tool for tool, allowed in offered if allowed(principal))
 
 

@@ -28,6 +28,7 @@ from core.application.gate_extraction import ModelItemFinder
 from core.application.gate_service import GateService
 from core.application.jira_writes_service import JiraWritesService
 from core.application.persona_views import PersonaViewService, ProviderNames
+from core.application.profile_service import ProfileService
 from core.application.release_readiness_service import JiraData, ReleaseReadinessService
 from core.application.reply_ingestion import ReplyDrainResult, ReplyIngestionService
 from core.application.risk_service import RiskService
@@ -80,6 +81,7 @@ from core.ports.gates import (
 from core.ports.investigation import InvestigationEngine
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
+from core.ports.profiles import ProfileRepository
 from core.ports.readiness import ReadinessProbe, ReadinessReport, ReportingReadinessProbe
 from core.ports.release_readiness import ReleaseReadinessRepository
 from core.ports.reply_processing import ReplyProcessingOutcome
@@ -148,6 +150,7 @@ from infra.persistence.in_memory_gates import (
 )
 from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
 from infra.persistence.in_memory_jira_writes import InMemoryJiraWritesRepository
+from infra.persistence.in_memory_profiles import InMemoryProfileRepository
 from infra.persistence.in_memory_readiness import InMemoryReleaseReadinessRepository
 from infra.persistence.in_memory_reports import InMemoryDayReportRepository
 from infra.persistence.postgres_branding import PostgresTenantLogoRepository
@@ -177,6 +180,7 @@ from infra.persistence.postgres_graph import (
 )
 from infra.persistence.postgres_inbound import PostgresInboundChatEventRepository
 from infra.persistence.postgres_jira_writes import PostgresJiraWritesRepository
+from infra.persistence.postgres_profiles import PostgresProfileRepository
 from infra.persistence.postgres_readiness import PostgresReleaseReadinessRepository
 from infra.persistence.postgres_reports import PostgresDayReportRepository
 from infra.persistence.postgres_status import (
@@ -278,6 +282,7 @@ class ServiceRegistry:
         default=None, init=False
     )
     _jira_writes_repository: JiraWritesRepository | None = field(default=None, init=False)
+    _profile_repository: ProfileRepository | None = field(default=None, init=False)
     _connection_resolver: CachedConnectionResolver | None = field(default=None, init=False)
     _redis_provider: RedisClientProvider | None = field(default=None, init=False)
     _issue_tracker: IssueTracker | None = field(default=None, init=False)
@@ -499,6 +504,28 @@ class ServiceRegistry:
             today=self._tenant_today,
         )
 
+    def profile_repository(self) -> ProfileRepository:
+        if self._profile_repository is None:
+            self._profile_repository = (
+                InMemoryProfileRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresProfileRepository(self._executor())
+            )
+        return self._profile_repository
+
+    def profile_service(self) -> ProfileService:
+        """Profiles per pod membership; a scrum master sets them where they run the pod."""
+        return ProfileService(
+            repository=self.profile_repository(),
+            graph_repository=self.graph_repository(),
+            directory_repository=self.directory_user_repository(),
+            time_series_repository=self.time_series_repository(),
+            runs_pod=self.forecast_service().runs_pod,
+            # The day the config routes start a pod membership on (config_service_for),
+            # so a profile set right after adding someone finds them in the pod.
+            today=date.today,
+        )
+
     def gate_repositories(
         self,
     ) -> tuple[GateTemplateRepository, GateItemRepository, QuestionRepository, IssueScanRepository]:
@@ -682,6 +709,7 @@ class ServiceRegistry:
             escalation_service=self.escalation_matrix_service(),
             console_base_url=self.settings.public_console_url,
             readiness_service=self.release_readiness_service(),
+            profile_service=self.profile_service(),
         )
 
     def day_report_service(self) -> DayReportService:
@@ -1590,6 +1618,7 @@ class ServiceRegistry:
                 if self.settings.issue_tracker_provider == "fake"
                 else "Jira"
             ),
+            code_work_by_pod=self.profile_service().code_work_by_pod,
         )
 
     def provider_names(self) -> ProviderNames:

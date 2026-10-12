@@ -20,6 +20,7 @@ from core.application.checkin_drift import (
     review_without_merge_request_fact,
     review_without_merge_request_question,
 )
+from core.application.profile_service import ProfileService
 from core.application.risk_service import RiskService
 from core.application.status_collector import StatusCollector
 from core.domain.graph import (
@@ -29,14 +30,17 @@ from core.domain.graph import (
     FactEvent,
     GraphEdge,
     NodeKind,
+    Pod,
     Project,
     Task,
 )
 from core.domain.messaging import ChatUserRef, InboundMessage
+from core.domain.profiles import PodMemberProfile, ProfileSource
 from core.domain.risk import DriftFindingKind, RiskProviderConfig
 from core.domain.rollup import Rag
 from core.domain.status import CheckIn, IssueClaim, StatusSource
 from infra.persistence.in_memory_graph import InMemoryGraphStore
+from infra.persistence.in_memory_profiles import InMemoryProfileRepository
 from tests.contract.fakes import FakeChatProvider, FakeIssueTracker
 from tests.unit.test_status_collector import SequenceLlmProvider
 
@@ -441,3 +445,113 @@ async def test_a_manager_is_asked_in_a_project_of_merge_requests_only_when_activ
 
     assert quiet_chat.sent == []
     assert [message.text for message in active_chat.sent] == [_MINA_QUESTION]
+
+
+# ---- A checked profile in the issue's pod decides first ------------------------------------
+
+
+async def _in_pod(store: InMemoryGraphStore, member: str, project: str) -> None:
+    """The member in a pod of the project, as a developer."""
+    await store.upsert_node(Pod(tenant_id=_TENANT, id="pod-1", name="Core Pod"))
+    for parent, child, metadata in (
+        (project, "pod-1", {}),
+        ("pod-1", member, {"role": "developer"}),
+    ):
+        await store.add_edge(
+            GraphEdge(
+                tenant_id=_TENANT,
+                from_node_id=parent,
+                to_node_id=child,
+                kind=EdgeKind.CONTAINS,
+                metadata=metadata,
+            )
+        )
+
+
+def _profiles(store: InMemoryGraphStore, repository: InMemoryProfileRepository) -> ProfileService:
+    return ProfileService(repository=repository, graph_repository=store)
+
+
+async def test_a_qa_profile_in_the_issues_pod_is_not_asked_for_a_merge_request() -> None:
+    store = InMemoryGraphStore()
+    await _seed(store)
+    await _in_pod(store, _OMAR, "proj-idp")
+    profiles = _profiles(store, InMemoryProfileRepository())
+    await profiles.set_profile(
+        _TENANT, "pod-1", _OMAR, "qa", source=ProfileSource.ADMIN, by="U-admin"
+    )
+    chat = FakeChatProvider()
+    collector = _collector(
+        store, chat, [_UP_FOR_REVIEW], code_work_by_pod=profiles.code_work_by_pod
+    )
+
+    outcome = await collector.handle_reply(_message("IDP-6 is up for review", "m1", 10))
+
+    assert outcome.kind == "processed"
+    assert chat.sent == []
+
+
+async def test_an_unchecked_profile_keeps_the_app_role_rule() -> None:
+    store = InMemoryGraphStore()
+    await _seed(store)
+    await _in_pod(store, _OMAR, "proj-idp")
+    repository = InMemoryProfileRepository()
+    # What the migration's backfill writes: nobody chose it.
+    await repository.save_member_profile(
+        PodMemberProfile(
+            tenant_id=_TENANT,
+            pod_id="pod-1",
+            member_id=_OMAR,
+            profile="qa",
+            valid_from=date(1970, 1, 1),
+            source=ProfileSource.BACKFILL,
+        )
+    )
+    chat = FakeChatProvider()
+    collector = _collector(
+        store,
+        chat,
+        [_UP_FOR_REVIEW],
+        code_work_by_pod=_profiles(store, repository).code_work_by_pod,
+    )
+
+    outcome = await collector.handle_reply(_message("IDP-6 is up for review", "m1", 10))
+
+    assert outcome.kind == "clarifying"
+    assert [message.text for message in chat.sent] == [_QUESTION]
+
+
+async def test_a_product_owner_with_a_development_profile_is_asked() -> None:
+    store = InMemoryGraphStore()
+    await _seed_checkout(store, roles="po")
+    await _in_pod(store, _MINA, "proj-chk")
+    await store.add_edge(
+        GraphEdge(
+            tenant_id=_TENANT, from_node_id=_MINA, to_node_id="CHK-10", kind=EdgeKind.ASSIGNED_TO
+        )
+    )
+    await _merge_request(store, "checkout-api", "1", branch="CHK-3-intent-api", state="merged")
+    await store.record_checkin(
+        CheckIn(
+            tenant_id=_TENANT,
+            developer_id=_MINA,
+            correlation_id="corr-omar",
+            asked_at=datetime(2026, 10, 3, 12, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    profiles = _profiles(store, InMemoryProfileRepository())
+    await profiles.set_profile(
+        _TENANT, "pod-1", _MINA, "development", source=ProfileSource.ADMIN, by="U-admin"
+    )
+    chat = FakeChatProvider()
+    collector = _collector(
+        store, chat, [_MINA_IN_REVIEW], code_work_by_pod=profiles.code_work_by_pod
+    )
+
+    outcome = await collector.handle_reply(_mina_says("CHK-10 in review"))
+
+    assert outcome.kind == "clarifying"
+    assert [message.text for message in chat.sent] == [_MINA_QUESTION]

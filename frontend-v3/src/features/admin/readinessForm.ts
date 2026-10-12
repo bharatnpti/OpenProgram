@@ -88,6 +88,8 @@ export type CriterionDraft = {
   description: string;
   labelsText: string;
   enabled: boolean;
+  /** The profile (a catalog id) asked to create or link the evidence; empty asks only the decider. */
+  ownerProfile: string;
 };
 
 export function newCriterionDraft(): CriterionDraft {
@@ -109,6 +111,7 @@ export function newCriterionDraft(): CriterionDraft {
     description: "",
     labelsText: "",
     enabled: true,
+    ownerProfile: "",
   };
 }
 
@@ -139,6 +142,7 @@ export function draftFromCriterion(criterion: ReadinessCriterionDto): CriterionD
     description: criterion.draft?.description ?? "",
     labelsText: (criterion.draft?.labels ?? []).join(", "),
     enabled: criterion.enabled ?? true,
+    ownerProfile: criterion.owner_profile ?? "",
   };
 }
 
@@ -166,6 +170,7 @@ export function criterionFromDraft(draft: CriterionDraft): ReadinessCriterionDto
       labels: list(draft.labelsText),
     },
     enabled: draft.enabled,
+    owner_profile: draft.ownerProfile,
   };
 }
 

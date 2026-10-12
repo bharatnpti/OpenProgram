@@ -97,6 +97,9 @@ _WRITERS: dict[Capability, frozenset[Role]] = {
     # findings (a scrum master only in their pods' reach); a developer has
     # nothing to act on, and an executive only reads.
     Capability.ACT_ON_READINESS: frozenset({Role.SM, Role.PO, Role.MGR, Role.ADMIN}),
+    # Profiles in a pod: an admin everywhere, a scrum master in the pods they run
+    # (enforced where the profile is set). A profile grants no rights.
+    Capability.SET_POD_PROFILES: frozenset({Role.SM, Role.ADMIN}),
 }
 
 

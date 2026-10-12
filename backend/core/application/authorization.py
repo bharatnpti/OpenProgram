@@ -37,6 +37,9 @@ class Capability(StrEnum):
     #: dismiss and create a draft. A scrum master only for pods they run and the
     #: projects those pods work on.
     ACT_ON_READINESS = "act_on_readiness"
+    #: Set a member's profile in a pod. A scrum master only in the pods they run;
+    #: a profile grants no rights, it only routes who is asked and named.
+    SET_POD_PROFILES = "set_pod_profiles"
 
 
 class SensitiveField(StrEnum):
@@ -89,6 +92,8 @@ class AuthorizationPolicy:
                     Capability.SEND_DAY_REPORTS,
                     Capability.SET_UP_DAY_REPORTS,
                     Capability.ACT_ON_READINESS,
+                    # The scrum master says who brings what to the pods they run.
+                    Capability.SET_POD_PROFILES,
                 }
             ),
             Role.MGR: frozenset(

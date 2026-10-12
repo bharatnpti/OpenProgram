@@ -93,6 +93,15 @@ import type {
   HealthResponse,
   MemberTaskAssignmentRequest,
   PodMemberLinkRequest,
+  AcceptProfilesRequest,
+  AcceptProfilesResponse,
+  MemberProfileResponse,
+  MembershipProfileResponse,
+  PodProfilesResponse,
+  ProfileResponse,
+  ProfileReviewResponse,
+  ProfileUpdateRequest,
+  SetProfileRequest,
   PodBlockersResponse,
   PodCheckinsResponse,
   PodRollupResponse,
@@ -461,10 +470,14 @@ export const apiClient = {
     requestJson<DirectorySyncResponse>("/config/directory/sync", {
       method: "POST",
     }),
-  addMembersFromDirectory: (externalIds: string[]) =>
+  /** Import people; with `placement`, also into that pod with a role and, optionally, a profile. */
+  addMembersFromDirectory: (
+    externalIds: string[],
+    placement?: { pod_id: string; role?: string | null; profile?: string | null },
+  ) =>
     requestJson<ConfigNodeResponse[]>("/config/members/from-directory", {
       method: "POST",
-      body: { external_ids: externalIds } satisfies MemberFromDirectoryRequest,
+      body: { external_ids: externalIds, ...placement } satisfies MemberFromDirectoryRequest,
     }),
   createConfigMember: (input: ConfigNodeCreateRequest) =>
     requestJson<ConfigNodeResponse>("/config/members", { method: "POST", body: input }),
@@ -519,6 +532,38 @@ export const apiClient = {
     }),
   unlinkPodMember: (podId: string, memberId: string) =>
     requestJson<void>(`/config/pods/${podId}/members/${memberId}`, { method: "DELETE" }),
+  /** The tenant's profile catalog: the defaults with its own changes. Everyone reads it. */
+  profiles: () => requestJson<ProfileResponse[]>("/profiles"),
+  saveProfile: (slug: string, body: ProfileUpdateRequest) =>
+    requestJson<ProfileResponse>(`/config/profiles/${encodeURIComponent(slug)}`, {
+      method: "PUT",
+      body,
+    }),
+  /** A pod's people with their role and profile, and whether the caller sets them. */
+  podProfiles: (podId: string) =>
+    requestJson<PodProfilesResponse>(`/pods/${encodeURIComponent(podId)}/profiles`),
+  myProfiles: () => requestJson<MemberProfileResponse[]>("/me/profiles"),
+  /** One membership's profile, its history and a suggestion; also before they join (`role`). */
+  membershipProfile: (podId: string, memberId: string, role?: string) =>
+    requestJson<MembershipProfileResponse>(
+      withQuery(
+        `/config/pods/${encodeURIComponent(podId)}/members/${encodeURIComponent(memberId)}/profile`,
+        { role },
+      ),
+    ),
+  setMembershipProfile: (podId: string, memberId: string, body: SetProfileRequest) =>
+    requestJson<MemberProfileResponse>(
+      `/config/pods/${encodeURIComponent(podId)}/members/${encodeURIComponent(memberId)}/profile`,
+      { method: "PUT", body },
+    ),
+  /** Profiles nobody checked yet, with a suggestion each, in the pods the caller sets. */
+  profileReview: (podId?: string) =>
+    requestJson<ProfileReviewResponse>(withQuery("/config/profiles/review", { pod_id: podId })),
+  acceptProfiles: (body: AcceptProfilesRequest) =>
+    requestJson<AcceptProfilesResponse>("/config/profiles/review/accept", {
+      method: "POST",
+      body,
+    }),
   assignMemberTask: (memberId: string, input: MemberTaskAssignmentRequest) =>
     requestJson<ConfigEdgeResponse>(`/config/members/${memberId}/tasks`, {
       method: "POST",

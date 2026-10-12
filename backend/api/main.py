@@ -29,6 +29,7 @@ from api.routers import (
     jira_writes,
     ops,
     persona,
+    profiles,
     readiness,
     reports,
     test_support,
@@ -153,6 +154,7 @@ def create_app(
     app.include_router(ask.router)
     app.include_router(checkin.router)
     app.include_router(persona.router)
+    app.include_router(profiles.router)
     app.include_router(test_support.router)
     app.include_router(webhooks.router)
     return app

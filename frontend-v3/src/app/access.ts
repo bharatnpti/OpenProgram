@@ -29,6 +29,11 @@ export type Capabilities = {
   canReadPortfolio: boolean;
   /** `SET_UP_DAY_REPORTS`: scrum master (own projects), manager, admin. */
   canSetUpDayReports: boolean;
+  /**
+   * `SET_POD_PROFILES`: admin everywhere, a scrum master in the pods they run
+   * (the server's `can_edit` on each pod says which). A profile grants no rights.
+   */
+  canSetPodProfiles: boolean;
 };
 
 export function capabilitiesFor(lens: readonly AppRole[]): Capabilities {
@@ -41,6 +46,7 @@ export function capabilitiesFor(lens: readonly AppRole[]): Capabilities {
     canReadPodDetail: has("sm", "mgr"),
     canReadPortfolio: has("mgr", "exec"),
     canSetUpDayReports: has("sm", "mgr"),
+    canSetPodProfiles: has("sm"),
   };
 }
 

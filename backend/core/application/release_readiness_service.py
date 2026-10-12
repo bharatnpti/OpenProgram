@@ -286,6 +286,10 @@ class ReadinessGap:
     urgency: UrgencyKind
     #: The day it became due soon or worse; an ask's wait counts from here.
     entered_on: date | None = None
+    #: The criterion's profile to ask for the evidence (a catalog slug); empty for none.
+    owner_profile: str = ""
+    #: The fix ask's text for that profile's holder: create or link the evidence.
+    fix_ask: str = ""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -384,6 +388,20 @@ class ReleaseReadinessService:
             ),
             writeback_on=writes.master.on,
         )
+
+    async def asked_profiles(self, tenant_id: str) -> dict[str, tuple[str, ...]]:
+        """The profiles the switched-on criteria ask for, each with those criteria's names.
+
+        Nothing while the agent is off: no criterion asks anyone then.
+        """
+        stored = await self._repository.get_settings(tenant_id)
+        if stored is None or not stored.enabled:
+            return {}
+        asked: dict[str, list[str]] = {}
+        for criterion in await self._repository.list_criteria(tenant_id):
+            if criterion.enabled and criterion.owner_profile and criterion.deleted_at is None:
+                asked.setdefault(criterion.owner_profile, []).append(criterion.name)
+        return {slug: tuple(sorted(names)) for slug, names in asked.items()}
 
     async def jira_writes(self, tenant_id: str) -> JiraWrites:
         """The Jira write switches in force.
@@ -1902,6 +1920,8 @@ def _gaps(views: Sequence[FindingView], today: date) -> tuple[ReadinessGap, ...]
             waited_days=waited,
             urgency=finding.urgency.kind,
             entered_on=finding.window_entered_at.date() if finding.window_entered_at else None,
+            owner_profile=criterion.owner_profile,
+            fix_ask=gap_fix_ask(view) if criterion.owner_profile else "",
         )
         order = (
             _URGENCY_ORDER[finding.urgency.kind],
@@ -1950,6 +1970,18 @@ def gap_ask(view: FindingView) -> str:
         key = finding.candidates[0].issue_key
         return f"{view.scope_name}: is {key} the {words}{due}? Link it, or create one"
     return f"{view.scope_name}: no {words} in Jira yet{due}; create it or link one"
+
+
+def gap_fix_ask(view: FindingView) -> str:
+    """The fix ask to the criterion's profile: "Release 1: create or link the security review
+    (due 21 Oct)"."""
+    finding, criterion = view.finding, view.criterion
+    words = name_in_sentence(criterion.name)
+    due = f" (due {_day(finding.urgency.due_on)})" if finding.urgency.due_on else ""
+    if finding.state is FindingState.UNSURE and finding.candidates:
+        key = finding.candidates[0].issue_key
+        return f"{view.scope_name}: link {key} as the {words}, or create one{due}"
+    return f"{view.scope_name}: create or link the {words}{due}"
 
 
 def _now_covers(finding: Finding) -> str:
