@@ -566,6 +566,7 @@ Functional requirements:
 - A release shall be defined by a Jira fix version or label, chosen from those the project's issues carry.
 - Every change of a date shall be kept with who made it, when and why, so a date that moved shows how often and by how many days.
 - The forecast shall put two answers side by side: what the last weeks' completion rate says (a throughput simulation, 85% and 50% likely dates, once it has the tenant's minimum of working days of history: ten by default (OPENPROGRAM_FORECAST_MIN_HISTORY_DAYS), from 3 to 60 in Admin › Delivery stages, with the window it reads growing to fit), and what the team's own dates say (check-in estimates, else Jira due dates). The verdict (on track, at risk, off track) shall name its reasons: who committed the date, how it moved, a disagreement of more than five working days between the two answers, pods planned later than the project, and a Jira release date that differs from the committed one.
+- The planning baseline, and the forecast as it stood on each day, are described in 4.33.
 
 ### 4.29 Acceptance Gates, Test Cases and Questions
 
@@ -615,6 +616,33 @@ Functional requirements:
 - The catalog shall start with generic profiles; admins shall rename, hide or add profiles (Admin › Profiles). A hidden profile is offered nowhere, and a membership already holding it keeps it.
 - Profiles shall route, read per pod: whether a person's "in review" is code work that needs a merge request (only a profile someone chose decides this; otherwise the person's app roles do), who a release criterion asks to create or link its evidence (4.31) beside the unchanged decision ask, how the day report names an ask's owner ("Mina Patel (Product, Payments Pod)", for profiles someone chose), and who the assistant names for "who is the security, QA or product person for X".
 - Each person shall read their own profiles, beside their check-in schedule.
+
+### 4.33 Planning Baselines and the Forecast Kept per Day
+
+**Business requirement:** When planning is complete, the requirements agreed shall be frozen, so later scope is read against them. Each day's forecast shall be kept as it stood that day, so the date's history shows what people saw then, not a recomputation.
+
+Functional requirements:
+
+- A product owner, a manager or an admin shall mark planning complete on Overall, for the project or for the release picked there.
+  - Marked today, it freezes the requirements in scope, each with its stage, story points, due date and type.
+  - Marked for an earlier day, at most a year back, it freezes that day's stored snapshot, or the last one kept within the week before, with points and type as the tracker last said by then.
+  - With no snapshot, the issues in scope today that were created by then stand in, and the baseline says it was reconstructed. A release with no snapshot of its own reads the project's, kept to the release's requirements.
+  - Nothing in scope is refused in words.
+- Marking planning complete again shall add a new baseline and keep the earlier ones, with one baseline active per project or release. Each baseline carries:
+  - the tenant's change label, one tracker label ("CR" by default) for changes agreed after planning;
+  - a grace period of 0 to 20 working days (2 by default);
+  - an optional note.
+- Everyone who reads the forecast (product owner, manager, executive, admin) shall see Planning baseline under How the date moved. It shows:
+  - the active baseline and who set it, by name;
+  - the requirements added since, and how many of them lack the change label;
+  - the requirements gone since, by key only, never who added or removed them;
+  - the earlier baselines.
+- Mark planning complete, or New baseline once one exists, shall be offered only to product owners, managers and admins, and not while a past day is shown. Scrum masters and developers get no section, and the server refuses them.
+- The forecast of every project and release shall be kept per day: the 50% and 85% dates, the verdict and the date it was measured against, the team's latest date, and the forecast's inputs. The hourly snapshot run shall write today's row after the day's snapshots; a later run that day replaces it.
+- An admin shall rebuild earlier days from the stored snapshots, 90 days by default and at most 365 (`POST /admin/workflows/forecast-days/reconstruct`).
+  - Each past day with a snapshot is forecast against the committed date and the team's dates as they stood at the end of that day, and marked rebuilt.
+  - A day the hourly run kept is never replaced.
+- The forecast's history (4.28) shall read past days from the kept rows and replay only the days nobody kept. Today is always live. Rebuilt days are marked, and the slip chart says the forecast up to a day was rebuilt afterwards.
 
 ## 5. Key Business Data Flows
 
