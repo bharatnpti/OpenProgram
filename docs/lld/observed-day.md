@@ -60,20 +60,29 @@ Values are keys, status and stage names, release names, dates and numbers.
 | Path | Lead | With nothing moved |
 |---|---|---|
 | Close-out of an unanswered check-in (`_fallback_inference`) | "No confirmed check-in after a nudge. Inferred from Jira and GitLab: …" | the earlier rule: open work under way, last reply, risks, Git counts |
-| Close-out of replies without a status | "Replied without a status update. Inferred from Jira: …" | unknown, as before |
-| The fill (`StatusCollector.fill_day`) | "Not reached in chat. Inferred from Jira: …" ("Not asked today." when the send is off) | stale, naming the last status once, else unknown |
+| Close-out of replies without a status | "Replied without a status update. From Jira: …" | unknown, as before |
+| The fill (`StatusCollector.fill_day`) | "Not asked today. From Jira: …" with the send off; "Not reached in chat. From Jira: …" with it on | stale, naming the last status once, else unknown |
 
 The close-out adds the tracker's live list of the member's open issues to the
 held keys, only those naming them as assignee. Every such day is `INFERRED`,
-amber in the rollup. `status_summaries.inferred_basis` reads the basis after
-any of these leads, so a later stale day names it once.
+amber in the rollup, whose reason counts the evidence by task
+(`status_summaries.observed_factor`): "Inferred from Jira: 2 tasks moved, 1
+without movement for 8 days." `status_summaries.inferred_basis` reads the
+basis after any of these leads, so a later stale day names it once.
 
 ## The fill
 
-`FillDayPass.run(tenant, now)` (`core/application/fill_day.py`) runs inside the
-reconcile tick's plan (`checkin_fanout._checkin_reconcile_dispatch_plan`),
-before its dispatches, for today and yesterday in the tenant's zone. It fills
-a member from `developers_without_checkin` when:
+`FillDayPass.run(tenant, now)` (`core/application/fill_day.py`) runs on a
+schedule of its own (`infra/workflows/checkin_fill.py`: connector
+`checkin_fill`, `OPENPROGRAM_CHECKIN_FILL_CRON`, every 15 minutes, every day),
+for today and yesterday in the tenant's zone. It sends nothing, so the send's
+switches never decide it: the fan-out off switch still removes only the
+fan-out and reconcile schedules. The fill's schedule exists while the
+deployment's switch and the tenant's switch are both on: the worker decides at
+start (`ensure_workflow_schedules`), and saving the tenant's switch adds or
+removes it (`FillDaySettingsService(on_change=…)`, wired in the registry for
+the deployment's tenant). Each run checks both switches again. It fills a
+member from `developers_without_checkin` when:
 
 - their member record exists and was not deleted by the day;
 - the day is one of their check-in days;
@@ -81,8 +90,9 @@ a member from `developers_without_checkin` when:
 - they have no status for the day and no check-in run for it;
 - the calendar does not put them on leave.
 
-It sends nothing, and a failure never stops the tick's dispatches. The tick
-exists only while the fan-out and the reconcile are both on.
+With the send off nobody was asked, so every member due is filled with "Not
+asked today."; with it on, a member with no check-in run by their nudge time
+was not reached (the reconcile retried the send for hours).
 
 The tenant switch is `checkin_fill` in `readiness_settings.settings`
 (`{enabled, updated_at, updated_by}`); release readiness's save keeps every
@@ -100,6 +110,10 @@ deployment. On by default.
   `nothing_moved`). Each developer row gains `evidence` (read back from an
   inferred summary) and `no_data_cause`.
 - Ask's `pod_checkins` returns both under the same pod check-in read.
+- `GET /config/members/identity-counts` (admin): members, `without_chat_id`,
+  `without_jira_account` (no account and no email: the coverage cause "no Jira
+  link"), shown in Admin › Directory. The coverage line's "no data" links there
+  for someone who can open Admin, when its cause is a missing Jira link or chat id.
 
 ## Storage
 
