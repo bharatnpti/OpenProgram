@@ -170,7 +170,12 @@ Functional requirements:
 - The system shall sync issue-tracker issues into graph task nodes.
 - The system shall link issues to projects or matching sprints.
 - The system shall create developer nodes and task assignments from issue assignees.
-- The system shall append issue facts with status, assignee, project, and observed timestamps.
+- The system shall append issue facts with status, assignee, project, and observed timestamps, and with the due date, fix versions and labels, so their history is kept.
+- The system shall keep on each task its reporter and creator (as tracker account ids, and as members when linked), its components, and its severity when the Jira connection names a severity field. The connection test shall offer Jira's custom select and text fields for it, severity-looking ones first.
+- The system shall read the history of each issue a sync sees changed and append one `issue_change` fact per changed field to the work item: who changed it, when, from what to what. Only status, resolution, assignee, due date, fix versions, labels, story points, sprint, issue type, parent or epic, priority, components and the severity are kept; for the summary and description only that they changed, never their text. Comments are not read.
+- A change's author shall be mapped onto a member through the identity links. An author who is no member keeps only the tracker's account id and never becomes a person. The facts belong to the work item: nothing shall count, list or rank changes per person.
+- At most a configured number of issues per sync target and tick (default 200) shall have their history read, the rest on the next tick, without losing a change made meanwhile. The first read of a target shall go back 120 days. A history that cannot be read shall never fail the sync.
+- The daily requirement snapshot shall keep each requirement's story points, issue type and due date.
 - The system shall sync VCS repositories into graph repo nodes.
 - The system shall append commit facts to developer or repo entities.
 - The system shall append pull request facts to developer entities.
