@@ -24,7 +24,7 @@ const OBSERVED = {
     status: "In Review",
     stage: "in_development",
     since: `${TODAY}T12:02:00Z`,
-    moved_by: "Liam Novak",
+    moved_by: "Liam Chen",
     changes: ["due date moved Oct 7 → Oct 9"],
     quiet_days: null,
   },
@@ -51,16 +51,23 @@ export function withObserved(task) {
   return { ...task, observed: OBSERVED[task.id] ?? null };
 }
 
-// How the board's people were captured today, beyond their own replies: one
-// inferred from Jira (not asked: no chat id) and one with no data (no Jira link).
+// How the board's people were captured today, beyond their own replies: some
+// inferred from Jira and one with no data (no Jira link).
 const INFERRED = {
-  U1010: {
+  // Payments: silent after a nudge, inferred at the close-out.
+  U1004: {
     summary:
-      "Not asked today. Inferred from Jira and GitLab: CHK-104 moved to In Review (in development) and merge request !44 opened; CHK-099 resolved.",
+      "No confirmed check-in after a nudge. Inferred from Jira and GitLab: CHK-104 moved to In Review (in development) and merge request !44 opened; CHK-099 resolved.",
     evidence: [
       "CHK-104 moved to In Review (in development) and merge request !44 opened",
       "CHK-099 resolved",
     ],
+  },
+  // Insights: not reached in chat, filled from Jira.
+  U1010: {
+    summary:
+      "Not reached in chat. Inferred from Jira: INS-12 moved to In QA (in development → in testing).",
+    evidence: ["INS-12 moved to In QA (in development → in testing)"],
   },
 };
 const NO_DATA = { U1009: "no_jira_link" };

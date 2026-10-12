@@ -289,4 +289,27 @@ test("a day inferred from Jira reads its evidence, and a filled day its own firs
   });
   assert.equal(boardMeta(notReached, "2026-10-06", { day: (iso) => iso }), "not reached · no data");
   assert.equal(boardRag(inferred), "amber");
+  assert.equal(
+    boardMeta(
+      {
+        ...inferred,
+        summary: "No confirmed check-in after a nudge. Inferred from Jira and GitLab: CHK-4 moved.",
+        evidence: ["CHK-4 moved"],
+      },
+      "2026-10-06",
+      { day: (iso) => iso },
+    ),
+    "no reply · inferred from Jira and GitLab · CHK-4 moved",
+  );
+  // One line of evidence on a board, however long the summary.
+  assert.equal(
+    boardMeta(
+      { ...inferred, evidence: ["CHK-4 moved to Done", "CHK-7 resolved", "worked on IDP-2"] },
+      "2026-10-06",
+      {
+        day: (iso) => iso,
+      },
+    ),
+    "not asked · inferred from Jira · CHK-4 moved to Done · 2 more",
+  );
 });

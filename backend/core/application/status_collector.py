@@ -2137,12 +2137,18 @@ class StatusCollector:
         issues, facts = await self._context_inputs(tenant_id, developer_id)
         # What moved since their last answer comes first (close-out v2): a task
         # moved to Done or to review is evidence, and no task need be under way.
+        account = await self._resolve_issue_tracker_assignee_id(tenant_id, developer_id)
         observed = await self._observed_day(
             tenant_id,
             developer_id,
             as_of,
             until=reference_at,
-            extra_keys=[issue.key for issue in issues],
+            # Only the tracker's issues that name them as assignee are theirs.
+            extra_keys=[
+                issue.key
+                for issue in issues
+                if issue.assignee is not None and issue.assignee.external_id == account
+            ],
         )
         if observed is not None and observed.has_events:
             return (

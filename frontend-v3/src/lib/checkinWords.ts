@@ -47,6 +47,9 @@ export const REPLY_WORDS = {
  * because the send is off, or not reached, because the send did not go through.
  */
 const NOT_ASKED_LEAD = "Not asked today.";
+// "Inferred from Jira and GitLab: ...": the tracker and code host a day was read from.
+const SOURCE_NAME = "(?:Jira|GitLab|GitHub|Git|the issue tracker)";
+const SOURCES = new RegExp(`Inferred from (${SOURCE_NAME}(?: and ${SOURCE_NAME})?): `);
 const NOT_REACHED_LEAD = "Not reached in chat.";
 
 /** "not asked" or "not reached" for a filled day, else null. */
@@ -144,11 +147,15 @@ export function boardMeta(
   if (repliedWithoutStatus(summary, source)) return "replied without a status";
   const evidence = person.evidence ?? [];
   if (source === "inferred" && from === asOf && evidence.length > 0) {
-    // One line of what moved: the day's own words come first ("not asked").
+    // One line of evidence: the day's own words first ("not asked"), then what
+    // moved last, and how many more lines its summary has.
     const why = (summary ?? "").trim().startsWith(NON_STATUS_LEAD)
       ? REPLY_WORDS.withoutStatus
       : (filledWord(summary) ?? REPLY_WORDS.none);
-    return `${why} · inferred from Jira · ${evidence.join("; ")}`;
+    const more = evidence.length > 1 ? ` · ${evidence.length - 1} more` : "";
+    // Where it was read, as the summary names it ("Jira and GitLab"); Jira otherwise.
+    const sources = SOURCES.exec(summary ?? "")?.[1] ?? "Jira";
+    return `${why} · inferred from ${sources} · ${evidence[0]}${more}`;
   }
   if (state === "missing") {
     return from === asOf && filledWord(summary)

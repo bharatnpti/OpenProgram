@@ -40,8 +40,11 @@ TASK_UPDATE_SOURCE = "task_update"
 #: A task under way with no movement for this many days reads "no movement".
 QUIET_AFTER_DAYS = 5
 
-#: How many tasks a summary names before it says "and N more".
+#: How many moved tasks a summary names before it says "N more tasks moved".
 SUMMARY_TASK_LIMIT = 5
+#: How many issues "worked on" names, and how many quiet tasks a summary lists.
+SUMMARY_WORKED_ON_LIMIT = 3
+SUMMARY_QUIET_LIMIT = 2
 
 # Tracker broad states that are work under way.
 _UNDER_WAY_STATES = frozenset({"in_progress", "blocked"})
@@ -273,7 +276,7 @@ def _tracker_events(
         and member_id in (fact.payload.get("from_member_id"), fact.payload.get("to_member_id"))
     )
     events: dict[str, list[TaskEvent]] = {}
-    worked_on: list[str] = []
+    last_worked: dict[str, datetime] = {}
     for fact in window:
         key = _key(fact)
         if not key:
@@ -282,8 +285,10 @@ def _tracker_events(
             event = _tracker_event(fact, member_id, mapping)
             if event is not None:
                 events.setdefault(key, []).append(event)
-        elif fact.payload.get("author_member_id") == member_id and key not in worked_on:
-            worked_on.append(key)
+        elif fact.payload.get("author_member_id") == member_id:
+            last_worked[key] = max(fact.observed_at, last_worked.get(key, fact.observed_at))
+    # The issue they worked on last comes first, as the moved tasks do.
+    worked_on = sorted(last_worked, key=lambda key: last_worked[key], reverse=True)
     return events, worked_on
 
 
@@ -317,10 +322,17 @@ def lines(day: ObservedDay, *, limit: int = SUMMARY_TASK_LIMIT) -> tuple[str, ..
     if day.unlinked:
         out.append(_joined(_event_words(day.unlinked)))
     if day.worked_on:
-        out.append(f"worked on {_joined(list(day.worked_on[:limit]))}")
+        named = list(day.worked_on[:SUMMARY_WORKED_ON_LIMIT])
+        if len(day.worked_on) > len(named):
+            named.append(f"{len(day.worked_on) - len(named)} more")
+        out.append(f"worked on {_joined(named)}")
     out.extend(
-        f"no movement on {task.key} for {task.quiet_days} days" for task in day.quiet[:limit]
+        f"no movement on {task.key} for {task.quiet_days} days"
+        for task in day.quiet[:SUMMARY_QUIET_LIMIT]
     )
+    if len(day.quiet) > SUMMARY_QUIET_LIMIT:
+        more = len(day.quiet) - SUMMARY_QUIET_LIMIT
+        out.append(f"{more} more {'task' if more == 1 else 'tasks'} without movement")
     return tuple(out)
 
 

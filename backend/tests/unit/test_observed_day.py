@@ -366,6 +366,36 @@ def test_observe_task_without_history_is_empty_and_a_quiet_one_says_so() -> None
     assert quiet.since == UNTIL - timedelta(days=9)
 
 
+def test_a_long_day_names_a_few_and_counts_the_rest() -> None:
+    day = digest(
+        "dev-kai",
+        SINCE,
+        UNTIL,
+        issue_changes=[
+            *(
+                _change(f"IDP-{n}", "story_points", None, "3", at=UNTIL - timedelta(hours=n))
+                for n in range(1, 6)
+            ),
+            *(
+                _change(f"CHK-{n}", "status", "To Do", "In Progress", at=UNTIL - timedelta(days=9))
+                for n in range(20, 23)
+            ),
+        ],
+        issue_facts=[
+            _issue(f"CHK-{n}", "in_progress", "In Progress", at=UNTIL - timedelta(days=9))
+            for n in range(20, 23)
+        ],
+        assigned_keys={"CHK-20", "CHK-21", "CHK-22"},
+    )
+
+    assert lines(day) == (
+        "worked on IDP-1, IDP-2, IDP-3 and 2 more",
+        "no movement on CHK-20 for 9 days",
+        "no movement on CHK-21 for 9 days",
+        "1 more task without movement",
+    )
+
+
 def test_window_starts_at_the_later_of_the_last_answer_and_the_previous_checkin() -> None:
     previous = UNTIL - timedelta(days=1)
     answered = UNTIL - timedelta(hours=3)
