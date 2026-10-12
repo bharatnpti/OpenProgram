@@ -1,0 +1,131 @@
+backend/core/ports/forecast.py
+  s_22b399281058a2::t_a57f47818030ab 3-4,7-13,48-65
+backend/api/dependencies.py
+  s_22b399281058a2::t_6aa4c36ffdba98 358-361
+  s_22b399281058a2::t_942681c23539e7 12
+frontend-v3/scripts/mock-api.mjs
+  s_22b399281058a2::t_33b032bc020b5f 35,260
+backend/core/ports/baselines.py
+  s_22b399281058a2::t_a57f47818030ab 1-24
+backend/infra/registry.py
+  s_22b399281058a2::t_cc7cb5e1271c81 8,16,64
+  s_22b399281058a2::t_16860a13353dee 74,135,145,159,172,281-284,502-510,519,522-542,666-669
+frontend-v3/src/api/generated.ts
+  s_22b399281058a2::t_51b824e17ac76c 236-256,1412-1436,2953-2962,4336-4341,4361-4369,5103-5229,6964-6981,7992-8026,11439-11512
+backend/core/application/baseline_service.py
+  s_22b399281058a2::t_e246616cad63e6 1-193,196-371,373-424,426-427
+  s_22b399281058a2::t_5a779d6c790d49 372
+  s_22b399281058a2::t_895ca32d644c80 194-195,425
+backend/core/domain/forecast.py
+  s_22b399281058a2::t_091cdcae0499f0 227-263
+  s_22b399281058a2::t_2623f14bf0cd23 226
+backend/api/routers/baselines.py
+  s_22b399281058a2::t_d55517a394c266 1-88
+backend/infra/workflows/delivery_reports.py
+  s_22b399281058a2::t_ac143851e9b52e 5-9,34-35,43-47,110-128,130-135
+backend/api/dtos.py
+  s_22b399281058a2::t_6aa4c36ffdba98 4689-4694,4719-4723
+backend/tests/unit/test_forecast_days.py
+  s_22b399281058a2::t_73f434e16db09e 348
+  s_22b399281058a2::t_a31ab4b70d69ca 174-176,345-347
+  s_22b399281058a2::t_99939763bf1fdc 1-145,149-173,177-344,349-404,409-415
+  s_22b399281058a2::t_a6164f8b928ec3 146-148,405-408
+frontend-v2/src/api/generated.ts
+  s_22b399281058a2::t_51b824e17ac76c 236-256,1412-1436,2953-2962,4336-4341,4361-4369,5103-5229,6964-6981,7992-8026,11439-11512
+frontend-v2/src/api/openapi.json
+  s_22b399281058a2::t_51b824e17ac76c 521-578,6505-6654,12050-12059,15775-15780,15826-15839,17653-17930,22546-22593
+frontend-v3/src/features/overall/baselineWords.ts
+  s_22b399281058a2::t_044ce8ca811a77 1-77,87-109,113-166
+  s_22b399281058a2::t_a5133fa69b2f27 78-86,110-112
+frontend-v3/src/features/overall/slip.ts
+  s_22b399281058a2::t_e7037884650f84 116-119,121-123,125-126
+  s_22b399281058a2::t_13c63a99a21f56 124
+  s_22b399281058a2::t_2f33b24cac3232 120
+backend/api/main.py
+  s_22b399281058a2::t_6aa4c36ffdba98 150
+  s_22b399281058a2::t_7162a61d1a0577 19
+frontend-v3/src/features/overall/baselineWords.test.ts
+  s_22b399281058a2::t_36c1c92d5ae9fb 1-43,48-80,85-100,105-129,134-158
+  s_22b399281058a2::t_a5133fa69b2f27 44-47,81-84,101-104,130-133
+backend/api/baseline_dtos.py
+  s_22b399281058a2::t_0af46fb72a85f9 1-51,53-180
+  s_22b399281058a2::t_d4cc3de17e1af4 52
+frontend-v3/src/features/overall/SlipChart.tsx
+  s_22b399281058a2::t_9f21078f72746b 95
+  s_22b399281058a2::t_bc7624af7f7c06 282
+  s_22b399281058a2::t_593f2f6a395fec 13,72
+frontend-v3/scripts/mock/baselines.mjs
+  s_22b399281058a2::t_20b6cba433d78d 1-183
+frontend-v3/src/api/schema.ts
+  s_22b399281058a2::t_631290cbe6fa0b 163-165
+backend/tests/unit/test_baselines.py
+  s_22b399281058a2::t_5d9deee9fc71d9 1
+  s_22b399281058a2::t_9acddf615f4c22 35,377-394,398
+  s_22b399281058a2::t_1d79f48da4a64b 2-34,36-376,395-397,399-445
+frontend-v3/src/api/asOf.ts
+  s_22b399281058a2::t_631290cbe6fa0b 47
+frontend-v3/src/features/overall/queries.ts
+  s_22b399281058a2::t_ebd70b37d80e26 74-89
+frontend-v3/src/pages/OverallPage.tsx
+  s_22b399281058a2::t_939670657e423c 30-31
+  s_22b399281058a2::t_9748bae9749223 7,87
+  s_22b399281058a2::t_9c1ab7461d142d 22-24
+frontend-v3/src/features/overall/slip.test.ts
+  s_22b399281058a2::t_8dc28d6ac36755 161,166-175
+  s_22b399281058a2::t_a5133fa69b2f27 162-165
+  s_22b399281058a2::t_9010d742635e8d 9
+backend/infra/persistence/postgres_forecast.py
+  s_22b399281058a2::t_3e4abc3258cfc1 3,6,15,19,29-33,164-291
+  s_22b399281058a2::t_84a3c68779e96c 292-293
+backend/infra/persistence/migrations/versions/0042_baselines_forecast_days.py
+  s_22b399281058a2::t_1465d88431978b 1-109
+backend/core/domain/baseline.py
+  s_22b399281058a2::t_e44ee789b576b3 1-188
+backend/tests/integration/test_baselines_repository.py
+  s_22b399281058a2::t_88ec7e5e27851d 1-141
+frontend-v3/src/api/openapi.json
+  s_22b399281058a2::t_51b824e17ac76c 521-578,6505-6654,12050-12059,15775-15780,15826-15839,17653-17930,22546-22593
+backend/core/application/forecast_service.py
+  s_22b399281058a2::t_8e8165f9e97181 13-18,26,44,54,67,70,80-82,125-126,154-167,188,192,201-203,474-478,509-512,514-518,522-533,555-718,881-882,884-885,951-1006
+  s_22b399281058a2::t_7cc4d36c980c00 513
+  s_22b399281058a2::t_5cd241eae63a7d 1007-1008
+backend/infra/workflows/dispatch.py
+  s_22b399281058a2::t_ac143851e9b52e 156
+frontend-v3/scripts/mock/viz-overall.mjs
+  s_22b399281058a2::t_33b032bc020b5f 43-45,49-50,60-66,73-79,188,219
+frontend-v3/src/api/client.ts
+  s_22b399281058a2::t_631290cbe6fa0b 31-33,616-629
+backend/api/routers/admin.py
+  s_22b399281058a2::t_6aa4c36ffdba98 7,120-134
+  s_22b399281058a2::t_39e90315828503 135-139
+frontend/src/api/generated.ts
+  s_22b399281058a2::t_51b824e17ac76c 236-256,1412-1436,2953-2962,4349-4354,4374-4382,5116-5242,6977-6994,8005-8039,11452-11525
+backend/infra/persistence/in_memory_baselines.py
+  s_22b399281058a2::t_df5ec401e525b8 1-48
+backend/infra/persistence/in_memory_forecast.py
+  s_22b399281058a2::t_df5ec401e525b8 3,5,7-13,73-101
+frontend-v3/src/features/overall/BaselineSection.tsx
+  s_22b399281058a2::t_4f13282cde2c16 1-37,45-99,103-176,179-300
+  s_22b399281058a2::t_a5133fa69b2f27 38-44,100-102,177-178
+frontend/src/api/openapi.json
+  s_22b399281058a2::t_51b824e17ac76c 521-578,6505-6654,12050-12059,15775-15780,15826-15839,17653-17930,22546-22593
+backend/infra/persistence/postgres_baselines.py
+  s_22b399281058a2::t_98acfa826a2f45 8,83
+  s_22b399281058a2::t_094ce190689000 1-7,9-82,84-191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b28abc180760f4c01cf246d70b37f7d11d8e208c",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
