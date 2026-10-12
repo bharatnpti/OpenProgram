@@ -1,0 +1,72 @@
+frontend-v3/src/features/admin/ReleaseReadinessTab.tsx
+  s_22b399281058a2::t_9ffc0db3301c71 376
+  s_22b399281058a2::t_569d44cac3ddfd 24-25
+  s_22b399281058a2::t_8170047e510f53 488-505
+  s_22b399281058a2::t_987af4ff85a0c3 506
+frontend-v3/src/features/profiles/useProfiles.ts
+  s_22b399281058a2::t_c85fef3ee8457e 1,4-21
+  s_22b399281058a2::t_176aae68179d52 2-3,22-48
+frontend-v3/src/features/profiles/PodPeople.tsx
+  s_22b399281058a2::t_a9c0fb4b70ae6f 1-143
+frontend-v3/scripts/mock-api.mjs
+  s_22b399281058a2::t_321c7dde683558 35
+  s_22b399281058a2::t_87eb8d096bb325 234
+frontend-v3/src/features/checkin/CheckinScheduleDialog.tsx
+  s_22b399281058a2::t_fb5b76c10539fe 97
+  s_22b399281058a2::t_c2f802772fbe0c 11
+frontend-v3/src/features/profiles/profiles.ts
+  s_22b399281058a2::t_ea16197cbcac1b 108-110,137,143-145,157-159
+  s_22b399281058a2::t_c621c34858712f 163-177
+  s_22b399281058a2::t_f8b0ad077a16e6 41-43
+  s_22b399281058a2::t_4dd07a76108435 1-40,44-107,111-136,138-142,146-156,160-162,178-181
+frontend-v3/src/features/admin/LinkParts.tsx
+  s_22b399281058a2::t_79bc27be68d8c2 10,17-18,26-28,34-45
+  s_22b399281058a2::t_aea2f5143e044b 1
+frontend-v3/src/features/profiles/profiles.test.ts
+  s_22b399281058a2::t_51c746ad4a1206 19
+  s_22b399281058a2::t_3f20f837f24062 1-18,20-87,92,97-128,135-151,153,158-159,173-183
+  s_22b399281058a2::t_ea16197cbcac1b 88-91,93-96,129-134,152,154-157
+  s_22b399281058a2::t_7cd07080a42ac4 160-172
+frontend-v3/src/features/delivery/PodPanel.tsx
+  s_22b399281058a2::t_b51ed8efe33b6f 13
+  s_22b399281058a2::t_785ed63fd15b15 173
+frontend-v3/src/features/profiles/ProfileDialog.tsx
+  s_22b399281058a2::t_ea16197cbcac1b 59-63,83-84,204-208
+  s_22b399281058a2::t_ebd8ea7716880f 1-58,64-82,85-203,209-213
+frontend-v3/src/features/profiles/MyProfiles.tsx
+  s_22b399281058a2::t_1d1c6ba4708463 1-36
+frontend-v3/scripts/mock/profiles.mjs
+  s_22b399281058a2::t_7de363b19c51b8 242-245
+  s_22b399281058a2::t_bc4563b23c3cb0 1-241,246-284,287-303,311-334,338-376,379-398
+  s_22b399281058a2::t_540387ae0ff4eb 285-286,304-310,335-337,377-378
+frontend-v3/src/features/admin/LinksTab.tsx
+  s_22b399281058a2::t_f71b97fc860eea 76-82
+  s_22b399281058a2::t_d8b24a969ab833 205,212
+  s_22b399281058a2::t_ea16197cbcac1b 463-464,586-588,603-605
+  s_22b399281058a2::t_22f8a1f66ef5b3 122-123,127
+  s_22b399281058a2::t_c7e49fd50c2e29 1-2,7-24
+  s_22b399281058a2::t_45600c421d2814 404,408,421,428-436,448-452,455-458,465,475-489,493,497-527,533-585,589-602,606-612
+  s_22b399281058a2::t_5c1145e90987fd 162-165
+  s_22b399281058a2::t_df77c8d7cdcf9d 613-615
+frontend-v3/src/features/admin/DirectoryTab.tsx
+  s_22b399281058a2::t_9e246644a2d061 24-27
+  s_22b399281058a2::t_9c103b1502846f 297-339
+  s_22b399281058a2::t_19acf9c04faee9 132-133,135-139
+  s_22b399281058a2::t_060c000a185349 175,180-182,189-192,195-197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "29a5a040ca4db4eb353be0c82084bd718b85fc0e",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
