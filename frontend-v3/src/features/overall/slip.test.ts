@@ -6,6 +6,7 @@ import {
   changeKeys,
   dateTicks,
   rangeWords,
+  rebuiltNote,
   slipDrawable,
   slipFinding,
   slipGeometry,
@@ -155,6 +156,21 @@ test("a cleared date breaks the line and hatches until it is set again", () => {
   assert.equal(g.committed.length, 2);
   assert.equal(g.noDate.length, 1);
   assert.equal(g.noDate[0].title, `Cleared on ${sep(21)}`);
+});
+
+test("the days rebuilt afterwards are said up to the last of them", () => {
+  assert.equal(
+    rebuiltNote([{ day: "2026-10-08" }, { day: "2026-10-09", reconstructed: false }]),
+    null,
+  );
+  assert.equal(
+    rebuiltNote([
+      { day: "2026-10-07", reconstructed: true },
+      { day: "2026-10-08", reconstructed: true },
+      { day: "2026-10-09", reconstructed: false },
+    ]),
+    `The forecast up to ${formatDay("2026-10-08")} was rebuilt afterwards from the daily snapshots kept then.`,
+  );
 });
 
 test("date ticks fall on the 1st and the 15th inside the range", () => {

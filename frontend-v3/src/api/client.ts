@@ -28,6 +28,9 @@ import type {
   PodDeliveryResponse,
   ProjectDeliveryResponse,
   ForecastHistoryResponse,
+  PlanningBaselineResponse,
+  PlanningBaselinesResponse,
+  PlanningCompleteRequest,
   ReleaseCandidateResponse,
   ReleaseRequest,
   ReleaseResponse,
@@ -655,6 +658,20 @@ export const apiClient = {
         release_id: releaseId,
       }),
     ),
+  /** The project's (or one release's) planning baselines, newest first. */
+  projectBaselines: (projectId: string, releaseId?: string, asOf?: string) =>
+    requestJson<PlanningBaselinesResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/baselines`, {
+        as_of: asOf,
+        release_id: releaseId,
+      }),
+    ),
+  /** Mark planning complete: a new baseline for the project or `body.release_id`. */
+  markPlanningComplete: (projectId: string, body: PlanningCompleteRequest) =>
+    requestJson<PlanningBaselineResponse>(`/projects/${encodeURIComponent(projectId)}/baselines`, {
+      method: "POST",
+      body,
+    }),
   podDelivery: (podId: string, asOf?: string) =>
     requestJson<PodDeliveryResponse>(withAsOf(`/pods/${encodeURIComponent(podId)}/delivery`, asOf)),
   setProjectDate: (projectId: string, body: DeliveryDateRequest) =>

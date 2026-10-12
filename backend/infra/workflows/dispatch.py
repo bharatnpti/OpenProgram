@@ -153,6 +153,7 @@ def _derived_workflow_input(
         return DeliverySnapshotInput(
             tenant_id=input.tenant_id,
             observed_at=_optional_str(input.payload, "observed_at"),
+            reconstruct_days=_optional_int(input.payload, "reconstruct_days"),
         )
     if connector == "day_report":
         return DayReportDispatchInput(

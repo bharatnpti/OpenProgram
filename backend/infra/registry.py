@@ -5,6 +5,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from cryptography.fernet import Fernet
 from redis.asyncio import Redis
@@ -12,6 +13,7 @@ from redis.asyncio import Redis
 from config.settings import Settings
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.availability import AvailabilityService
+from core.application.baseline_service import BaselineService
 from core.application.blocker_lifecycle import BlockerLifecycleService
 from core.application.blocker_resolution import BlockerResolutionService
 from core.application.blocker_settlement import BlockerSettlement
@@ -60,6 +62,7 @@ from core.ports.auth import (
     AuthSession,
     CurrentPrincipal,
 )
+from core.ports.baselines import PlanningBaselineRepository
 from core.ports.branding import TenantLogoRepository
 from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
@@ -69,6 +72,7 @@ from core.ports.directory import DirectoryProvider, DirectoryUserRepository
 from core.ports.escalation_matrix import EscalationMatrixRepository
 from core.ports.forecast import (
     CommitmentRepository,
+    ForecastDayRepository,
     ForecastSettingsRepository,
     ReleaseRepository,
 )
@@ -130,6 +134,7 @@ from infra.adapters.secrets.encrypted import (
     InMemoryEncryptedSecretRecordStore,
     PostgresEncryptedSecretRecordStore,
 )
+from infra.persistence.in_memory_baselines import InMemoryPlanningBaselineRepository
 from infra.persistence.in_memory_branding import InMemoryTenantLogoRepository
 from infra.persistence.in_memory_connections import InMemoryConnectionRepository
 from infra.persistence.in_memory_delivery import (
@@ -139,6 +144,7 @@ from infra.persistence.in_memory_delivery import (
 from infra.persistence.in_memory_escalation import InMemoryEscalationMatrixRepository
 from infra.persistence.in_memory_forecast import (
     InMemoryCommitmentRepository,
+    InMemoryForecastDayRepository,
     InMemoryForecastSettingsRepository,
     InMemoryReleaseRepository,
 )
@@ -153,6 +159,7 @@ from infra.persistence.in_memory_jira_writes import InMemoryJiraWritesRepository
 from infra.persistence.in_memory_profiles import InMemoryProfileRepository
 from infra.persistence.in_memory_readiness import InMemoryReleaseReadinessRepository
 from infra.persistence.in_memory_reports import InMemoryDayReportRepository
+from infra.persistence.postgres_baselines import PostgresPlanningBaselineRepository
 from infra.persistence.postgres_branding import PostgresTenantLogoRepository
 from infra.persistence.postgres_connections import PostgresConnectionRepository
 from infra.persistence.postgres_cross_person import PostgresCrossPersonRequestRepository
@@ -165,6 +172,7 @@ from infra.persistence.postgres_directory import PostgresDirectoryUserRepository
 from infra.persistence.postgres_escalation import PostgresEscalationMatrixRepository
 from infra.persistence.postgres_forecast import (
     PostgresCommitmentRepository,
+    PostgresForecastDayRepository,
     PostgresReleaseRepository,
 )
 from infra.persistence.postgres_gates import (
@@ -272,6 +280,10 @@ class ServiceRegistry:
     _commitment_repository: CommitmentRepository | None = field(default=None, init=False)
     _release_repository: ReleaseRepository | None = field(default=None, init=False)
     _forecast_settings_repository: ForecastSettingsRepository | None = field(
+        default=None, init=False
+    )
+    _forecast_day_repository: ForecastDayRepository | None = field(default=None, init=False)
+    _planning_baseline_repository: PlanningBaselineRepository | None = field(
         default=None, init=False
     )
     _gate_repositories: (
@@ -492,6 +504,15 @@ class ServiceRegistry:
             )
         return self._forecast_settings_repository
 
+    def forecast_day_repository(self) -> ForecastDayRepository:
+        if self._forecast_day_repository is None:
+            self._forecast_day_repository = (
+                InMemoryForecastDayRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresForecastDayRepository(self._executor())
+            )
+        return self._forecast_day_repository
+
     def forecast_service(self) -> ForecastService:
         return ForecastService(
             graph_repository=self.graph_repository(),
@@ -500,8 +521,30 @@ class ServiceRegistry:
             release_repository=self.release_repository(),
             time_series_repository=self.time_series_repository(),
             settings_repository=self.forecast_settings_repository(),
+            forecast_day_repository=self.forecast_day_repository(),
             default_min_sample_days=self.settings.forecast_min_history_days,
             today=self._tenant_today,
+            zone=self._tenant_zone(),
+        )
+
+    def planning_baseline_repository(self) -> PlanningBaselineRepository:
+        if self._planning_baseline_repository is None:
+            self._planning_baseline_repository = (
+                InMemoryPlanningBaselineRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresPlanningBaselineRepository(self._executor())
+            )
+        return self._planning_baseline_repository
+
+    def baseline_service(self) -> BaselineService:
+        return BaselineService(
+            graph_repository=self.graph_repository(),
+            delivery_service=self.delivery_service(),
+            release_repository=self.release_repository(),
+            baseline_repository=self.planning_baseline_repository(),
+            time_series_repository=self.time_series_repository(),
+            today=self._tenant_today,
+            zone=self._tenant_zone(),
         )
 
     def profile_repository(self) -> ProfileRepository:
@@ -647,8 +690,10 @@ class ServiceRegistry:
             return []
 
     def _tenant_today(self) -> date:
-        zone = resolve_timezone(None, self.settings.tenant_default_timezone)
-        return datetime.now(tz=zone).date()
+        return datetime.now(tz=self._tenant_zone()).date()
+
+    def _tenant_zone(self) -> ZoneInfo:
+        return resolve_timezone(None, self.settings.tenant_default_timezone)
 
     def day_report_repository(self) -> DayReportRepository:
         if self._day_report_repository is None:

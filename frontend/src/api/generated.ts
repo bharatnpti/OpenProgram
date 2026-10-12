@@ -233,6 +233,27 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/workflows/forecast-days/reconstruct": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Dispatch Forecast Reconstruction
+     * @description Rebuild the forecast of the days before today from the stored snapshots, for the
+     *     principal's tenant: the snapshot run, with reconstruct_days. Days the hourly run kept stay.
+     */
+    post: operations["dispatch_forecast_reconstruction_admin_workflows_forecast_days_reconstruct_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/admin/ops/dead-letters": {
     parameters: {
       query?: never;
@@ -1398,6 +1419,31 @@ export interface paths {
     post?: never;
     /** Delete Release */
     delete: operations["delete_release_projects__project_id__releases__release_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/baselines": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Project Baselines
+     * @description The project's (or one release's) planning baselines as they stood on ``as_of``,
+     *     newest first, each with the scope of that day against it.
+     */
+    get: operations["project_baselines_projects__project_id__baselines_get"];
+    put?: never;
+    /**
+     * Mark Planning Complete
+     * @description Freeze the requirements in scope as the new baseline; an earlier one is kept, replaced.
+     */
+    post: operations["mark_planning_complete_projects__project_id__baselines_post"];
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -3088,6 +3134,16 @@ export interface components {
       /** Scopes */
       scopes: string[];
     };
+    /**
+     * BaselineKind
+     * @enum {string}
+     */
+    BaselineKind: "snapshot" | "date";
+    /**
+     * BaselineScopeKind
+     * @enum {string}
+     */
+    BaselineScopeKind: "project" | "release";
     /** BlockerCorrectionItemDto */
     BlockerCorrectionItemDto: {
       /** Blocker Id */
@@ -4474,6 +4530,12 @@ export interface components {
       p85: string | null;
       /** Sample Days */
       sample_days: number;
+      /**
+       * Reconstructed
+       * @description True when the day was rebuilt later from the stored snapshots, not kept on the day.
+       * @default false
+       */
+      reconstructed: boolean;
     };
     /**
      * ForecastHistoryResponse
@@ -4492,6 +4554,15 @@ export interface components {
        * @description Working days of history each day's forecast needed before it gave dates.
        */
       needed_days: number;
+    };
+    /** ForecastReconstructionRequest */
+    ForecastReconstructionRequest: {
+      /**
+       * Days
+       * @description How many days before today to rebuild from the stored snapshots.
+       * @default 90
+       */
+      days: number;
     };
     /**
      * ForecastSettingsResponse
@@ -5280,6 +5351,133 @@ export interface components {
       confidence: number | null;
       /** Factors */
       factors: components["schemas"]["RollupFactorDto"][];
+    };
+    /** PlanningBaselineResponse */
+    PlanningBaselineResponse: {
+      /** Baseline Id */
+      baseline_id: string;
+      /** Number */
+      number: number;
+      /** Active */
+      active: boolean;
+      scope_kind: components["schemas"]["BaselineScopeKind"];
+      /** Scope Id */
+      scope_id: string;
+      /** Project Id */
+      project_id: string;
+      kind: components["schemas"]["BaselineKind"];
+      /**
+       * Planned On
+       * Format: date
+       */
+      planned_on: string;
+      /**
+       * Reconstructed
+       * @description True when no snapshot of the day was kept and the requirements were rebuilt.
+       */
+      reconstructed: boolean;
+      /**
+       * Snapshot Day
+       * @description The snapshot the requirements were read from, when it is not planned_on.
+       */
+      snapshot_day: string | null;
+      /** Requirements */
+      requirements: number;
+      /** Open */
+      open: number;
+      /**
+       * Points
+       * @description The story points frozen, when every requirement carried them.
+       */
+      points: number | null;
+      /** Change Label */
+      change_label: string;
+      /** Grace Working Days */
+      grace_working_days: number;
+      /** Note */
+      note: string;
+      /** Set By */
+      set_by: string;
+      /** Set By Name */
+      set_by_name: string;
+      /**
+       * Set At
+       * Format: date-time
+       */
+      set_at: string;
+      /** Superseded At */
+      superseded_at: string | null;
+      since: components["schemas"]["ScopeSinceBaselineResponse"];
+    };
+    /**
+     * PlanningBaselinesResponse
+     * @description A project's or a release's baselines on the day read, newest first.
+     */
+    PlanningBaselinesResponse: {
+      /** Project Id */
+      project_id: string;
+      /** Release Id */
+      release_id: string | null;
+      scope_kind: components["schemas"]["BaselineScopeKind"];
+      /** Scope Id */
+      scope_id: string;
+      /** Name */
+      name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /**
+       * In Scope
+       * @description Requirements in scope on the day read.
+       */
+      in_scope: number;
+      active: components["schemas"]["PlanningBaselineResponse"] | null;
+      /** Baselines */
+      baselines: components["schemas"]["PlanningBaselineResponse"][];
+      /**
+       * Default Change Label
+       * @default CR
+       */
+      default_change_label: string;
+      /**
+       * Default Grace Working Days
+       * @default 2
+       */
+      default_grace_working_days: number;
+    };
+    /**
+     * PlanningCompleteRequest
+     * @description Mark planning complete for the project, or for one of its releases.
+     */
+    PlanningCompleteRequest: {
+      /**
+       * Release Id
+       * @description One release of the project; null for the whole project.
+       */
+      release_id?: string | null;
+      /**
+       * Planned On
+       * @description The day planning was complete; null for today. An earlier day freezes that day's stored snapshot.
+       */
+      planned_on?: string | null;
+      /**
+       * Change Label
+       * @description The Jira label of a change agreed after planning; null for the default "CR".
+       */
+      change_label?: string | null;
+      /**
+       * Grace Working Days
+       * @description Working days after planning in which an added requirement counts as planned.
+       * @default 2
+       */
+      grace_working_days: number;
+      /**
+       * Note
+       * @default
+       */
+      note: string;
     };
     /** PodBlockersResponse */
     PodBlockersResponse: {
@@ -7118,6 +7316,24 @@ export interface components {
      */
     ScopeKind: "project" | "release" | "pod";
     /**
+     * ScopeSinceBaselineResponse
+     * @description Today's scope against one baseline: keys only (at most 50 listed), never who.
+     */
+    ScopeSinceBaselineResponse: {
+      /** Added */
+      added: number;
+      /** Added With Label */
+      added_with_label: number;
+      /** Removed */
+      removed: number;
+      /** Added Keys */
+      added_keys: string[];
+      /** Added With Label Keys */
+      added_with_label_keys: string[];
+      /** Removed Keys */
+      removed_keys: string[];
+    };
+    /**
      * SelfCheckinPreferenceUpdateRequest
      * @description The part of their own check-in preference a person may change.
      *
@@ -8114,6 +8330,41 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["CalendarSyncDispatchRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkflowDispatchResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  dispatch_forecast_reconstruction_admin_workflows_forecast_days_reconstruct_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ForecastReconstructionRequest"];
       };
     };
     responses: {
@@ -11537,6 +11788,80 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_baselines_projects__project_id__baselines_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        /** @description One release of the project. */
+        release_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanningBaselinesResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  mark_planning_complete_projects__project_id__baselines_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PlanningCompleteRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanningBaselineResponse"];
+        };
       };
       /** @description Validation Error */
       422: {

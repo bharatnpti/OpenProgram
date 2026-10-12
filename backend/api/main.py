@@ -16,6 +16,7 @@ from api.routers import (
     admin,
     ask,
     auth,
+    baselines,
     branding,
     checkin,
     config,
@@ -147,6 +148,7 @@ def create_app(
     app.include_router(integrations.router)
     app.include_router(delivery.router)
     app.include_router(forecast.router)
+    app.include_router(baselines.router)
     app.include_router(gates.router)
     app.include_router(readiness.router)
     app.include_router(reports.router)

@@ -9,6 +9,7 @@ from fastapi import Header, HTTPException, Request, status
 from config.settings import Settings
 from core.application.ask_investigation import InvestigationLimits, InvestigationService
 from core.application.ask_service import AskService
+from core.application.baseline_service import BaselineService
 from core.application.blocker_resolution import BlockerResolutionService
 from core.application.branding_service import BrandingService
 from core.application.config_service import ConfigService, DirectoryService
@@ -359,6 +360,10 @@ def get_day_report_service(request: Request) -> DayReportService:
 
 def get_forecast_service(request: Request) -> ForecastService:
     return get_registry(request).forecast_service()
+
+
+def get_baseline_service(request: Request) -> BaselineService:
+    return get_registry(request).baseline_service()
 
 
 def get_gate_service(request: Request) -> GateService:

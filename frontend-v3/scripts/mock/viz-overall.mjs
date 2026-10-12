@@ -40,10 +40,14 @@ function shortWanted(req) {
   return /(?:^|;\s*)viz-history=short(?:;|$)/.test(req.headers.cookie ?? "");
 }
 
+/** Days before this one read as rebuilt afterwards from the snapshots (reconstructed). */
+const KEPT_FROM = "2026-09-29";
+
 /**
  * The forecast as it stood each day, for the month: nothing until ten working
  * days of history, then a range that starts wide and late-leaning and narrows
- * to today's (the reports lane's 4 Nov to 12 Nov for the project).
+ * to today's (the reports lane's 4 Nov to 12 Nov for the project). The days
+ * before 29 Sep were rebuilt from the snapshots, as after the reconstruction.
  */
 function monthHistory(scope, today) {
   const last = { p50: today.p50, p85: today.p85 };
@@ -53,14 +57,26 @@ function monthHistory(scope, today) {
     const day = addDays(TODAY, -offset);
     if (isWorkingDay(day)) working += 1;
     if (working < 11 || !last.p50 || !last.p85) {
-      days.push({ day, p50: null, p85: null, sample_days: Math.max(0, working - 1) });
+      days.push({
+        day,
+        p50: null,
+        p85: null,
+        sample_days: Math.max(0, working - 1),
+        reconstructed: day < KEPT_FROM,
+      });
       continue;
     }
     // From 14 days before today the range narrows linearly to today's.
     const t = Math.min(1, (29 - offset - 14) / 15);
     const p50 = addDays(last.p50, Math.round(-6 * (1 - t)));
     const p85 = addDays(last.p85, Math.round(12 * (1 - t)));
-    days.push({ day, p50, p85, sample_days: Math.min(21, working - 1) });
+    days.push({
+      day,
+      p50,
+      p85,
+      sample_days: Math.min(21, working - 1),
+      reconstructed: day < KEPT_FROM,
+    });
   }
   return {
     project_id: PROJECT,
@@ -169,7 +185,7 @@ export function api(req, url, roles, userId, send, deny) {
         project_id: m[1],
         release_id: releaseId,
         scope_kind: releaseId ? "release" : "project",
-        days: [{ day: TODAY, p50: null, p85: null, sample_days: 0 }],
+        days: [{ day: TODAY, p50: null, p85: null, sample_days: 0, reconstructed: false }],
         needed_days: neededDays(),
       });
     }
@@ -200,6 +216,7 @@ export function api(req, url, roles, userId, send, deny) {
           p50: null,
           p85: null,
           sample_days: i,
+          reconstructed: false,
         })),
         needed_days: neededDays(),
       });

@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from datetime import date
 from typing import Protocol
 
-from core.domain.forecast import CommitmentScope, DateChange, ForecastSettings, Release
+from core.domain.forecast import (
+    CommitmentScope,
+    DateChange,
+    ForecastDayRecord,
+    ForecastSettings,
+    Release,
+)
 
 
 class CommitmentRepository(Protocol):
@@ -37,3 +45,21 @@ class ForecastSettingsRepository(Protocol):
     async def get(self, tenant_id: str) -> ForecastSettings | None: ...
 
     async def save(self, settings: ForecastSettings) -> None: ...
+
+
+class ForecastDayRepository(Protocol):
+    """Each scope's forecast as it stood per day (forecast_days)."""
+
+    async def save(self, records: Sequence[ForecastDayRecord]) -> None:
+        """Keep each record, replacing the scope's row for its day.
+
+        A reconstructed record never replaces a row the hourly run kept; any
+        other record replaces whatever is there.
+        """
+        ...
+
+    async def list_between(
+        self, tenant_id: str, scope: CommitmentScope, start: date, end: date
+    ) -> list[ForecastDayRecord]:
+        """The scope's rows from ``start`` to ``end``, oldest first."""
+        ...

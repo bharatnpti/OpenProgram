@@ -71,6 +71,22 @@ export function useForecastHistory(projectId: string, releaseId?: string) {
   };
 }
 
+/**
+ * The planning baselines of the project or one release, read with the project's
+ * progress (product owner, manager, executive, admin), as the forecast is.
+ */
+export function useBaselines(projectId: string, releaseId?: string) {
+  const { canReadProjectProgress } = useRole();
+  return {
+    readable: canReadProjectProgress,
+    query: useQuery({
+      queryKey: ["baselines", projectId, releaseId ?? ""],
+      queryFn: () => apiClient.projectBaselines(projectId, releaseId),
+      enabled: canReadProjectProgress && projectId !== "",
+    }),
+  };
+}
+
 /** Several projects' delivery reads at once (a portfolio's), each the same query as `useDelivery`. */
 export function useProjectDeliveries(projectIds: string[]) {
   const { canReadProjectProgress } = useRole();

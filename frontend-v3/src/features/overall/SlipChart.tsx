@@ -10,6 +10,7 @@ import {
   slipDrawable,
   slipFinding,
   slipGeometry,
+  rebuiltNote,
   slipRecord,
   type Phrase,
 } from "./slip";
@@ -68,7 +69,7 @@ function SlipCard({
   days,
 }: {
   scope: ScopeDeliveryResponse;
-  days: { day: string; p50: string | null; p85: string | null }[];
+  days: { day: string; p50: string | null; p85: string | null; reconstructed?: boolean }[];
 }) {
   // The read's own last day: the day it was asked for, by the server's clock.
   const today = days[days.length - 1]?.day ?? "";
@@ -91,6 +92,7 @@ function SlipCard({
   }
   const g = slipGeometry(changes, days, today);
   const keys = changeKeys(changes);
+  const rebuilt = g.bands.length > 0 ? rebuiltNote(days) : null;
   const band =
     BAND[
       counted(scope) ? forecastTone(scope.target, scope.history.p50, scope.history.p85) : "neutral"
@@ -277,6 +279,7 @@ function SlipCard({
               </span>
             ) : null}
           </Legend>
+          {rebuilt ? <p className="text-[12px] text-grey-secondary">{rebuilt}</p> : null}
         </div>
       </div>
     </VizCard>

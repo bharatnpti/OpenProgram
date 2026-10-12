@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import date
 
-from core.domain.forecast import CommitmentScope, DateChange, ForecastSettings, Release
+from core.domain.forecast import (
+    CommitmentScope,
+    DateChange,
+    ForecastDayRecord,
+    ForecastSettings,
+    Release,
+)
 
 
 @dataclass
@@ -62,3 +70,32 @@ class InMemoryForecastSettingsRepository:
 
     async def save(self, settings: ForecastSettings) -> None:
         self._settings[settings.tenant_id] = settings
+
+
+@dataclass
+class InMemoryForecastDayRepository:
+    _rows: dict[tuple[str, str, str, date], ForecastDayRecord] = field(default_factory=dict)
+
+    async def save(self, records: Sequence[ForecastDayRecord]) -> None:
+        for record in records:
+            key = (record.tenant_id, record.scope.kind.value, record.scope.id, record.day)
+            kept = self._rows.get(key)
+            if kept is not None and record.reconstructed and not kept.reconstructed:
+                continue
+            self._rows[key] = record
+
+    async def list_between(
+        self, tenant_id: str, scope: CommitmentScope, start: date, end: date
+    ) -> list[ForecastDayRecord]:
+        return sorted(
+            (
+                row
+                for (tenant, kind, scope_id, day), row in self._rows.items()
+                if tenant == tenant_id
+                and kind == scope.kind.value
+                and scope_id == scope.id
+                and row.scope.project_id == scope.project_id
+                and start <= day <= end
+            ),
+            key=lambda row: row.day,
+        )

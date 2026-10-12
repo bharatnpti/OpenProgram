@@ -224,6 +224,44 @@ class TeamForecast:
 
 
 @dataclass(frozen=True, kw_only=True)
+class ForecastDayRecord:
+    """A scope's forecast as it stood on one day, kept so its history is read, not replayed.
+
+    The hourly snapshot run keeps today's (each later run that day replaces it,
+    so the day's last run stays). A one-off reconstruction fills earlier days
+    from the stored snapshots and marks them ``reconstructed``; it never replaces
+    a day the hourly run kept. ``attribution`` is for the breakdown of why the
+    date moved, and is None until something computes it.
+    """
+
+    tenant_id: str
+    scope: CommitmentScope
+    day: date
+    p50: date | None
+    p85: date | None
+    verdict: Verdict
+    #: The date the verdict was measured against that day: committed, else Jira's release date.
+    target_date: date | None
+    #: The team's latest date that day, and the requirement that carried it.
+    team_latest: date | None
+    team_latest_key: str | None
+    remaining: float
+    unit: str
+    sample_days: int
+    completed_in_sample: float
+    #: The working days of history the forecast needed that day.
+    min_sample_days: int
+    computed_at: datetime
+    reconstructed: bool = False
+    attribution: Mapping[str, object] | None = None
+
+
+def changes_until(changes: Iterable[DateChange], cutoff: datetime) -> list[DateChange]:
+    """The date changes made before ``cutoff``: a scope's commitment as it stood then."""
+    return [change for change in changes if change.changed_at < cutoff]
+
+
+@dataclass(frozen=True, kw_only=True)
 class OpenItem:
     key: str
     #: The check-in ETA's last day, when someone gave one.

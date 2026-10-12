@@ -518,6 +518,64 @@
         }
       }
     },
+    "/admin/workflows/forecast-days/reconstruct": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Dispatch Forecast Reconstruction",
+        "description": "Rebuild the forecast of the days before today from the stored snapshots, for the\nprincipal's tenant: the snapshot run, with reconstruct_days. Days the hourly run kept stay.",
+        "operationId": "dispatch_forecast_reconstruction_admin_workflows_forecast_days_reconstruct_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForecastReconstructionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDispatchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/ops/dead-letters": {
       "get": {
         "tags": ["admin"],
@@ -6432,6 +6490,156 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/baselines": {
+      "get": {
+        "tags": ["delivery"],
+        "summary": "Project Baselines",
+        "description": "The project's (or one release's) planning baselines as they stood on ``as_of``,\nnewest first, each with the scope of that day against it.",
+        "operationId": "project_baselines_projects__project_id__baselines_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One release of the project.",
+              "title": "Release Id"
+            },
+            "description": "One release of the project."
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningBaselinesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["delivery"],
+        "summary": "Mark Planning Complete",
+        "description": "Freeze the requirements in scope as the new baseline; an earlier one is kept, replaced.",
+        "operationId": "mark_planning_complete_projects__project_id__baselines_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanningCompleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningBaselineResponse"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -12422,6 +12630,16 @@
         "required": ["subject", "roles", "scopes"],
         "title": "AuthUserResponse"
       },
+      "BaselineKind": {
+        "type": "string",
+        "enum": ["snapshot", "date"],
+        "title": "BaselineKind"
+      },
+      "BaselineScopeKind": {
+        "type": "string",
+        "enum": ["project", "release"],
+        "title": "BaselineScopeKind"
+      },
       "BlockerCorrectionItemDto": {
         "properties": {
           "blocker_id": {
@@ -16137,6 +16355,12 @@
           "sample_days": {
             "type": "integer",
             "title": "Sample Days"
+          },
+          "reconstructed": {
+            "type": "boolean",
+            "title": "Reconstructed",
+            "description": "True when the day was rebuilt later from the stored snapshots, not kept on the day.",
+            "default": false
           }
         },
         "type": "object",
@@ -16181,6 +16405,20 @@
         "required": ["project_id", "release_id", "scope_kind", "days", "needed_days"],
         "title": "ForecastHistoryResponse",
         "description": "The project's, or one release's, history forecast as it stood on each day."
+      },
+      "ForecastReconstructionRequest": {
+        "properties": {
+          "days": {
+            "type": "integer",
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Days",
+            "description": "How many days before today to rebuild from the stored snapshots.",
+            "default": 90
+          }
+        },
+        "type": "object",
+        "title": "ForecastReconstructionRequest"
       },
       "ForecastSettingsResponse": {
         "properties": {
@@ -18191,6 +18429,284 @@
         "type": "object",
         "required": ["id", "kind", "name", "rag", "source", "confidence", "factors"],
         "title": "PersonaTreeNodeDto"
+      },
+      "PlanningBaselineResponse": {
+        "properties": {
+          "baseline_id": {
+            "type": "string",
+            "title": "Baseline Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          },
+          "scope_kind": {
+            "$ref": "#/components/schemas/BaselineScopeKind"
+          },
+          "scope_id": {
+            "type": "string",
+            "title": "Scope Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BaselineKind"
+          },
+          "planned_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Planned On"
+          },
+          "reconstructed": {
+            "type": "boolean",
+            "title": "Reconstructed",
+            "description": "True when no snapshot of the day was kept and the requirements were rebuilt."
+          },
+          "snapshot_day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Day",
+            "description": "The snapshot the requirements were read from, when it is not planned_on."
+          },
+          "requirements": {
+            "type": "integer",
+            "title": "Requirements"
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open"
+          },
+          "points": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Points",
+            "description": "The story points frozen, when every requirement carried them."
+          },
+          "change_label": {
+            "type": "string",
+            "title": "Change Label"
+          },
+          "grace_working_days": {
+            "type": "integer",
+            "title": "Grace Working Days"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          },
+          "set_by": {
+            "type": "string",
+            "title": "Set By"
+          },
+          "set_by_name": {
+            "type": "string",
+            "title": "Set By Name"
+          },
+          "set_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Set At"
+          },
+          "superseded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded At"
+          },
+          "since": {
+            "$ref": "#/components/schemas/ScopeSinceBaselineResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "baseline_id",
+          "number",
+          "active",
+          "scope_kind",
+          "scope_id",
+          "project_id",
+          "kind",
+          "planned_on",
+          "reconstructed",
+          "snapshot_day",
+          "requirements",
+          "open",
+          "points",
+          "change_label",
+          "grace_working_days",
+          "note",
+          "set_by",
+          "set_by_name",
+          "set_at",
+          "superseded_at",
+          "since"
+        ],
+        "title": "PlanningBaselineResponse"
+      },
+      "PlanningBaselinesResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "scope_kind": {
+            "$ref": "#/components/schemas/BaselineScopeKind"
+          },
+          "scope_id": {
+            "type": "string",
+            "title": "Scope Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "in_scope": {
+            "type": "integer",
+            "title": "In Scope",
+            "description": "Requirements in scope on the day read."
+          },
+          "active": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanningBaselineResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "baselines": {
+            "items": {
+              "$ref": "#/components/schemas/PlanningBaselineResponse"
+            },
+            "type": "array",
+            "title": "Baselines"
+          },
+          "default_change_label": {
+            "type": "string",
+            "title": "Default Change Label",
+            "default": "CR"
+          },
+          "default_grace_working_days": {
+            "type": "integer",
+            "title": "Default Grace Working Days",
+            "default": 2
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "release_id",
+          "scope_kind",
+          "scope_id",
+          "name",
+          "as_of",
+          "in_scope",
+          "active",
+          "baselines"
+        ],
+        "title": "PlanningBaselinesResponse",
+        "description": "A project's or a release's baselines on the day read, newest first."
+      },
+      "PlanningCompleteRequest": {
+        "properties": {
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id",
+            "description": "One release of the project; null for the whole project."
+          },
+          "planned_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned On",
+            "description": "The day planning was complete; null for today. An earlier day freezes that day's stored snapshot."
+          },
+          "change_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Label",
+            "description": "The Jira label of a change agreed after planning; null for the default \"CR\"."
+          },
+          "grace_working_days": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Grace Working Days",
+            "description": "Working days after planning in which an added requirement counts as planned.",
+            "default": 2
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "PlanningCompleteRequest",
+        "description": "Mark planning complete for the project, or for one of its releases."
       },
       "PodBlockersResponse": {
         "properties": {
@@ -23016,6 +23532,54 @@
         "type": "string",
         "enum": ["project", "release", "pod"],
         "title": "ScopeKind"
+      },
+      "ScopeSinceBaselineResponse": {
+        "properties": {
+          "added": {
+            "type": "integer",
+            "title": "Added"
+          },
+          "added_with_label": {
+            "type": "integer",
+            "title": "Added With Label"
+          },
+          "removed": {
+            "type": "integer",
+            "title": "Removed"
+          },
+          "added_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Added Keys"
+          },
+          "added_with_label_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Added With Label Keys"
+          },
+          "removed_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Removed Keys"
+          }
+        },
+        "type": "object",
+        "required": [
+          "added",
+          "added_with_label",
+          "removed",
+          "added_keys",
+          "added_with_label_keys",
+          "removed_keys"
+        ],
+        "title": "ScopeSinceBaselineResponse",
+        "description": "Today's scope against one baseline: keys only (at most 50 listed), never who."
       },
       "SelfCheckinPreferenceUpdateRequest": {
         "properties": {
