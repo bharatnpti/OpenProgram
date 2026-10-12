@@ -1,0 +1,51 @@
+backend/tests/unit/test_agent_and_workflow.py
+  s_22b399281058a2::t_eac2f25bc6801d 611,1793-1794,1799-1800
+  s_22b399281058a2::t_fcc7eb4fdcec3c 13,50
+  s_22b399281058a2::t_340641c2cce030 1801
+backend/core/application/fill_day.py
+  s_22b399281058a2::t_8064cdc8dd03e3 29,62-65,74,78,96-105
+backend/tests/unit/test_jira_observed_day.py
+  s_22b399281058a2::t_1d168d46dec46e 162,164-167,474-505
+  s_22b399281058a2::t_742d052cb7d2e1 379
+  s_22b399281058a2::t_de2ffec4121e86 11,13,15-17,43,48-51,53,268,514-538,540-541,543-544,547-548,551-567,569,571-573,575-585,588-593,595-619,623-626,629-711
+  s_22b399281058a2::t_ada7b798967fd5 506-507
+backend/infra/registry.py
+  s_22b399281058a2::t_8064cdc8dd03e3 201,576-588
+backend/infra/adapters/workflows/dbos.py
+  s_22b399281058a2::t_81178f02debd8c 129,448-458,814-815
+  s_22b399281058a2::t_8064cdc8dd03e3 71-75,861-862
+backend/core/application/rollup_service.py
+  s_22b399281058a2::t_31f2d5b802e0e3 12,449-450,455-456
+backend/infra/adapters/workflows/temporal.py
+  s_22b399281058a2::t_8064cdc8dd03e3 61,106,426-443,664-665,750-755,1097-1103,1180,1206
+backend/infra/workflows/checkin_fill.py
+  s_22b399281058a2::t_3883af8a7f8bd2 1-95
+frontend-v3/src/features/admin/fillDayWords.ts
+  s_22b399281058a2::t_2176c090dbf2c0 20
+backend/config/settings.py
+  s_22b399281058a2::t_d825849bbcda41 82-86,88-90,476-477
+backend/core/application/status_summaries.py
+  s_22b399281058a2::t_1012d1e65524bb 179,184,186-190,210
+  s_22b399281058a2::t_31f2d5b802e0e3 231-276
+backend/infra/workflows/schedule.py
+  s_22b399281058a2::t_81178f02debd8c 17,86-91,117-131
+  s_22b399281058a2::t_5d65178d4d8997 132-133
+backend/infra/workflows/dispatch.py
+  s_22b399281058a2::t_81178f02debd8c 15,44,174-178,196,228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "02a1f1b5b609feae133c6cb23af2490abae2a945",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
