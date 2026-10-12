@@ -1,0 +1,21 @@
+docs/design/next-features-handoff.md
+  s_22b399281058a2::t_4cdcf3fea817e2 1-82
+docs/design/next-features.md
+  s_22b399281058a2::t_7eff04e8ec7299 1-1385
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0a53ae548a1a5c2a1a75e6b348d0c999cf7ffd85",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
