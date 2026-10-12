@@ -6,6 +6,7 @@ import {
   capabilitiesFor,
   pageOf,
   paletteTargets,
+  readsHygiene,
   readsReadiness,
   redirectFor,
   redirectToast,
@@ -495,4 +496,19 @@ test("release readiness: a scrum master asks only for a project one of their pod
   }
   assert.equal(readsReadiness(access("dev"), "project-checkout", developerTree), false);
   assert.equal(readsReadiness(access("po"), "", undefined), false);
+});
+
+test("jira hygiene: the readiness board's readers, a developer none, an executive no actions", () => {
+  assert.deepEqual(access("dev").hygiene, { board: false, everyProject: false, act: false });
+  assert.deepEqual(access("exec").hygiene, { board: true, everyProject: true, act: false });
+  assert.deepEqual(access("sm").hygiene, { board: true, everyProject: false, act: true });
+  for (const role of ["po", "mgr", "admin"] as const) {
+    assert.deepEqual(access(role).hygiene, { board: true, everyProject: true, act: true }, role);
+  }
+  // A scrum master reads it only for a project one of their own pods works on.
+  assert.equal(readsHygiene(access("sm"), "project-checkout", scrumMasterTree), true);
+  assert.equal(readsHygiene(access("sm"), "project-insights", scrumMasterTree), false);
+  assert.equal(readsHygiene(access("sm"), "project-checkout", undefined), false);
+  assert.equal(readsHygiene(access("exec"), "project-insights", undefined), true);
+  assert.equal(readsHygiene(access("dev"), "project-checkout", developerTree), false);
 });

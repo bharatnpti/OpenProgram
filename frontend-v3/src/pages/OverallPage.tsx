@@ -6,6 +6,7 @@ import { useViewingDate } from "../app/viewingDate";
 import { GateAnswer, ProjectAnswer, ScrumMasterAnswer } from "../features/overall/AnswerCard";
 import { BaselineSection } from "../features/overall/BaselineSection";
 import { GatesSection } from "../features/overall/GatesSection";
+import { HygieneSection } from "../features/overall/HygieneSection";
 import { PodDatesSection, ScrumMasterPodDates } from "../features/overall/PodDatesSection";
 import { useGateBoard, useReadsReadiness, useReleases } from "../features/overall/queries";
 import { QuestionsSection } from "../features/overall/QuestionsSection";
@@ -20,18 +21,20 @@ import { ReportsHeader } from "../features/reports/ReportsHeader";
  * The project's state since it started, read today, for the whole project or
  * one release (`?release=`), from summary to detail: one answer line, the date
  * strip, how the date moved (O1), the planning baseline, dates by pod (O6),
- * requirements by stage (O3), the gates (O5), release readiness, risks and
- * questions. Date first,
+ * requirements by stage (O3), the gates (O5), release readiness, Jira hygiene,
+ * risks and questions. Date first,
  * then scope, then quality, then people. Each section is its own query, so one
  * refused or slow read never blanks the others. Risks are always the whole
  * project's.
  *
  * Each role gets the sections it reads (app/access.ts):
  * - the project's readers (product owner, manager, executive, admin): all of it,
- *   with Mark planning complete for the product owner, manager and admin;
+ *   with Mark planning complete for the product owner, manager and admin; an
+ *   executive reads Jira hygiene's counts, never who;
  * - a scrum master: an answer line for the pod they run, every pod's date with
  *   Set date on their own, the gates, release readiness where one of their pods
- *   works on the project (the project's rows and their pods'), risks and questions;
+ *   works on the project (the project's rows and their pods'), Jira hygiene there
+ *   too, risks and questions;
  * - a developer: an answer line on the gates, the gates and the questions.
  */
 export function OverallPage() {
@@ -106,6 +109,7 @@ export function OverallPage() {
               answered={overall.forecast}
             />
           ) : null}
+          <HygieneSection projectId={projectId} releaseId={releaseId} />
           {overall.risks ? <RisksSection projectId={projectId} /> : null}
           <QuestionsSection projectId={projectId} releaseId={releaseId} />
         </div>

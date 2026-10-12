@@ -11,6 +11,7 @@ import { EntitiesTab } from "../features/admin/EntitiesTab";
 import { EscalationTab } from "../features/admin/EscalationTab";
 import { GatesTab } from "../features/admin/GatesTab";
 import { IntegrationsTab } from "../features/admin/IntegrationsTab";
+import { JiraHygieneTab } from "../features/admin/JiraHygieneTab";
 import { JiraWritesTab } from "../features/admin/JiraWritesTab";
 import { LinksTab } from "../features/admin/LinksTab";
 import { ProfilesTab } from "../features/admin/ProfilesTab";
@@ -28,6 +29,7 @@ const TABS = [
   { key: "stages", label: "Delivery stages" },
   { key: "gates", label: "Gates" },
   { key: "readiness", label: "Release readiness" },
+  { key: "hygiene", label: "Jira hygiene" },
   { key: "escalation", label: "Escalation" },
   { key: "contacts", label: "Escalation contacts" },
   { key: "branding", label: "Branding" },
@@ -80,6 +82,7 @@ export function AdminPage() {
         {tab === "stages" ? <DeliveryStagesTab /> : null}
         {tab === "gates" ? <GatesTab /> : null}
         {tab === "readiness" ? <ReleaseReadinessTab /> : null}
+        {tab === "hygiene" ? <JiraHygieneTab /> : null}
         {tab === "escalation" ? <EscalationTab /> : null}
         {tab === "contacts" ? <ContactsTab /> : null}
         {tab === "branding" ? <BrandingTab /> : null}

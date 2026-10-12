@@ -1,7 +1,7 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../../api/client";
-import { readsReadiness } from "../../app/access";
+import { readsHygiene, readsReadiness } from "../../app/access";
 import { useOwnTree } from "../../app/directory";
 import { sameOnEveryDay } from "../../app/queryCache";
 import { useRole } from "../../app/role";
@@ -163,6 +163,26 @@ export function useReadiness(projectId: string, releaseId?: string) {
     query: useQuery({
       queryKey: ["readiness", projectId, releaseId ?? ""],
       queryFn: () => apiClient.projectReadiness(projectId, releaseId),
+      enabled: readable && projectId !== "",
+      ...sameOnEveryDay,
+    }),
+  };
+}
+
+/**
+ * Jira hygiene: read as it stands now whatever day is viewed (the scan keeps no
+ * history), by the readiness board's readers only (`readsHygiene`). The release
+ * and the pod a filter picks are part of the key.
+ */
+export function useHygiene(projectId: string, releaseId?: string, podId?: string) {
+  const { access } = useRole();
+  const tree = useOwnTree(access.hygiene.board && !access.hygiene.everyProject);
+  const readable = readsHygiene(access, projectId, tree.data);
+  return {
+    readable,
+    query: useQuery({
+      queryKey: ["hygiene", projectId, releaseId ?? "", podId ?? ""],
+      queryFn: () => apiClient.projectHygiene(projectId, { releaseId, podId }),
       enabled: readable && projectId !== "",
       ...sameOnEveryDay,
     }),

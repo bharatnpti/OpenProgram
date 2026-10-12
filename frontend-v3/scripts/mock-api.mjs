@@ -35,6 +35,7 @@ import * as jiraWrites from "./mock/jira-writes.mjs";
 import * as profilesMock from "./mock/profiles.mjs";
 import * as baselines from "./mock/baselines.mjs";
 import * as observedDay from "./mock/observed-day.mjs";
+import * as hygieneMock from "./mock/hygiene.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
@@ -262,6 +263,7 @@ function api(req, res, url) {
   // Before the lane mocks: it answers scoped reads they refuse (a person's own part of the tree).
   if (scopedDelivery.api(req, url, roles, userId, send, deny)) return;
   if (baselines.api(req, url, roles, userId, send, deny)) return;
+  if (hygieneMock.api(req, url, roles, userId, send, deny)) return;
   // The shell mock goes first: of the reads the lane mocks share, it answers
   // only past-day ones (as_of), which the today mock would answer as today.
   if (vizOverall.api(req, url, roles, userId, send, deny)) return;

@@ -23,6 +23,14 @@ import type {
   ReadinessRunResponse,
   ReadinessSettingsDto,
   ReadinessSettingsUpdateRequest,
+  HygieneBoardResponse,
+  HygieneConfigResponse,
+  HygieneFindingResponse,
+  HygieneHistoryResponse,
+  HygienePreviewResponse,
+  HygieneRuleDto,
+  HygieneRunResponse,
+  HygieneSettingsDto,
   CommitmentResponse,
   DeliveryDateRequest,
   PodDeliveryResponse,
@@ -828,6 +836,60 @@ export const apiClient = {
     requestJson<ReadinessPreviewResponse>("/config/readiness/criteria/preview", {
       method: "POST",
       body: { project_id: projectId, criterion },
+    }),
+  // Jira hygiene: the board, Check now, a person's actions, the configuration. Read-only on Jira.
+  projectHygiene: (projectId: string, scope: { releaseId?: string; podId?: string } = {}) =>
+    requestJson<HygieneBoardResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/hygiene`, {
+        release_id: scope.releaseId,
+        pod_id: scope.podId,
+      }),
+    ),
+  runHygiene: (projectId: string, scope: { releaseId?: string; podId?: string } = {}) =>
+    requestJson<HygieneRunResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/hygiene/run`, {
+        release_id: scope.releaseId,
+        pod_id: scope.podId,
+      }),
+      { method: "POST" },
+    ),
+  waiveHygiene: (findingId: string, reason: string) =>
+    requestJson<HygieneFindingResponse>(
+      `/hygiene-findings/${encodeURIComponent(findingId)}/waive`,
+      { method: "POST", body: { reason } },
+    ),
+  setAsideHygiene: (findingId: string, reason: string) =>
+    requestJson<HygieneFindingResponse>(
+      `/hygiene-findings/${encodeURIComponent(findingId)}/not-applicable`,
+      { method: "POST", body: { reason } },
+    ),
+  reopenHygiene: (findingId: string) =>
+    requestJson<HygieneFindingResponse>(
+      `/hygiene-findings/${encodeURIComponent(findingId)}/reopen`,
+      { method: "POST" },
+    ),
+  recheckHygiene: (findingId: string) =>
+    requestJson<HygieneFindingResponse>(
+      `/hygiene-findings/${encodeURIComponent(findingId)}/recheck`,
+      { method: "POST" },
+    ),
+  hygieneHistory: (findingId: string) =>
+    requestJson<HygieneHistoryResponse>(
+      `/hygiene-findings/${encodeURIComponent(findingId)}/history`,
+    ),
+  hygieneConfig: () => requestJson<HygieneConfigResponse>("/config/hygiene"),
+  saveHygieneSettings: (body: HygieneSettingsDto) =>
+    requestJson<HygieneSettingsDto>("/config/hygiene/settings", { method: "PUT", body }),
+  saveHygieneRule: (body: HygieneRuleDto) =>
+    requestJson<HygieneRuleDto>("/config/hygiene/rules", { method: "PUT", body }),
+  removeHygieneRule: (ruleId: string) =>
+    requestJson<void>(`/config/hygiene/rules/${encodeURIComponent(ruleId)}`, {
+      method: "DELETE",
+    }),
+  previewHygieneRule: (projectId: string, rule: HygieneRuleDto) =>
+    requestJson<HygienePreviewResponse>("/config/hygiene/rules/preview", {
+      method: "POST",
+      body: { project_id: projectId, rule },
     }),
   releases: (projectId: string) =>
     requestJson<ReleaseResponse[]>(`/projects/${encodeURIComponent(projectId)}/releases`),

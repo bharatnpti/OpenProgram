@@ -114,6 +114,18 @@ export type Access = {
     /** `ACT_ON_READINESS`: Run check now and the row actions. */
     act: boolean;
   };
+  /**
+   * Jira hygiene on Overall: the release readiness board's own readers
+   * (core/application/readiness_access.py). An executive reads each rule's
+   * counts and never who, by the server's `counts_only`; a developer has no
+   * section. Each finding's buttons follow the server's `can`.
+   */
+  hygiene: {
+    board: boolean;
+    everyProject: boolean;
+    /** `ACT_ON_READINESS`: Check now, waive, re-check, reopen. */
+    act: boolean;
+  };
 };
 
 export type Lens = { lens: readonly AppRole[]; chatEnabled: boolean };
@@ -185,6 +197,11 @@ export function accessOf({ lens, chatEnabled }: Lens): Access {
       everyProject: has("admin", "mgr", "po") || can.canReadProjectProgress,
       act: has("admin", "mgr", "po", "sm"),
     },
+    hygiene: {
+      board: has("admin", "mgr", "po", "sm", "exec"),
+      everyProject: has("admin", "mgr", "po") || can.canReadProjectProgress,
+      act: has("admin", "mgr", "po", "sm"),
+    },
   };
 }
 
@@ -205,6 +222,18 @@ export function readsReadiness(
   if (!board || projectId === "") return false;
   if (everyProject) return true;
   return (tree?.pods ?? []).some((pod) => pod.own && pod.parent_ids.includes(projectId));
+}
+
+/**
+ * Whether the person reads a project's Jira hygiene board: the readiness board's
+ * rule (`readsReadiness`), since the server keeps that rule for both.
+ */
+export function readsHygiene(
+  access: Pick<Access, "hygiene">,
+  projectId: string,
+  tree: DeliveryTreeResponse | undefined,
+): boolean {
+  return readsReadiness({ readiness: access.hygiene }, projectId, tree);
 }
 
 /** The page a path belongs to; null for a page every role has (Today, Reports). */

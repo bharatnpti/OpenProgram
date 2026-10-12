@@ -358,6 +358,29 @@ export type ReadinessAppliesTo = components["schemas"]["AppliesTo"];
 export type ReadinessSeverity = components["schemas"]["Severity"];
 export type ReadinessStrength = components["schemas"]["Strength"];
 
+// Jira hygiene: the tenant's per-issue rules and the issues that break them.
+export type HygieneBoardResponse = components["schemas"]["HygieneBoardResponse"];
+export type HygieneFindingResponse = components["schemas"]["HygieneFindingResponse"];
+export type HygieneRuleRowDto = components["schemas"]["HygieneRuleRowDto"];
+export type HygieneRunResponse = components["schemas"]["HygieneRunResponse"];
+export type HygieneHistoryResponse = components["schemas"]["HygieneHistoryResponse"];
+export type HygieneConfigResponse = components["schemas"]["HygieneConfigResponse"];
+export type HygieneSettingsDto = components["schemas"]["HygieneSettingsDto"];
+export type HygieneRuleDto = components["schemas"]["HygieneRuleDto"];
+export type HygieneConditionDto = components["schemas"]["HygieneConditionDto"];
+export type HygieneSelectDto = components["schemas"]["HygieneSelectDto"];
+export type HygieneOwnerDto = components["schemas"]["HygieneOwnerDto"];
+export type HygienePreviewResponse = components["schemas"]["HygienePreviewResponse"];
+export type HygienePreviewScopeDto = components["schemas"]["HygienePreviewScopeDto"];
+export type HygieneConditionKind = components["schemas"]["ConditionKind"];
+export type HygieneIssueField = components["schemas"]["IssueField"];
+export type HygieneOwnerKind = components["schemas"]["OwnerKind"];
+export type HygieneRuleScope = components["schemas"]["RuleScope"];
+export type HygieneRuleSeverity = components["schemas"]["RuleSeverity"];
+export type HygieneRuleNeed = components["schemas"]["RuleNeed"];
+export type HygieneStageFilter = components["schemas"]["StageFilter"];
+export type HygieneState = components["schemas"]["HygieneState"];
+
 // Profiles per pod membership: who brings what to each pod.
 export type ProfileResponse = components["schemas"]["ProfileResponse"];
 export type ProfileUpdateRequest = components["schemas"]["ProfileUpdateRequest"];
