@@ -11,18 +11,22 @@ How many working days of history a forecast needs is the tenant's setting (an
 admin's, else the deployment's default); the window its samples are read from
 follows it, so every scope, the history read and the day report use one rule.
 
-Each project's and release's forecast is kept per day (forecast_days): the
-hourly snapshot run keeps today's, and a one-off reconstruction rebuilds earlier
-days from the stored snapshots, with each day's committed date and ETAs as they
-stood that day. The history read reads those rows and replays only the days
-nobody kept, and today, which is always live.
+Each project's, pod's and release's forecast is kept per day (forecast_days):
+the hourly snapshot run keeps today's, and a one-off reconstruction rebuilds
+earlier days from the stored snapshots, with each day's committed date and ETAs
+as they stood that day. The history read reads those rows and replays only the
+days nobody kept, and today, which is always live.
+
+Each kept day also says why its forecast moved since the scope's day before
+with a snapshot (``attribution``, core/domain/impact.py): the move replayed one
+input at a time, under the day's own seed, so its parts add up exactly.
 """
 
 from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from uuid import uuid4
 
@@ -53,7 +57,7 @@ from core.domain.forecast import (
     Verdict,
     changes_until,
     commitment_from_changes,
-    daily_completions,
+    dated_completions,
     fix_version_dates,
     history_forecast,
     history_window_days,
@@ -64,7 +68,8 @@ from core.domain.forecast import (
     validated_target,
     verdict,
 )
-from core.domain.graph import EdgeKind, FactEvent, GraphNode, NodeKind
+from core.domain.graph import EdgeKind, FactEvent, GraphEdge, GraphNode, NodeKind
+from core.domain.impact import ScopeDay, attribution_payload, decompose
 from core.ports.forecast import (
     CommitmentRepository,
     ForecastDayRepository,
@@ -81,6 +86,8 @@ MAX_FORECAST_HISTORY_DAYS = 90
 RECONSTRUCT_DAYS = 90
 MAX_RECONSTRUCT_DAYS = 365
 _ETA_FACT_LIMIT = 5000
+#: How far back a breakdown looks for the scope's day before with a snapshot.
+PREVIOUS_SNAPSHOT_DAYS = 7
 
 
 def _utc_now() -> datetime:
@@ -157,7 +164,7 @@ class ReconstructionSummary:
 
     first_day: date
     last_day: date
-    #: Projects and releases reconstructed.
+    #: Projects, pods and releases reconstructed.
     scopes: int
     #: Days written, each a scope and a day with a stored snapshot.
     written: int
@@ -173,6 +180,27 @@ class ReleaseCandidate:
     value: str
     issues: int
     release_date: date | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class OpenRequirement:
+    """An open requirement of a scope on a day, with the dates the team gave it."""
+
+    key: str
+    title: str
+    stage: DeliveryStage
+    #: The latest check-in ETA stated by the end of the day.
+    eta: date | None
+    #: The tracker's due date that day (its snapshot's, else the issue's now).
+    due: date | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class ScopeRequirements:
+    """A scope's forecast on a day, and its open requirements with their dates."""
+
+    view: ScopeDeliveryView
+    open: tuple[OpenRequirement, ...]
 
 
 class ForecastService:
@@ -555,34 +583,214 @@ class ForecastService:
     # ---- the forecast kept per day -------------------------------------------
 
     async def record_forecast_days(self, tenant_id: str, day: date) -> int:
-        """Keep the day's forecast of every project and release, as the delivery view reads it.
+        """Keep the day's forecast of every project, pod and release, as the delivery view
+        reads it, each with why it moved since the scope's day before (its attribution).
 
         The hourly snapshot run calls it after storing the day's snapshots; each
         later run that day replaces the rows, so the day's last run stays.
         """
         if self._forecast_days is None:
             return 0
-        computed_at = self._clock()
         records: list[ForecastDayRecord] = []
         for project in await self._graph.list_nodes(tenant_id, NodeKind.PROJECT, as_of=day):
-            view = await self.project_delivery(tenant_id, project.id, day)
-            records += [
-                _record(tenant_id, item, day, computed_at)
-                for item in (view.project, *view.releases)
-            ]
+            records += await self._day_records(tenant_id, project.id, day)
         await self._forecast_days.save(records)
         return len(records)
+
+    async def forecast_day(
+        self, tenant_id: str, scope: CommitmentScope, day: date
+    ) -> ForecastDayRecord | None:
+        """One scope's forecast of ``day`` as the hourly run would keep it, with its
+        attribution, computed now: what a read of today uses, since today is always live."""
+        records = await self._day_records(tenant_id, scope.project_id, day, only=scope)
+        return next((record for record in records if record.scope == scope), None)
+
+    async def kept_days(
+        self, tenant_id: str, scope: CommitmentScope, start: date, end: date
+    ) -> list[ForecastDayRecord]:
+        """The scope's kept forecast_days rows from ``start`` to ``end``, oldest first."""
+        if self._forecast_days is None:
+            return []
+        return await self._forecast_days.list_between(tenant_id, scope, start, end)
+
+    async def tasks_by_key(
+        self, tenant_id: str, project_id: str, day: date
+    ) -> dict[str, GraphNode]:
+        """The project's requirement issues on ``day``, by issue key (a node's id may differ)."""
+        return {
+            _task_key(task): task
+            for task in await self._delivery.scope_tasks(tenant_id, project_id, day)
+        }
+
+    async def scope_requirements(
+        self, tenant_id: str, scope: CommitmentScope, as_of: date
+    ) -> ScopeRequirements:
+        """The scope's forecast on ``as_of`` and its open requirements, each with the
+        ETA stated by the end of that day and its due date that day."""
+        view = await self.scope_delivery(tenant_id, scope, as_of)
+        snapshot = await self.scope_snapshot(tenant_id, scope, as_of)
+        if snapshot is None:
+            return ScopeRequirements(view=view, open=())
+        tasks = {
+            _task_key(task): task
+            for task in await self._delivery.scope_tasks(tenant_id, scope.project_id, as_of)
+        }
+        open_keys = _open_keys(snapshot)
+        etas = _latest_etas(
+            await self._eta_facts(tenant_id), set(open_keys), before=self._end_of(as_of)
+        )
+        listed: list[OpenRequirement] = []
+        for key in open_keys:
+            detail = snapshot.details.get(key)
+            due = _iso_date(detail.due) if detail is not None else None
+            listed.append(
+                OpenRequirement(
+                    key=key,
+                    title=snapshot.titles.get(key) or _title(tasks.get(key)) or key,
+                    stage=snapshot.items[key],
+                    eta=etas.get(key),
+                    due=due or _due(tasks.get(key)),
+                )
+            )
+        return ScopeRequirements(view=view, open=tuple(listed))
+
+    async def scope_snapshot(
+        self, tenant_id: str, scope: CommitmentScope, day: date
+    ) -> RequirementsSnapshot | None:
+        """The scope's own snapshot of ``day``: a pod's is the project's, kept to its keys."""
+        if scope.kind is CommitmentScopeKind.RELEASE:
+            release = await self.release(tenant_id, scope.id)
+            return await self._delivery.snapshot(tenant_id, scope.project_id, day, release)
+        snapshot = await self._delivery.snapshot(tenant_id, scope.project_id, day)
+        if scope.kind is CommitmentScopeKind.POD and snapshot is not None:
+            tasks = {
+                _task_key(task): task
+                for task in await self._delivery.scope_tasks(tenant_id, scope.project_id, day)
+            }
+            keys = await self._pod_keys(tenant_id, scope.project_id, tasks, day)
+            return _restricted(snapshot, keys.get(scope.id, frozenset()))
+        return snapshot
+
+    async def _day_records(
+        self,
+        tenant_id: str,
+        project_id: str,
+        day: date,
+        *,
+        only: CommitmentScope | None = None,
+    ) -> list[ForecastDayRecord]:
+        """The rows the hourly run keeps for the project's scopes on ``day`` (or ``only``)."""
+        view = await self.project_delivery(tenant_id, project_id, day)
+        computed_at = self._clock()
+        rule = await self.forecast_settings(tenant_id)
+        days = await self._attribution_days(tenant_id, project_id, day, rule)
+        records: list[ForecastDayRecord] = []
+        for item in (view.project, *view.pods, *view.releases):
+            if only is not None and item.scope != only:
+                continue
+            record = _record(tenant_id, item, day, computed_at)
+            records.append(
+                replace(record, attribution=await self._attribution(tenant_id, record, days))
+            )
+        return records
+
+    async def _attribution_days(
+        self, tenant_id: str, project_id: str, day: date, rule: ForecastSettingsView
+    ) -> _AttributionDays:
+        """What the day's breakdowns read: the project's day before, both windows, the keys."""
+        tasks = {
+            _task_key(task): task
+            for task in await self._delivery.scope_tasks(tenant_id, project_id, day)
+        }
+        previous = await self._delivery.previous_snapshot(tenant_id, project_id, day)
+        if previous is not None and previous.day < day - timedelta(days=PREVIOUS_SNAPSHOT_DAYS):
+            previous = None
+        first = (previous.day if previous is not None else day) - timedelta(days=rule.window_days)
+        stored = await self._delivery.history(tenant_id, project_id, first, day - timedelta(days=1))
+        return _AttributionDays(
+            day=day,
+            snapshot=await self._delivery.snapshot(tenant_id, project_id, day),
+            previous=previous,
+            stored=stored,
+            tasks=tasks,
+            pod_keys=await self._pod_keys(tenant_id, project_id, tasks, day),
+            previous_pod_keys=(
+                await self._pod_keys(tenant_id, project_id, tasks, previous.day)
+                if previous is not None
+                else {}
+            ),
+            window_days=rule.window_days,
+            min_sample_days=rule.min_sample_days,
+        )
+
+    async def _attribution(
+        self, tenant_id: str, record: ForecastDayRecord, days: _AttributionDays
+    ) -> Mapping[str, object] | None:
+        """Why the scope's forecast on the record's day moved since its day before."""
+        scope = record.scope
+        own_after: RequirementsSnapshot | None
+        own_before: RequirementsSnapshot | None
+        keys_after: frozenset[str] | None = None
+        keys_before: frozenset[str] | None = None
+        if scope.kind is CommitmentScopeKind.RELEASE:
+            release = await self.release(tenant_id, scope.id)
+            own_after = await self._delivery.snapshot(
+                tenant_id, scope.project_id, days.day, release
+            )
+            own_before = await self._delivery.previous_snapshot(
+                tenant_id, scope.project_id, days.day, release
+            )
+            if own_before is not None and (
+                days.previous is None or own_before.day != days.previous.day
+            ):
+                own_before = None
+            keys_after = frozenset(own_after.items) if own_after is not None else frozenset()
+            keys_before = frozenset(own_before.items) if own_before is not None else frozenset()
+        elif scope.kind is CommitmentScopeKind.POD:
+            keys_after = days.pod_keys.get(scope.id, frozenset())
+            keys_before = days.previous_pod_keys.get(scope.id, frozenset())
+            own_after = _restricted(days.snapshot, keys_after) if days.snapshot else None
+            own_before = _restricted(days.previous, keys_before) if days.previous else None
+        else:
+            own_after, own_before = days.snapshot, days.previous
+        if own_after is None or own_before is None:
+            return None
+        kept = await self.kept_days(tenant_id, scope, own_before.day, own_before.day)
+        before = _scope_day(
+            scope,
+            own_before,
+            days.window(own_before.day, keys_before),
+            keys_before,
+            own_before.day,
+            min_sample_days=days.min_sample_days,
+            tasks=days.tasks,
+            kept=kept[0] if kept else None,
+        )
+        after = _scope_day(
+            scope,
+            own_after,
+            days.window(days.day, keys_after),
+            keys_after,
+            days.day,
+            min_sample_days=days.min_sample_days,
+            tasks=days.tasks,
+            kept=record,
+        )
+        return attribution_payload(decompose(before, after))
 
     async def reconstruct_forecast_days(
         self, tenant_id: str, as_of: date, *, days: int = RECONSTRUCT_DAYS
     ) -> ReconstructionSummary:
-        """Rebuild each project's and release's forecast for the ``days`` before ``as_of``.
+        """Rebuild each project's, pod's and release's forecast for the ``days`` before ``as_of``.
 
         Each day with a stored snapshot is forecast as the history read replayed
         it (the same snapshots, keys, seed and today's minimum), against the
         committed date as it stood at the end of that day and the ETAs stated by
-        then. Due dates are today's: their history is not kept. The rows are
-        marked reconstructed, and a day the hourly run kept is left as it is.
+        then. Due dates are today's: their history is not kept. A pod's keys are
+        its tasks as the graph held them that day. Each row keeps why it moved
+        since the scope's day before. The rows are marked reconstructed, and a
+        day the hourly run kept is left as it is, except that it gains its
+        breakdown when it kept none.
         """
         days = max(1, min(days, MAX_RECONSTRUCT_DAYS))
         first = as_of - timedelta(days=days)
@@ -619,20 +827,58 @@ class ForecastService:
             return ReconstructionSummary(
                 first_day=first, last_day=last, scopes=0, written=0, kept=0
             )
+        # The days just before the first are read only as the first day's day before.
+        lead = first - timedelta(days=PREVIOUS_SNAPSHOT_DAYS)
         stored = await self._delivery.history(
-            tenant_id, project_id, first - timedelta(days=rule.window_days), last
+            tenant_id, project_id, lead - timedelta(days=rule.window_days), last
         )
-        changes = await self._commitments.changes_for_project(tenant_id, project_id)
         tasks = {
             _task_key(task): task
             for task in await self._delivery.scope_tasks(tenant_id, project_id, self._today())
         }
+        scopes = await self._reconstruct_scopes(tenant_id, project_id, lead, last, stored, tasks)
+        context = _ReconstructContext(
+            first=first,
+            stored=stored,
+            tasks=tasks,
+            changes=await self._commitments.changes_for_project(tenant_id, project_id),
+            eta_facts=eta_facts,
+            rule=rule,
+            computed_at=self._clock(),
+        )
+        written = kept = 0
+        for item in scopes:
+            rows = {
+                row.day: row
+                for row in await repository.list_between(tenant_id, item.scope, lead, last)
+            }
+            records, fills, kept_here = self._reconstructed_rows(tenant_id, item, rows, context)
+            await repository.save(records)
+            if fills:
+                await repository.fill_attribution(fills)
+            written += len(records)
+            kept += kept_here
+        return ReconstructionSummary(
+            first_day=first, last_day=last, scopes=len(scopes), written=written, kept=kept
+        )
+
+    async def _reconstruct_scopes(
+        self,
+        tenant_id: str,
+        project_id: str,
+        lead: date,
+        last: date,
+        stored: Sequence[RequirementsSnapshot],
+        tasks: Mapping[str, GraphNode],
+    ) -> list[_ReconstructScope]:
+        """The project, its releases and its pods, each with its own snapshots of the days."""
+        project_days = [item for item in stored if item.day >= lead]
         scopes: list[_ReconstructScope] = [
             _ReconstructScope(
                 scope=CommitmentScope(
                     kind=CommitmentScopeKind.PROJECT, id=project_id, project_id=project_id
                 ),
-                own=[item for item in stored if item.day >= first],
+                own=project_days,
                 jira_date=None,
                 restricted=False,
             )
@@ -645,72 +891,126 @@ class ForecastService:
                         id=release.release_id,
                         project_id=project_id,
                     ),
-                    own=await self._delivery.history(tenant_id, project_id, first, last, release),
+                    own=await self._delivery.history(tenant_id, project_id, lead, last, release),
                     jira_date=_release_date(release, tasks.values()),
                     restricted=True,
                 )
             )
-        computed_at = self._clock()
-        written = kept = 0
-        for item in scopes:
-            on_the_day = {
-                row.day
-                for row in await repository.list_between(tenant_id, item.scope, first, last)
-                if not row.reconstructed
-            }
-            scope_changes = [change for change in changes if change.scope == item.scope]
-            records: list[ForecastDayRecord] = []
-            for own in sorted(item.own, key=lambda snapshot: snapshot.day):
-                if own.day in on_the_day:
-                    kept += 1
-                    continue
-                cutoff = self._end_of(own.day)
-                window = [
-                    snapshot
-                    for snapshot in stored
-                    if own.day - timedelta(days=rule.window_days) <= snapshot.day < own.day
-                ]
-                keys = frozenset(own.items) if item.restricted else None
-                if keys is not None:
-                    window = [_restricted(snapshot, keys) for snapshot in window]
-                forecast = _scope_forecast(
-                    item.scope, own, window, keys, own.day, min_sample_days=rule.min_sample_days
-                )
-                commitment = commitment_from_changes(
-                    item.scope, changes_until(scope_changes, cutoff)
-                )
-                open_keys = _open_keys(own)
-                etas = _latest_etas(eta_facts, set(open_keys), before=cutoff)
-                team = team_forecast(
-                    OpenItem(key=key, eta=etas.get(key), due=_due(tasks.get(key)))
-                    for key in open_keys
-                )
-                target = commitment.target_date or item.jira_date
-                records.append(
-                    ForecastDayRecord(
-                        tenant_id=tenant_id,
-                        scope=item.scope,
-                        day=own.day,
-                        p50=forecast.p50,
-                        p85=forecast.p85,
-                        verdict=verdict(target, forecast, team),
-                        target_date=target,
-                        team_latest=team.latest,
-                        team_latest_key=team.latest_key,
-                        remaining=forecast.remaining,
-                        unit=forecast.unit,
-                        sample_days=forecast.sample_days,
-                        completed_in_sample=forecast.completed_in_sample,
-                        min_sample_days=forecast.needed_days,
-                        computed_at=computed_at,
-                        reconstructed=True,
-                    )
-                )
-            await repository.save(records)
-            written += len(records)
-        return ReconstructionSummary(
-            first_day=first, last_day=last, scopes=len(scopes), written=written, kept=kept
+        membership = _PodMembership(
+            project_id=project_id,
+            edges=await self._graph.list_edges(tenant_id, kind=EdgeKind.CONTAINS),
+            pods=frozenset(
+                node.id for node in await self._graph.list_nodes(tenant_id, NodeKind.POD)
+            ),
+            tasks=tasks,
         )
+        by_day = {item.day: membership.keys_on(item.day) for item in project_days}
+        for pod_id in sorted({pod for keys in by_day.values() for pod in keys}):
+            scopes.append(
+                _ReconstructScope(
+                    scope=CommitmentScope(
+                        kind=CommitmentScopeKind.POD, id=pod_id, project_id=project_id
+                    ),
+                    own=[
+                        _restricted(item, by_day[item.day][pod_id])
+                        for item in project_days
+                        if pod_id in by_day[item.day]
+                    ],
+                    jira_date=None,
+                    restricted=True,
+                    keys_by_day={
+                        day: keys[pod_id] for day, keys in by_day.items() if pod_id in keys
+                    },
+                )
+            )
+        return scopes
+
+    def _reconstructed_rows(
+        self,
+        tenant_id: str,
+        item: _ReconstructScope,
+        rows: Mapping[date, ForecastDayRecord],
+        context: _ReconstructContext,
+    ) -> tuple[list[ForecastDayRecord], list[ForecastDayRecord], int]:
+        """One scope's rebuilt rows, the kept rows that gain a breakdown, and how many were kept."""
+        rule = context.rule
+        scope_changes = [change for change in context.changes if change.scope == item.scope]
+        records: list[ForecastDayRecord] = []
+        fills: list[ForecastDayRecord] = []
+        kept = 0
+        previous: ScopeDay | None = None
+        for own in sorted(item.own, key=lambda snapshot: snapshot.day):
+            keys = item.keys_on(own)
+            window = [
+                _restricted(snapshot, keys) if keys is not None else snapshot
+                for snapshot in context.stored
+                if own.day - timedelta(days=rule.window_days) <= snapshot.day < own.day
+            ]
+            row = rows.get(own.day)
+            if own.day < context.first or (row is not None and not row.reconstructed):
+                state = _scope_day(
+                    item.scope,
+                    own,
+                    window,
+                    keys,
+                    own.day,
+                    min_sample_days=rule.min_sample_days,
+                    tasks=context.tasks,
+                    kept=row,
+                )
+                if own.day >= context.first and row is not None:
+                    kept += 1
+                    if row.attribution is None and previous is not None:
+                        breakdown = attribution_payload(decompose(previous, state))
+                        fills.append(replace(row, attribution=breakdown))
+                previous = state
+                continue
+            cutoff = self._end_of(own.day)
+            forecast = _scope_forecast(
+                item.scope, own, window, keys, own.day, min_sample_days=rule.min_sample_days
+            )
+            commitment = commitment_from_changes(item.scope, changes_until(scope_changes, cutoff))
+            open_keys = _open_keys(own)
+            etas = _latest_etas(context.eta_facts, set(open_keys), before=cutoff)
+            team = team_forecast(
+                OpenItem(key=key, eta=etas.get(key), due=_due(context.tasks.get(key)))
+                for key in open_keys
+            )
+            target = commitment.target_date or item.jira_date
+            record = ForecastDayRecord(
+                tenant_id=tenant_id,
+                scope=item.scope,
+                day=own.day,
+                p50=forecast.p50,
+                p85=forecast.p85,
+                verdict=verdict(target, forecast, team),
+                target_date=target,
+                team_latest=team.latest,
+                team_latest_key=team.latest_key,
+                remaining=forecast.remaining,
+                unit=forecast.unit,
+                sample_days=forecast.sample_days,
+                completed_in_sample=forecast.completed_in_sample,
+                min_sample_days=forecast.needed_days,
+                computed_at=context.computed_at,
+                reconstructed=True,
+            )
+            state = _scope_day(
+                item.scope,
+                own,
+                window,
+                keys,
+                own.day,
+                min_sample_days=rule.min_sample_days,
+                tasks=context.tasks,
+                kept=record,
+            )
+            attribution = (
+                attribution_payload(decompose(previous, state)) if previous is not None else None
+            )
+            records.append(replace(record, attribution=attribution))
+            previous = state
+        return records, fills, kept
 
     def _end_of(self, day: date) -> datetime:
         """The first moment after ``day`` in the tenant's zone."""
@@ -954,8 +1254,17 @@ class _ReconstructScope:
     #: The scope's own stored snapshots in the days rebuilt.
     own: list[RequirementsSnapshot]
     jira_date: date | None
-    #: A release: its window is the project's, kept to the release's keys of the day.
+    #: A release or pod: its window is the project's, kept to the scope's keys of the day.
     restricted: bool
+    #: A pod's keys per day (its tasks that day); a release's are its snapshot's own.
+    keys_by_day: Mapping[date, frozenset[str]] | None = None
+
+    def keys_on(self, own: RequirementsSnapshot) -> frozenset[str] | None:
+        if not self.restricted:
+            return None
+        if self.keys_by_day is not None:
+            return self.keys_by_day.get(own.day, frozenset(own.items))
+        return frozenset(own.items)
 
 
 def _latest_etas(
@@ -1024,6 +1333,31 @@ def _scope_forecast(
     """What history forecast for the scope on ``as_of``: the one rule the delivery view
     and the forecast's own history both use, seeded by the scope and the day, so a past
     day's forecast reads the same as the delivery view reads for that day."""
+    inputs = _scope_inputs(snapshot, history, keys)
+    return history_forecast(
+        [value for _day, value in inputs.samples],
+        inputs.remaining,
+        start=as_of,
+        seed=_seed(scope, as_of),
+        unit=inputs.unit,
+        min_sample_days=min_sample_days,
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
+class _ScopeInputs:
+    """What a scope's forecast of a day replays: the window's samples and the work left."""
+
+    samples: list[tuple[date, float]]
+    remaining: float
+    unit: str
+
+
+def _scope_inputs(
+    snapshot: RequirementsSnapshot | None,
+    history: Sequence[RequirementsSnapshot],
+    keys: frozenset[str] | None,
+) -> _ScopeInputs:
     series = [*history, snapshot] if snapshot is not None else list(history)
     by_points = bool(series) and all(item.has_points for item in series)
     remaining: float
@@ -1033,14 +1367,148 @@ def _scope_forecast(
         remaining = snapshot.points_total - snapshot.points_done
     else:
         remaining = float(len(_open_keys(snapshot)))
-    return history_forecast(
-        daily_completions(series, keys=keys, by_points=by_points),
-        remaining,
-        start=as_of,
-        seed=f"{scope.key}:{as_of.isoformat()}",
+    return _ScopeInputs(
+        samples=dated_completions(series, keys=keys, by_points=by_points),
+        remaining=remaining,
         unit="story points" if by_points else "requirements",
-        min_sample_days=min_sample_days,
     )
+
+
+def _seed(scope: CommitmentScope, day: date) -> str:
+    return f"{scope.key}:{day.isoformat()}"
+
+
+def _scope_day(
+    scope: CommitmentScope,
+    snapshot: RequirementsSnapshot,
+    history: Sequence[RequirementsSnapshot],
+    keys: frozenset[str] | None,
+    day: date,
+    *,
+    min_sample_days: int,
+    tasks: Mapping[str, GraphNode],
+    kept: ForecastDayRecord | None,
+) -> ScopeDay:
+    """What the scope's forecast of ``day`` rested on, for the breakdown of a move.
+
+    Its dates are the kept row's when there is one, so the breakdowns of days
+    in a row add up to the kept forecasts' moves; else they are replayed. A
+    requirement's points are its snapshot's, else the issue's now.
+    """
+    inputs = _scope_inputs(snapshot, history, keys)
+    if kept is not None:
+        p50, p85 = kept.p50, kept.p85
+    else:
+        forecast = _scope_forecast(
+            scope, snapshot, history, keys, day, min_sample_days=min_sample_days
+        )
+        p50, p85 = forecast.p50, forecast.p85
+    return ScopeDay(
+        day=day,
+        seed=_seed(scope, day),
+        stages=dict(snapshot.items),
+        titles={key: snapshot.titles.get(key) or _title(tasks.get(key)) for key in snapshot.items},
+        types={key: _item_type(snapshot, key, tasks) for key in snapshot.items},
+        points={key: _item_points(snapshot, key, tasks) for key in snapshot.items},
+        samples=tuple(inputs.samples),
+        remaining=inputs.remaining,
+        unit=inputs.unit,
+        min_sample_days=min_sample_days,
+        p50=p50,
+        p85=p85,
+    )
+
+
+def _item_points(
+    snapshot: RequirementsSnapshot, key: str, tasks: Mapping[str, GraphNode]
+) -> float | None:
+    detail = snapshot.details.get(key)
+    if detail is not None and detail.points is not None:
+        return detail.points
+    task = tasks.get(key)
+    value = task.metadata.get("story_points") if task is not None else None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
+def _item_type(
+    snapshot: RequirementsSnapshot, key: str, tasks: Mapping[str, GraphNode]
+) -> str | None:
+    detail = snapshot.details.get(key)
+    if detail is not None and detail.type:
+        return detail.type
+    task = tasks.get(key)
+    value = task.metadata.get("issue_type") if task is not None else None
+    return value if isinstance(value, str) and value else None
+
+
+def _title(task: GraphNode | None) -> str:
+    return task.name if task is not None else ""
+
+
+@dataclass(frozen=True, kw_only=True)
+class _AttributionDays:
+    """A project's day and its day before, as the day's breakdowns read them."""
+
+    day: date
+    snapshot: RequirementsSnapshot | None
+    #: The project's last snapshot before the day, within PREVIOUS_SNAPSHOT_DAYS.
+    previous: RequirementsSnapshot | None
+    #: The project's stored snapshots, from the earlier day's window to the day before.
+    stored: list[RequirementsSnapshot]
+    tasks: Mapping[str, GraphNode]
+    pod_keys: Mapping[str, frozenset[str]]
+    previous_pod_keys: Mapping[str, frozenset[str]]
+    window_days: int
+    min_sample_days: int
+
+    def window(self, day: date, keys: frozenset[str] | None) -> list[RequirementsSnapshot]:
+        """The stored snapshots a forecast of ``day`` reads, kept to ``keys``."""
+        found = [
+            item for item in self.stored if day - timedelta(days=self.window_days) <= item.day < day
+        ]
+        return [_restricted(item, keys) for item in found] if keys is not None else found
+
+
+@dataclass(frozen=True, kw_only=True)
+class _ReconstructContext:
+    """What every scope of a project's reconstruction reads."""
+
+    first: date
+    stored: Sequence[RequirementsSnapshot]
+    tasks: Mapping[str, GraphNode]
+    changes: Sequence[DateChange]
+    eta_facts: Sequence[FactEvent]
+    rule: ForecastSettingsView
+    computed_at: datetime
+
+
+@dataclass(frozen=True, kw_only=True)
+class _PodMembership:
+    """Which of the project's tasks sat under each of its pods on a day, from one edge read."""
+
+    project_id: str
+    edges: Sequence[GraphEdge]
+    pods: frozenset[str]
+    tasks: Mapping[str, GraphNode]
+
+    def keys_on(self, day: date) -> dict[str, frozenset[str]]:
+        """Each pod working on the project that day, and its requirement keys."""
+        active = [edge for edge in self.edges if edge.is_active_on(day)]
+        parents: dict[str, list[str]] = {}
+        for edge in active:
+            parents.setdefault(edge.to_node_id, []).append(edge.from_node_id)
+        keys: dict[str, set[str]] = {
+            edge.to_node_id: set()
+            for edge in active
+            if edge.from_node_id == self.project_id and edge.to_node_id in self.pods
+        }
+        for key, task in self.tasks.items():
+            for ancestor in _ancestors(task.id, parents):
+                if ancestor in keys:
+                    keys[ancestor].add(key)
+        return {pod_id: frozenset(found) for pod_id, found in keys.items()}
 
 
 def _reasons(

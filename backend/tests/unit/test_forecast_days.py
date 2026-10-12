@@ -86,9 +86,10 @@ async def test_the_history_read_on_reconstructed_days_says_what_the_replay_said(
 
     assert summary.first_day == TODAY - timedelta(days=30)
     assert summary.last_day == TODAY - timedelta(days=1)
-    assert summary.scopes == 1 and summary.kept == 0
-    # One row per working day with a snapshot in the 30 days before today.
-    assert summary.written == len(read.days) - 1
+    # The project and its two pods (Payments and Storefront).
+    assert summary.scopes == 3 and summary.kept == 0
+    # One row per scope and working day with a snapshot in the 30 days before today.
+    assert summary.written == 3 * (len(read.days) - 1)
     assert _days(read) == _days(replayed)
     assert any(item.p50 is not None for item in read.days)
     assert all(item.reconstructed for item in read.days[:-1])
@@ -118,7 +119,8 @@ async def test_a_releases_reconstructed_days_count_only_its_own_requirements() -
         TENANT, "checkout", TODAY, release_id=release.release_id, days=20
     )
 
-    assert summary.scopes == 2
+    # The project, its release and its two pods.
+    assert summary.scopes == 4
     assert _days(read) == _days(replayed)
     assert all(item.reconstructed for item in read.days[:-1])
 
@@ -188,9 +190,10 @@ async def test_a_day_the_hourly_run_kept_is_never_replaced_by_a_reconstruction()
     again = await service.reconstruct_forecast_days(TENANT, TODAY, days=10)
     rows = await kept.list_between(TENANT, _project_scope(), TODAY - timedelta(days=10), TODAY)
 
-    assert recorded == 1
-    assert (first.kept, again.kept) == (1, 1)
-    assert first.written == again.written == len(rows) - 1
+    # The project and its two pods, each kept on the Friday.
+    assert recorded == 3
+    assert (first.kept, again.kept) == (3, 3)
+    assert first.written == again.written == 3 * (len(rows) - 1)
     (on_the_day,) = [row for row in rows if row.day == friday]
     assert not on_the_day.reconstructed
     assert all(row.reconstructed for row in rows if row.day != friday)
@@ -302,8 +305,10 @@ async def test_the_snapshot_run_keeps_todays_forecast_and_rebuilds_when_asked(
         )
     )
 
-    assert (hourly.forecasts_recorded, hourly.forecast_days_reconstructed) == (1, 0)
-    assert dispatched.forecast_days_reconstructed == 5  # the working days of the week before
+    # The project and its two pods.
+    assert (hourly.forecasts_recorded, hourly.forecast_days_reconstructed) == (3, 0)
+    # The working days of the week before, for each of the three.
+    assert dispatched.forecast_days_reconstructed == 15
     rows = await registry.forecast_day_repository().list_between(
         TENANT, _project_scope(), TODAY - timedelta(days=7), TODAY
     )

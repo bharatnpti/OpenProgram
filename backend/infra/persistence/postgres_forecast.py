@@ -206,6 +206,27 @@ class PostgresForecastDayRepository:
                     tuple(value for record in batch for value in _forecast_day_params(record)),
                 )
 
+    async def fill_attribution(self, records: Sequence[ForecastDayRecord]) -> None:
+        with _tracer.start_as_current_span("postgres.forecast.fill_forecast_day_attribution"):
+            for record in records:
+                if record.attribution is None:
+                    continue
+                await self._executor.execute(
+                    """
+                    UPDATE forecast_days SET attribution = %s::jsonb
+                    WHERE tenant_id = %s AND scope_kind = %s AND scope_id = %s
+                        AND project_id = %s AND day = %s AND attribution IS NULL
+                    """,
+                    (
+                        json.dumps(dict(record.attribution), sort_keys=True),
+                        record.tenant_id,
+                        record.scope.kind.value,
+                        record.scope.id,
+                        record.scope.project_id,
+                        record.day,
+                    ),
+                )
+
     async def list_between(
         self, tenant_id: str, scope: CommitmentScope, start: date, end: date
     ) -> list[ForecastDayRecord]:

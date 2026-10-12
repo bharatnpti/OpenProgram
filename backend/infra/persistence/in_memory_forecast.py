@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 
 from core.domain.forecast import (
@@ -83,6 +83,13 @@ class InMemoryForecastDayRepository:
             if kept is not None and record.reconstructed and not kept.reconstructed:
                 continue
             self._rows[key] = record
+
+    async def fill_attribution(self, records: Sequence[ForecastDayRecord]) -> None:
+        for record in records:
+            key = (record.tenant_id, record.scope.kind.value, record.scope.id, record.day)
+            kept = self._rows.get(key)
+            if kept is not None and kept.attribution is None and record.attribution is not None:
+                self._rows[key] = replace(kept, attribution=record.attribution)
 
     async def list_between(
         self, tenant_id: str, scope: CommitmentScope, start: date, end: date

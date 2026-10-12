@@ -297,8 +297,21 @@ def daily_completions(
     gap in the history is not read as a day nothing was finished. ``keys``
     limits the count to one pod's or one release's requirements.
     """
+    return [value for _day, value in dated_completions(snapshots, keys=keys, by_points=by_points)]
+
+
+def dated_completions(
+    snapshots: Sequence[RequirementsSnapshot],
+    *,
+    keys: frozenset[str] | None = None,
+    by_points: bool = False,
+) -> list[tuple[date, float]]:
+    """:func:`daily_completions` with the day each sample was finished on, oldest first.
+
+    Why the date moved says which day left the window and which joined it.
+    """
     by_day = {snapshot.day: snapshot for snapshot in snapshots}
-    samples: list[float] = []
+    samples: list[tuple[date, float]] = []
     for snapshot in sorted(snapshots, key=lambda item: item.day):
         if not is_working_day(snapshot.day):
             continue
@@ -306,17 +319,20 @@ def daily_completions(
         if previous is None:
             continue
         if by_points:
-            samples.append(max(0.0, snapshot.points_done - previous.points_done))
+            samples.append((snapshot.day, max(0.0, snapshot.points_done - previous.points_done)))
             continue
         samples.append(
-            float(
-                sum(
-                    1
-                    for key, stage in snapshot.items.items()
-                    if stage is DeliveryStage.PRODUCTION
-                    and (keys is None or key in keys)
-                    and previous.items.get(key) is not DeliveryStage.PRODUCTION
-                )
+            (
+                snapshot.day,
+                float(
+                    sum(
+                        1
+                        for key, stage in snapshot.items.items()
+                        if stage is DeliveryStage.PRODUCTION
+                        and (keys is None or key in keys)
+                        and previous.items.get(key) is not DeliveryStage.PRODUCTION
+                    )
+                ),
             )
         )
     return samples

@@ -139,3 +139,43 @@ async def test_a_reconstructed_day_never_replaces_one_the_hourly_run_kept() -> N
     finally:
         await executor.execute("DELETE FROM forecast_days WHERE tenant_id = %s", (tenant,))
         await executor.close()
+
+
+async def test_a_kept_day_gains_its_breakdown_and_nothing_else_changes() -> None:
+    executor = PsycopgAsyncExecutor(DATABASE_URL, min_size=1, max_size=2)
+    repository = PostgresForecastDayRepository(executor)
+    tenant = f"fd-test-{uuid4().hex[:8]}"
+    scope = CommitmentScope(kind=CommitmentScopeKind.POD, id="pod-1", project_id="project-checkout")
+    kept = ForecastDayRecord(
+        tenant_id=tenant,
+        scope=scope,
+        day=date(2026, 10, 2),
+        p50=date(2026, 11, 3),
+        p85=date(2026, 11, 17),
+        verdict=Verdict.AT_RISK,
+        target_date=date(2026, 11, 10),
+        team_latest=None,
+        team_latest_key=None,
+        remaining=4,
+        unit="requirements",
+        sample_days=12,
+        completed_in_sample=6.0,
+        min_sample_days=10,
+        computed_at=AT,
+    )
+    breakdown = {"version": 1, "from_day": "2026-10-01", "to_day": "2026-10-02", "steps": []}
+    try:
+        await repository.save([kept])
+        # A breakdown computed later, for a row with other dates: only the breakdown lands.
+        await repository.fill_attribution(
+            [replace(kept, p85=date(2027, 1, 1), attribution=breakdown)]
+        )
+        (row,) = await repository.list_between(tenant, scope, kept.day, kept.day)
+        assert row == replace(kept, attribution=breakdown)
+        # A row that has one keeps it.
+        await repository.fill_attribution([replace(kept, attribution={"version": 2})])
+        (again,) = await repository.list_between(tenant, scope, kept.day, kept.day)
+        assert again.attribution == breakdown
+    finally:
+        await executor.execute("DELETE FROM forecast_days WHERE tenant_id = %s", (tenant,))
+        await executor.close()

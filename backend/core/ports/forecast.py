@@ -63,3 +63,11 @@ class ForecastDayRepository(Protocol):
     ) -> list[ForecastDayRecord]:
         """The scope's rows from ``start`` to ``end``, oldest first."""
         ...
+
+    async def fill_attribution(self, records: Sequence[ForecastDayRecord]) -> None:
+        """Give each record's row its ``attribution`` where the row has none yet.
+
+        Nothing else of the row changes: a day the hourly run kept before its
+        breakdown was computed keeps its forecast and gains only the breakdown.
+        """
+        ...

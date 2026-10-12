@@ -2,8 +2,9 @@
 
 The snapshot run stores today's requirements of every project (a later run the
 same day replaces the earlier one), which the requirements timeline and the day
-reports' "moved since" read, and then today's forecast of every project and
-release (forecast_days), which the forecast's history reads. Dispatched by an
+reports' "moved since" read, and then today's forecast of every project, pod
+and release (forecast_days), each with why it moved since the day before, which
+the forecast's history and "why the date moved" read. Dispatched by an
 admin with ``reconstruct_days``, it also rebuilds the forecast of that many
 earlier days from the stored snapshots: the one-off job after the forecast
 started being kept. The dispatch run checks every enabled day report
@@ -40,7 +41,7 @@ class DeliverySnapshotResult:
     tenant_id: str
     day: str
     projects_recorded: int
-    #: Today's forecast rows kept: one per project and release.
+    #: Today's forecast rows kept: one per project, pod and release.
     forecasts_recorded: int = 0
     #: Earlier days rebuilt, and days left as the hourly run kept them.
     forecast_days_reconstructed: int = 0
