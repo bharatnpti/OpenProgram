@@ -143,7 +143,7 @@ Functional requirements:
 - Each escalation step shall be switchable off in tenant settings.
 - The system shall record stale or unknown status when the developer does not respond within configured windows.
 - A stale status shall name the last confirmed, partly answered, or inferred status once, with its date, however many days in a row the developer has not answered.
-- The system shall be able to infer limited status from recent facts when no human confirmation exists.
+- The system shall be able to infer limited status from recent facts when no human confirmation exists, first from what moved in the issue tracker and Git (see 4.35).
 - The system shall mark inferred or missing status with reduced confidence/source quality.
 
 ### 4.6 Status Parsing and Conversation Context
@@ -656,6 +656,22 @@ Functional requirements:
 - Beside the drivers: each move of the committed date with who, when and why (and the additions just before it); the team's latest date at both ends with what moved it; and, as evidence that never gets a share, requirements open past their due date, ETA or baseline due date, and those with no date.
 - The day report shall add one line under "What changed" when the 85% date moved since the previous report, naming the items; it shall lead "Most important" when the verdict worsened or the date moved three working days later or more.
 - Ask (Ora) shall answer "why did the date move" and "what impacted the timeline" from `delivery_impact`, read-only, with the same gate as the read: a project's readers, a scrum master for their own projects and pods (another pod's dates only), never a developer. Its answer shall carry the timeline's markers and the link to the scope's row. The same data is served by `GET /projects/{id}/delivery/impact`.
+
+### 4.35 The Jira-Observed Day
+
+**Business requirement:** Every member the check-in asks shall have a day on record, and a day nobody gave in words shall say what moved in the tracker and Git, never be read as green, and never be taken for the person's word. Low-level design: `docs/lld/observed-day.md`.
+
+Functional requirements:
+
+- The system shall build each member's day from the tracker's history (4.7) and Git: per task they hold, the stage moves, resolutions, due date and estimate moves, release changes, assignments, and the merge requests and commits that name it, since their last confirmed or partial answer or their previous check-in time, whichever is later. Changes they made on someone else's issue shall read "worked on"; a task under way with no movement for five days shall say so. It shall name keys, status and stage names, release names, dates and numbers only, never tracker or Git free text.
+- A check-in that closes unanswered shall be inferred from that digest first: work moved to Done counts, and no task need be under way. With nothing moved, the earlier rule applies (4.5).
+- A reply without a status shall keep its own first words and add what moved, and be inferred when anything did, unknown otherwise.
+- On the reconcile tick, after each member's nudge time, the system shall fill the day of every member the check-in did not reach (no check-in run for the day, no status, a check-in day of theirs, not on leave): inferred from the digest, else stale or unknown, saying in its first words that they were not reached. It shall do so once per member and day, and send nothing.
+- Admins shall switch the fill off per tenant in Admin › Check-ins ("Fill the day from Jira for people who were not asked", on by default); the deployment can switch it off for every tenant.
+- The pod's task table and a developer's own task list shall show, under what was last said, what Jira says of the task today: its status since when, who moved it when that was not the task's own people, the day's other changes, or how long it has not moved. It shall never be merged into what anyone said.
+- A scrum master's check-in panel shall say how the pod's day was captured ("3 of 6 replied today · 2 from Jira · 1 no data (no Jira link)"), counted per pod, with why a day has no data (no Jira link, Jira not synced, no chat id, nothing moved), and each inferred person's first line of evidence. Executives shall still see no pod check-ins.
+- The assistant's pod check-in read shall return each inferred day's evidence and the pod's coverage, and say that an inferred day is not the person's word.
+- Nothing shall count, rank or compare people's activity.
 
 ## 5. Key Business Data Flows
 

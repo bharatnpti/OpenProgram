@@ -110,6 +110,9 @@ to and never fails the sync.
 - The non-response inference's newest ten facts leave `issue_change` out.
 - A task's colour is never taken from an `issue_change` fact.
 
+Their reader is the observed day (`observed-day.md`): the digest a silent
+day is inferred from, and each task's "Jira today" line.
+
 ## Snapshots
 
 `requirement_snapshots.payload` gains an `item` map, `{KEY: {points, type,
