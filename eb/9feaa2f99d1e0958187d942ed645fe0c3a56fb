@@ -1,0 +1,31 @@
+backend/core/application/delivery_service.py
+  s_22b399281058a2::t_4ce11f790196a7 27
+  s_22b399281058a2::t_57dff2c728e194 402,450-455
+backend/infra/persistence/postgres_delivery.py
+  s_22b399281058a2::t_4ce11f790196a7 15
+  s_22b399281058a2::t_57dff2c728e194 259-262,299-302,307-316
+  s_22b399281058a2::t_fe6f59830b7981 317-319
+backend/tests/unit/test_delivery.py
+  s_22b399281058a2::t_d36395a4496141 582,592
+  s_22b399281058a2::t_8577023bbef550 20,390-409,568-581,583-591,593-610
+backend/core/domain/delivery.py
+  s_22b399281058a2::t_57dff2c728e194 200-211,219-221,236
+backend/core/application/forecast_service.py
+  s_22b399281058a2::t_57dff2c728e194 891
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eb9feaa2f99d1e0958187d942ed645fe0c3a56fb",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

@@ -1,0 +1,65 @@
+backend/tests/unit/test_connections.py
+  s_22b399281058a2::t_00c7cf6efb1edb 7,38
+  s_22b399281058a2::t_a0ea15ff3d992a 880-902
+backend/tests/contract/test_ports.py
+  s_22b399281058a2::t_df035d08bf1e8b 3,9-10,84-95
+backend/core/domain/integrations.py
+  s_22b399281058a2::t_308e1ff5343f12 73-121
+backend/tests/contract/contracts.py
+  s_22b399281058a2::t_78d233dd8b88db 35,119-121
+backend/tests/contract/test_jira_issue_changes.py
+  s_22b399281058a2::t_ede493325dc158 1-46,50-159,167-169,177-194,199-394
+  s_22b399281058a2::t_ec92d3a1ddd16a 47-49
+  s_22b399281058a2::t_3bdd3a862b9be8 160-166,170-176,195-198
+backend/infra/adapters/connections/testers.py
+  s_22b399281058a2::t_aeed88b574358a 104-108,120-128,134,392-419
+  s_22b399281058a2::t_9b3245ca44a910 420-423
+backend/core/ports/issue_tracker.py
+  s_22b399281058a2::t_7d5279819d840f 3,8
+  s_22b399281058a2::t_fae0381faa5ec3 37-46
+frontend-v3/scripts/mock/admin-config.mjs
+  s_22b399281058a2::t_8427669f09b102 550-553
+backend/infra/adapters/connections/specs.py
+  s_22b399281058a2::t_aeed88b574358a 145-154
+backend/infra/adapters/jira/jira_adapter.py
+  s_22b399281058a2::t_f0b88b7ae9dba3 781-948,951,953-961
+  s_22b399281058a2::t_4469adcec6cd9c 18,20-21,37-38,45-48,71,107,126,130-134,177,531,555,574,579-584,618,620-621,659-665,708-736
+  s_22b399281058a2::t_8ae7710fa35656 949-950,952
+  s_22b399281058a2::t_d98a95aba9d568 224-318
+  s_22b399281058a2::t_a0d1f2a55303f2 737-738
+backend/infra/adapters/connections/routing.py
+  s_22b399281058a2::t_245cd20bb03365 12,18,77-81
+  s_22b399281058a2::t_3bdc1e68289289 82
+backend/tests/contract/fakes.py
+  s_22b399281058a2::t_700104121f8695 13
+  s_22b399281058a2::t_b8631384ba9a5e 126
+  s_22b399281058a2::t_245cd20bb03365 22,82-86,99,119-125,127
+  s_22b399281058a2::t_8842e19d8d6d2c 128
+backend/config/settings.py
+  s_22b399281058a2::t_e4167d346eaa4b 251
+backend/infra/adapters/integrations/fake.py
+  s_22b399281058a2::t_245cd20bb03365 12,34-35,138-143,145
+  s_22b399281058a2::t_b8631384ba9a5e 144
+  s_22b399281058a2::t_270e6cc0425153 146-147
+backend/infra/adapters/catalog.py
+  s_22b399281058a2::t_e4167d346eaa4b 258
+backend/tests/contract/test_connection_testers.py
+  s_22b399281058a2::t_c3d0d05a46c966 45-46,77-81,145-169
+  s_22b399281058a2::t_e4367c21b96b4f 170-171
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7d0cee616ae2554906197b28cd53bb1ba16c610c",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

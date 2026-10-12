@@ -1,0 +1,27 @@
+backend/infra/persistence/postgres_status.py
+  s_22b399281058a2::t_f3da3e0cf7fcac 1158-1199
+backend/core/ports/repositories.py
+  s_22b399281058a2::t_a756d776d8a2cb 536-551
+backend/tests/contract/contracts.py
+  s_22b399281058a2::t_0e4870292375cd 1160-1169
+backend/infra/persistence/in_memory_graph.py
+  s_22b399281058a2::t_110a48ff710c05 1173-1186
+backend/tests/contract/fakes.py
+  s_22b399281058a2::t_1243c0eb188450 844-857
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f935b07b082329912ad7f2d9ef7e11242d0adfb9",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

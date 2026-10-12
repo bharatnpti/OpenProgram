@@ -1,0 +1,41 @@
+backend/tests/unit/test_issue_change_sync.py
+  s_22b399281058a2::t_3acc1dc90bd9b3 26
+  s_22b399281058a2::t_c5fb7e05471f58 390-421
+  s_22b399281058a2::t_8bdd928d791e0c 7
+  s_22b399281058a2::t_a7524c3bb349b2 1-6,8-25,27-389
+backend/infra/registry.py
+  s_22b399281058a2::t_e4167d346eaa4b 1393-1394
+backend/core/application/sync_services.py
+  s_22b399281058a2::t_b8631384ba9a5e 470
+  s_22b399281058a2::t_90f54179dee59c 3,6,9,28-29,56-61,73-74,81-82,116-131,175-188,307-309,332-347,356-409,417-469,471-485,488-509,518-522,599,848-850
+  s_22b399281058a2::t_1e3277e06184ca 348-355
+backend/tests/unit/test_non_response_inference.py
+  s_22b399281058a2::t_9804a43ebaa606 135-169
+  s_22b399281058a2::t_2daa3c32cdaa1f 9,12-13
+backend/core/application/status_collector.py
+  s_22b399281058a2::t_14925bd423129e 78
+  s_22b399281058a2::t_f4b79896fbe012 3868-3874
+backend/core/application/persona_views.py
+  s_22b399281058a2::t_e00aeec25d12cd 1315-1316
+  s_22b399281058a2::t_f4b79896fbe012 28,64-66,1322
+backend/tests/unit/test_settings.py
+  s_22b399281058a2::t_8a100de219f0cb 78-87
+backend/config/settings.py
+  s_22b399281058a2::t_9bf1261e83e977 87-92,628,677
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3af1ef41cd507892d1fbd228bc3889ebdd3fa01e",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
