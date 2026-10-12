@@ -149,11 +149,24 @@ def _scope(parts: SentenceParts) -> str:
     return said
 
 
-def no_forecast_reason(sample_days: int | None, needed_days: int | None) -> str:
-    """'No forecast yet: 4 of 10 working days of history', from the kept row's numbers."""
+def no_forecast_reason(
+    sample_days: int | None,
+    needed_days: int | None,
+    *,
+    completed: float | None = None,
+    remaining: float | None = None,
+) -> str:
+    """Why a kept row has no band, from its own numbers, as the history forecast says it:
+    'No forecast yet: 4 of 10 working days of history'."""
     if sample_days is None or needed_days is None:
         return "No forecast kept yet"
-    return f"No forecast yet: {sample_days} of {needed_days} working days of history"
+    if remaining is not None and remaining <= 0:
+        return "Nothing left to finish"
+    if sample_days < needed_days:
+        return f"No forecast yet: {sample_days} of {needed_days} working days of history"
+    if completed is not None and completed <= 0:
+        return f"No forecast: nothing reached production in the last {sample_days} working days"
+    return "No forecast kept for this day"
 
 
 def _unit(unit: str, count: float) -> str:

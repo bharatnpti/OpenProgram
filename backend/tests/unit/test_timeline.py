@@ -445,6 +445,15 @@ def test_the_axis_spans_the_earliest_start_to_past_the_last_date() -> None:
     assert empty.start < TODAY < empty.end
 
 
+def test_a_row_without_a_band_says_why_from_its_kept_numbers() -> None:
+    assert no_forecast_reason(None, None) == "No forecast kept yet"
+    assert no_forecast_reason(4, 10) == "No forecast yet: 4 of 10 working days of history"
+    assert no_forecast_reason(20, 10, completed=0, remaining=5) == (
+        "No forecast: nothing reached production in the last 20 working days"
+    )
+    assert no_forecast_reason(20, 10, completed=3, remaining=0) == "Nothing left to finish"
+
+
 def test_a_row_reads_as_one_sentence() -> None:
     whole = row_sentence(
         SentenceParts(

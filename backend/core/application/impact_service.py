@@ -901,7 +901,14 @@ class DeliveryImpactService:
         """Blockers opened and closed on the scope's requirements, on the day each was."""
         assert self._status is not None
         tasks = await self._forecasts.tasks_by_key(tenant_id, scope.project_id, as_of)
-        keys_by_id = {task.id: key for key, task in tasks.items() if key in stages}
+        # A blocker names its work item by the task's node id, or (as seeded and as an
+        # attribution reads it) by its issue key: either finds the requirement.
+        keys_by_id = {
+            ref: key
+            for key, task in tasks.items()
+            if key in stages
+            for ref in dict.fromkeys((task.id, key))
+        }
         for blocker in await self._status.blockers_on_work_items(
             tenant_id, sorted(keys_by_id), start, as_of
         ):

@@ -383,6 +383,8 @@ class TimelineService:
             else no_forecast_reason(
                 latest.sample_days if latest is not None else None,
                 latest.min_sample_days if latest is not None else None,
+                completed=latest.completed_in_sample if latest is not None else None,
+                remaining=latest.remaining if latest is not None else None,
             )
         )
         done, total, unit = _progress(snapshot) if whole else (None, None, None)
