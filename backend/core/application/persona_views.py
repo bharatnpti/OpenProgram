@@ -25,7 +25,7 @@ from core.application.rollup_service import (
     task_rag,
 )
 from core.application.status_summaries import NO_REPLY_BLOCKER
-from core.application.sync_services import ISSUE_FACT_SOURCE
+from core.application.sync_services import ISSUE_CHANGE_FACT_SOURCE, ISSUE_FACT_SOURCE
 from core.application.task_update_service import (
     TASK_UPDATE_FACT_SOURCE,
     StatedEta,
@@ -61,6 +61,9 @@ TASK_FACT_LOOKBACK_DAYS = 30
 # task's colour never comes from them (a statement never repaints a task, and
 # an ETA fact never masks the tracker's colour).
 _STATEMENT_FACT_SOURCES = frozenset({TASK_UPDATE_FACT_SOURCE, CHECKIN_DRIFT_FACT_SOURCE})
+# Facts that never colour a task: a person's statement, or one field change
+# from the tracker's history (the issue fact of the same update carries the state).
+_UNCOLOURED_FACT_SOURCES = _STATEMENT_FACT_SOURCES | {ISSUE_CHANGE_FACT_SOURCE}
 
 
 class PortfolioFindings(Protocol):
@@ -1309,13 +1312,14 @@ def _task_status_from_facts(
     Statements are left out: a ``task_update`` (what the person said in chat
     or the console) never repaints the task, and an ``eta_stated`` or other
     ``checkin_drift`` fact, which carries no colour, no longer hides the
-    tracker's.
+    tracker's. Nor does an ``issue_change`` fact: one field change, at the same
+    moment as the issue fact that carries the state.
     """
     since = _since_for_as_of(as_of)
     coloured = [
         fact
         for fact in facts
-        if fact.source not in _STATEMENT_FACT_SOURCES and fact.observed_at >= since
+        if fact.source not in _UNCOLOURED_FACT_SOURCES and fact.observed_at >= since
     ]
     fact = max(coloured, key=lambda item: item.observed_at) if coloured else None
     return TaskStatusView(

@@ -75,6 +75,7 @@ from core.application.status_summaries import (
     summary_with_tracker_updates,
     with_no_active_work,
 )
+from core.application.sync_services import ISSUE_CHANGE_FACT_SOURCE
 from core.application.task_update_service import CHAT, stated_task_state, task_update_fact
 from core.application.team_context import (
     coordinates_team,
@@ -3864,7 +3865,13 @@ class StatusCollector:
         facts: list[FactEvent] = []
         since = datetime.now(tz=UTC) - timedelta(days=self._recent_fact_lookback_days)
         for ref in refs:
-            facts.extend(await self._time_series_repository.list_facts(tenant_id, ref, since))
+            facts.extend(
+                fact
+                for fact in await self._time_series_repository.list_facts(tenant_id, ref, since)
+                # A field change from the tracker's history is not evidence here
+                # yet: dozens a day would push the replies and risks out of ten.
+                if fact.source != ISSUE_CHANGE_FACT_SOURCE
+            )
         return sorted(facts, key=lambda fact: fact.observed_at, reverse=True)[:10]
 
     def _compile_graph(self) -> StatusCollectorGraph:

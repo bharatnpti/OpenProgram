@@ -6,9 +6,11 @@ R1 live: Hana did not answer, and the close-out recorded her as ``inferred``
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 from core.application.status_collector import StatusCollector
+from core.application.sync_services import ISSUE_CHANGE_FACT_SOURCE
+from core.domain.graph import EntityRef, FactEvent, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.status import DeveloperStatus, StatusSource
 from infra.persistence.in_memory_graph import InMemoryGraphStore
@@ -130,3 +132,38 @@ async def test_stale_status_drops_the_note_once_the_tracker_cannot_tell() -> Non
         "No confirmed check-in after a nudge. Last known partial status on Oct 3: "
         "Started the dashboard spike."
     )
+
+
+async def test_field_changes_from_the_tracker_history_do_not_crowd_out_the_last_reply() -> None:
+    """Dozens of issue_change facts a day must not push the reply out of the newest ten."""
+    store = InMemoryGraphStore()
+    now = datetime.now(tz=UTC)
+    await store.append_fact(
+        FactEvent(
+            tenant_id="demo",
+            source="checkin",
+            entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-hana"),
+            payload={"blocker_count": 0},
+            observed_at=now - timedelta(days=2),
+            correlation_id="checkin:hana",
+        )
+    )
+    for minute in range(12):
+        await store.append_fact(
+            FactEvent(
+                tenant_id="demo",
+                source=ISSUE_CHANGE_FACT_SOURCE,
+                entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="IDP-6"),
+                payload={"key": "IDP-6", "field": "labels", "from": None, "to": "x"},
+                observed_at=now - timedelta(minutes=minute),
+                correlation_id=f"issue_change:demo:IDP-6:{minute}:labels",
+            )
+        )
+    collector = _collector(store, _issue("IDP-6", "Metadata refresh", IssueState.IN_PROGRESS))
+
+    status = await collector.record_non_response(
+        tenant_id="demo", developer_id="dev-hana", as_of=now.date()
+    )
+
+    replied = (now - timedelta(days=2)).date()
+    assert f"last check-in reply on {replied:%b} {replied.day}" in status.summary

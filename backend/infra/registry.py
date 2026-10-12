@@ -1390,6 +1390,8 @@ class ServiceRegistry:
             time_series_repository=self.time_series_repository(),
             cursor_repository=self.sync_cursor_repository(),
             identity_link_repository=self.identity_link_repository(),
+            changes_per_tick=self.settings.jira_changes_per_tick,
+            changes_backfill_days=self.settings.jira_changes_backfill_days,
         )
 
     def vcs_read_sync_service(self) -> VcsReadSyncService:

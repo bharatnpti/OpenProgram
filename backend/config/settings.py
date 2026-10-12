@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     calendar_sync_user_ids: tuple[str, ...] = ()
     calendar_sync_window_days: int = 1
     jira_sync_cron: str = "0 * * * *"
+    # Each Jira sync also reads the history of the issues it saw change, as
+    # issue_change facts: at most this many issues a sync target and tick (the
+    # rest on the next tick; 0 reads no history). The first read of a target
+    # goes back this many days.
+    jira_changes_per_tick: int = 200
+    jira_changes_backfill_days: int = 120
     github_sync_cron: str = "*/15 * * * *"
     calendar_sync_cron: str = "0 8 * * *"
     conversation_retention_days: int = 30
@@ -619,6 +625,7 @@ class Settings(BaseSettings):
         "outbound_dm_max_chars",
         "recent_fact_lookback_days",
         "cross_person_notify_max_attempts",
+        "jira_changes_backfill_days",
     )
     @classmethod
     def validate_positive_int(cls, value: int) -> int:
@@ -667,6 +674,7 @@ class Settings(BaseSettings):
         "llm_max_tool_iterations",
         "ask_max_tool_iterations",
         "ask_investigate_max_tool_iterations",
+        "jira_changes_per_tick",
     )
     @classmethod
     def validate_non_negative_count(cls, value: int) -> int:
