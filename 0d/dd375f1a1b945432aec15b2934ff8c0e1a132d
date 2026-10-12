@@ -1,0 +1,111 @@
+backend/core/domain/baseline.py
+  s_22b399281058a2::t_e710f7fd648c33 1-188
+backend/core/ports/forecast.py
+  s_22b399281058a2::t_e710f7fd648c33 3-4,7-13,48-65
+backend/tests/unit/test_baselines.py
+  s_22b399281058a2::t_e710f7fd648c33 1-30,32-369,394-458,474-484
+  s_22b399281058a2::t_fd2ea312936de6 31,370-393,459-473
+backend/api/dtos.py
+  s_22b399281058a2::t_e710f7fd648c33 4701-4706,4731-4735
+backend/infra/persistence/postgres_baselines.py
+  s_22b399281058a2::t_e710f7fd648c33 1-191
+frontend-v3/scripts/mock/viz-overall.mjs
+  s_22b399281058a2::t_e710f7fd648c33 43-45,49-50,60-66,73-79,188,219
+backend/core/application/baseline_service.py
+  s_22b399281058a2::t_e710f7fd648c33 1-427
+frontend-v3/src/features/overall/slip.test.ts
+  s_22b399281058a2::t_e710f7fd648c33 9,161-173
+  s_22b399281058a2::t_db37e02ba9603b 174-175
+backend/api/main.py
+  s_22b399281058a2::t_e710f7fd648c33 19,151
+backend/infra/persistence/in_memory_baselines.py
+  s_22b399281058a2::t_e710f7fd648c33 1-48
+backend/tests/integration/test_baselines_repository.py
+  s_22b399281058a2::t_e710f7fd648c33 1-141
+backend/infra/persistence/migrations/versions/0042_baselines_forecast_days.py
+  s_22b399281058a2::t_a52797355c543c 27
+  s_22b399281058a2::t_e710f7fd648c33 1-26,28-109
+backend/api/dependencies.py
+  s_22b399281058a2::t_e710f7fd648c33 12,365-366
+  s_22b399281058a2::t_4cb40b5ea2826c 367-368
+frontend-v3/src/features/overall/baselineWords.test.ts
+  s_22b399281058a2::t_e710f7fd648c33 1-158
+frontend-v3/src/api/openapi.json
+  s_22b399281058a2::t_e710f7fd648c33 521-578,6507-6656,12633-12642,16358-16363,16409-16422,18433-18710,23536-23583
+frontend-v3/src/features/overall/baselineWords.ts
+  s_22b399281058a2::t_e710f7fd648c33 1-166
+backend/core/application/forecast_service.py
+  s_22b399281058a2::t_e710f7fd648c33 13-18,26,44,54,67,70,80-82,125-126,154-167,188,192,201-203,474-478,509-518,522-533,555-718,881-882,884-885,951-1006
+  s_22b399281058a2::t_c93eb6b31a61d5 1007-1008
+frontend/src/api/generated.ts
+  s_22b399281058a2::t_e710f7fd648c33 236-256,1427-1451,3137-3146,4533-4538,4558-4566,5355-5481,7318-7335,8356-8390,11803-11876
+frontend-v3/src/features/overall/queries.ts
+  s_22b399281058a2::t_e710f7fd648c33 74-89
+frontend-v3/src/api/generated.ts
+  s_22b399281058a2::t_e710f7fd648c33 236-256,1427-1451,3137-3146,4520-4525,4545-4553,5342-5468,7305-7322,8343-8377,11790-11863
+frontend-v3/src/features/overall/slip.ts
+  s_22b399281058a2::t_e710f7fd648c33 116-126
+backend/infra/persistence/in_memory_forecast.py
+  s_22b399281058a2::t_e710f7fd648c33 3,5,7-13,73-101
+backend/core/domain/forecast.py
+  s_22b399281058a2::t_e710f7fd648c33 227-263
+  s_22b399281058a2::t_76364ebfe6fb7b 226
+backend/infra/persistence/postgres_forecast.py
+  s_22b399281058a2::t_e710f7fd648c33 3,6,15,19,29-33,164-291
+  s_22b399281058a2::t_359c85138238b9 292-293
+backend/api/routers/baselines.py
+  s_22b399281058a2::t_e710f7fd648c33 1-88
+frontend-v3/src/api/client.ts
+  s_22b399281058a2::t_e710f7fd648c33 31-33,661-674
+frontend-v2/src/api/generated.ts
+  s_22b399281058a2::t_e710f7fd648c33 236-256,1427-1451,3137-3146,4520-4525,4545-4553,5342-5468,7305-7322,8343-8377,11790-11863
+frontend-v3/scripts/mock-api.mjs
+  s_22b399281058a2::t_e710f7fd648c33 36,262
+backend/api/baseline_dtos.py
+  s_22b399281058a2::t_e710f7fd648c33 1-180
+backend/core/ports/baselines.py
+  s_22b399281058a2::t_e710f7fd648c33 1-24
+backend/infra/workflows/dispatch.py
+  s_22b399281058a2::t_e710f7fd648c33 156
+backend/infra/registry.py
+  s_22b399281058a2::t_e710f7fd648c33 8,16,65,75,137,147,162,175,285-288,507-515,524,527-547,693-696
+backend/tests/unit/test_forecast_days.py
+  s_22b399281058a2::t_e710f7fd648c33 1-415
+frontend-v3/src/features/overall/SlipChart.tsx
+  s_22b399281058a2::t_e710f7fd648c33 13,72,95,282
+frontend-v3/src/features/overall/BaselineSection.tsx
+  s_22b399281058a2::t_e710f7fd648c33 1-300
+frontend-v3/src/pages/OverallPage.tsx
+  s_22b399281058a2::t_e710f7fd648c33 7,22-24,30-31,87
+frontend-v2/src/api/openapi.json
+  s_22b399281058a2::t_e710f7fd648c33 521-578,6507-6656,12633-12642,16358-16363,16409-16422,18433-18710,23536-23583
+frontend-v3/src/api/schema.ts
+  s_22b399281058a2::t_e710f7fd648c33 163-165
+backend/infra/workflows/delivery_reports.py
+  s_22b399281058a2::t_e710f7fd648c33 5-9,34-35,43-47,110-128,130-135
+frontend-v3/src/api/asOf.ts
+  s_22b399281058a2::t_e710f7fd648c33 49
+frontend-v3/scripts/mock/baselines.mjs
+  s_22b399281058a2::t_e710f7fd648c33 1-183
+frontend/src/api/openapi.json
+  s_22b399281058a2::t_e710f7fd648c33 521-578,6507-6656,12633-12642,16358-16363,16409-16422,18433-18710,23536-23583
+backend/api/routers/admin.py
+  s_22b399281058a2::t_e710f7fd648c33 7,120-134
+  s_22b399281058a2::t_6a6be21c11d0c3 135-139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0ddd375f1a1b945432aec15b2934ff8c0e1a132d",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
