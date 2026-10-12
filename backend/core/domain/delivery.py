@@ -197,6 +197,18 @@ class RequirementItem:
     assignee_id: str | None = None
     story_points: float | None = None
     due_date: str | None = None
+    issue_type: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class SnapshotItem:
+    """What a snapshot keeps of one requirement besides its stage and title."""
+
+    points: float | None = None
+    #: The tracker's issue type name.
+    type: str | None = None
+    #: The tracker's due date, ``YYYY-MM-DD``.
+    due: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -204,7 +216,9 @@ class RequirementsSnapshot:
     """One project's requirements on one day: how many sit in each stage.
 
     ``items`` keeps each requirement's stage that day, so two snapshots show
-    which requirements moved and which joined or left the scope.
+    which requirements moved and which joined or left the scope. ``details``
+    (stored as the payload's ``item`` map) keeps each one's size, type and due
+    date that day; snapshots stored before it have none.
     """
 
     tenant_id: str
@@ -219,6 +233,7 @@ class RequirementsSnapshot:
     items: Mapping[str, DeliveryStage]
     computed_at: datetime
     titles: Mapping[str, str] = field(default_factory=dict)
+    details: Mapping[str, SnapshotItem] = field(default_factory=dict)
 
     @property
     def total(self) -> int:

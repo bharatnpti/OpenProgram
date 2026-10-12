@@ -17,6 +17,7 @@ from core.domain.delivery import (
     DEFAULT_STAGE_MAPPING,
     DeliveryStage,
     RequirementsSnapshot,
+    SnapshotItem,
     StageMapping,
     StageMappingError,
     StageMove,
@@ -386,6 +387,26 @@ async def test_an_earlier_day_reads_its_stored_snapshot_or_says_none_was_kept() 
     assert missing.available is False and missing.total == 0 and missing.percent_complete is None
 
 
+async def test_a_snapshot_keeps_each_requirements_size_type_and_due_date() -> None:
+    store = await _graph()
+    node = await store.get_node(TENANT, "CHK-2")
+    assert node is not None
+    await store.upsert_node(
+        replace(node, metadata={**node.metadata, "due_date": "2026-10-20"})  # type: ignore[arg-type]
+    )
+    snapshots = InMemoryRequirementsSnapshotRepository()
+    await _service(store, snapshots).record_snapshots(TENANT, TODAY)
+
+    stored = await snapshots.get(TENANT, "checkout", TODAY)
+
+    assert stored is not None
+    assert stored.details["CHK-1"] == SnapshotItem(points=3.0, type="Story", due=None)
+    assert stored.details["CHK-2"] == SnapshotItem(points=5.0, type="Story", due="2026-10-20")
+    assert stored.details["CHK-6"] == SnapshotItem(points=None, type="Sub-task", due=None)
+    # Only the requirements the snapshot counts are kept, as in its stage map.
+    assert set(stored.details) == set(stored.items)
+
+
 async def test_only_a_project_has_requirements() -> None:
     service = _service(await _graph())
 
@@ -544,3 +565,46 @@ async def test_a_snapshot_round_trips_through_postgres() -> None:
     loaded = await repository.get(TENANT, "proj", TODAY)
 
     assert loaded == snapshot
+
+
+async def test_a_snapshots_item_map_round_trips_and_an_older_payload_has_none() -> None:
+    snapshot = replace(
+        _snapshot(TODAY, {"CHK-1": S.IN_TESTING, "CHK-3": S.PRODUCTION}),
+        details={
+            "CHK-1": SnapshotItem(points=3.0, type="Story", due="2026-10-20"),
+            "CHK-3": SnapshotItem(points=None, type="Bug", due=None),
+        },
+    )
+    executor = _RecordingExecutor()
+    repository = PostgresRequirementsSnapshotRepository(executor)
+
+    await repository.save(snapshot)
+    payload = executor.calls[0][1][3]
+    assert json.loads(str(payload))["item"] == {
+        "CHK-1": {"points": 3.0, "type": "Story", "due": "2026-10-20"},
+        "CHK-3": {"points": None, "type": "Bug", "due": None},
+    }
+    executor.rows = [
+        {
+            "tenant_id": TENANT,
+            "project_id": "proj",
+            "day": TODAY,
+            "payload": payload,
+            "computed_at": NOW,
+        }
+    ]
+    assert await repository.get(TENANT, "proj", TODAY) == snapshot
+
+    older = json.loads(str(payload))
+    del older["item"]
+    executor.rows = [
+        {
+            "tenant_id": TENANT,
+            "project_id": "proj",
+            "day": TODAY,
+            "payload": json.dumps(older),
+            "computed_at": NOW,
+        }
+    ]
+    loaded = await repository.get(TENANT, "proj", TODAY)
+    assert loaded is not None and loaded.details == {}

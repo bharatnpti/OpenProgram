@@ -24,6 +24,7 @@ from core.domain.delivery import (
     DeliveryStage,
     RequirementItem,
     RequirementsSnapshot,
+    SnapshotItem,
     StageMapping,
     StageMove,
     place,
@@ -398,6 +399,7 @@ def _requirements(
                 assignee_id=assignees.get(task.id),
                 story_points=_number(task.metadata.get("story_points")),
                 due_date=_text(task.metadata.get("due_date")),
+                issue_type=_text(task.metadata.get("issue_type")),
             )
         )
     return tuple(sorted(items, key=lambda item: (STAGE_ORDER.index(item.stage), item.key)))
@@ -445,6 +447,12 @@ def _snapshot(
         ),
         items={item.key: item.stage for item in items},
         titles={item.key: item.title for item in items},
+        details={
+            item.key: SnapshotItem(
+                points=item.story_points, type=item.issue_type, due=item.due_date
+            )
+            for item in items
+        },
         computed_at=computed_at,
     )
 
