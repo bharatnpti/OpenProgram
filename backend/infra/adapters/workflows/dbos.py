@@ -68,6 +68,11 @@ from infra.workflows import (
 )
 from infra.workflows.brief_generation import BriefGenerationInput, BriefGenerationResult
 from infra.workflows.calendar_sync import CalendarSyncInput, CalendarSyncWorkflowResult
+from infra.workflows.checkin_fill import (
+    CheckinFillInput,
+    CheckinFillResult,
+    run_checkin_fill_activity,
+)
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
 from infra.workflows.delivery_reports import (
     DayReportDispatchInput,
@@ -121,6 +126,7 @@ SyncWorkflowResult = (
     | DayReportDispatchResult
     | GateScanResult
     | ReadinessScanResult
+    | CheckinFillResult
 )
 
 
@@ -437,6 +443,17 @@ async def dbos_run_readiness_scan_step(payload: ReadinessScanInput) -> Readiness
 @DBOS.workflow(name="openprogram_readiness_scan")
 async def dbos_readiness_scan_workflow(payload: ReadinessScanInput) -> ReadinessScanResult:
     return await dbos_run_readiness_scan_step(payload)
+
+
+# Retries are safe: a day already filled is never filled again.
+@DBOS.step(name="openprogram_run_checkin_fill", retries_allowed=True)
+async def dbos_run_checkin_fill_step(payload: CheckinFillInput) -> CheckinFillResult:
+    return await run_checkin_fill_activity(payload)
+
+
+@DBOS.workflow(name="openprogram_checkin_fill")
+async def dbos_checkin_fill_workflow(payload: CheckinFillInput) -> CheckinFillResult:
+    return await dbos_run_checkin_fill_step(payload)
 
 
 # A step, so a recovered run keeps the answer its first attempt recorded.
@@ -794,6 +811,8 @@ async def _run_derived_step(workflow_input: object, connector: str) -> SyncWorkf
         return await dbos_run_gate_scan_step(workflow_input)
     if isinstance(workflow_input, ReadinessScanInput):
         return await dbos_run_readiness_scan_step(workflow_input)
+    if isinstance(workflow_input, CheckinFillInput):
+        return await dbos_run_checkin_fill_step(workflow_input)
     raise ValueError(f"unsupported sync connector: {connector}")
 
 
@@ -839,6 +858,8 @@ async def _start_derived_workflow(workflow_input: object, connector: str) -> Non
         await DBOS.start_workflow_async(dbos_day_report_dispatch_workflow, workflow_input)
     elif isinstance(workflow_input, GateScanInput):
         await DBOS.start_workflow_async(dbos_gate_scan_workflow, workflow_input)
+    elif isinstance(workflow_input, CheckinFillInput):
+        await DBOS.start_workflow_async(dbos_checkin_fill_workflow, workflow_input)
     else:
         raise ValueError(f"unsupported sync connector: {connector}")
 

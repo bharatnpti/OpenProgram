@@ -8,8 +8,13 @@ digest, once, on the reconcile tick. An inferred day is never green.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, date, datetime, time, timedelta
+from typing import cast
 
+import pytest
+
+from config.settings import Settings
 from core.application.availability import Availability
 from core.application.fill_day import FillDayPass, FillDaySettingsService
 from core.application.observed_day_service import ObservedDayReader
@@ -35,13 +40,17 @@ from core.domain.graph import (
 )
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.messaging import ChatUserRef, InboundMessage
+from core.domain.observed_day import FillDaySetting
 from core.domain.rollup import Rag
 from core.domain.status import CheckIn, CheckInScheduleRun, DeveloperStatus, StatusSource
-from core.domain.workflows import CheckinReconcileInput
 from infra.persistence.in_memory_fill_day import InMemoryFillDayRepository
 from infra.persistence.in_memory_graph import InMemoryGraphStore
-from infra.workflows import checkin_fanout
+from infra.registry import ServiceRegistry
+from infra.workflows import checkin_fill, schedule
+from infra.workflows.checkin_fill import CheckinFillInput, apply_checkin_fill_schedule
+from infra.workflows.dispatch import sync_dispatch_for_schedule, sync_workflow_input
 from tests.contract.fakes import FakeChatProvider, FakeIssueTracker
+from tests.unit.test_agent_and_workflow import _RecordingWorkflowScheduler
 from tests.unit.test_status_collector import SequenceLlmProvider
 
 NOW = datetime.now(tz=UTC)
@@ -150,8 +159,12 @@ async def test_a_silent_member_is_inferred_from_what_moved_and_stays_amber() -> 
     )
     # Silence is never green: the rollup reads an inferred day amber.
     kai = Developer(tenant_id="demo", id="dev-kai", name="Kai")
-    rag, _ = _developer_factors(kai, status, ())
+    rag, factors = _developer_factors(kai, status, ())
     assert rag is Rag.AMBER
+    # Its reason names the evidence, counted by task.
+    assert [factor.description for factor in factors] == [
+        "Inferred from Jira and GitLab: 2 tasks moved."
+    ]
 
 
 async def test_a_member_whose_only_issue_moved_to_done_is_inferred_not_no_active_work() -> None:
@@ -252,8 +265,7 @@ async def test_a_reply_without_a_status_gains_what_moved_in_jira() -> None:
 
     assert closed.source is StatusSource.INFERRED
     assert closed.summary == (
-        "Replied without a status update. Inferred from Jira: "
-        "CHK-4 moved to In Review (in development)."
+        "Replied without a status update. From Jira: CHK-4 moved to In Review (in development)."
     )
     assert inferred_basis(closed.summary) == "Jira: CHK-4 moved to In Review (in development)"
 
@@ -364,7 +376,7 @@ async def test_fill_day_fills_a_member_who_was_not_asked_once() -> None:
     assert kai[0].as_of == day
     assert kai[0].status.source is StatusSource.INFERRED
     assert kai[0].status.summary == (
-        "Not asked today. Inferred from Jira: CHK-4 moved to In Review (in development)."
+        "Not asked today. From Jira: CHK-4 moved to In Review (in development)."
     )
     # Ira had nothing that moved: her day is filled unknown, still not green.
     ira = [item for item in first if item.developer_id == "dev-ira" and item.as_of == day]
@@ -459,79 +471,241 @@ async def test_fill_day_is_off_when_the_tenant_switches_it_off() -> None:
     assert (setting.enabled, saved, setting.updated_by) == (False, True, "U-admin")
 
 
+def test_the_rollup_reason_counts_moved_and_quiet_tasks_and_keeps_the_old_one_else() -> None:
+    kai = Developer(tenant_id="demo", id="dev-kai", name="Kai")
+
+    def reason(summary: str) -> str:
+        status = DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-kai",
+            as_of=TODAY,
+            source=StatusSource.INFERRED,
+            blockers=("no confirmed reply",),
+            summary=summary,
+        )
+        rag, factors = _developer_factors(kai, status, ())
+        assert rag is Rag.AMBER
+        return factors[0].description
+
+    assert reason(
+        "No confirmed check-in after a nudge. Inferred from Jira: CHK-4 moved to In Review "
+        "(in development); CHK-7 resolved; no movement on CHK-9 for 8 days."
+    ) == ("Inferred from Jira: 2 tasks moved, 1 without movement for 8 days.")
+    assert reason(
+        "Not asked today. From Jira: CHK-1 moved to Done (in development → production); "
+        "2 more tasks moved; worked on IDP-2; no movement on CHK-18 for 20 days; "
+        "no movement on CHK-3 for 7 days; 1 more task without movement."
+    ) == ("Inferred from Jira: 3 tasks moved, 3 without movement for up to 20 days.")
+    # The earlier rule's inference, and one with only other people's issues, keep the old words.
+    assert reason(
+        "No confirmed check-in after a nudge. Inferred from 1 active issue: IDP-6 Metadata refresh."
+    ) == ("Status is inferred and needs confirmation.")
+    assert reason("Replied without a status update. From Jira: worked on IDP-2.") == (
+        "Status is inferred and needs confirmation."
+    )
+
+
 def test_stale_summary_takes_the_fill_lead() -> None:
     assert stale_summary(None, lead=NOT_ASKED_LEAD) == (
         "Not asked today. No confirmed or inferred status in the last 90 days."
     )
 
 
-class _TickSettings:
-    checkin_fanout_enabled = True
-    checkin_reconcile_enabled = True
-    checkin_fill_enabled = True
+# --- the fill's own schedule (D72): the send's switches never decide it --------
 
 
-class _TickRegistry:
-    def __init__(self, store: InMemoryGraphStore, fill: FillDayPass) -> None:
-        self.settings = _TickSettings()
-        self._store = store
-        self._fill = fill
-
-    def status_repository(self) -> InMemoryGraphStore:
-        return self._store
-
-    def fill_day_pass(self) -> FillDayPass:
-        return self._fill
+def _settings(**overrides: object) -> Settings:
+    factory = cast(Callable[..., Settings], Settings)
+    return factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        heartbeat_schedule_id="heartbeat-test",
+        **overrides,
+    )
 
 
-async def test_the_reconcile_tick_fills_the_day_and_still_asks_whoever_it_missed() -> None:
+class _BootRegistry:
+    """What ensure_workflow_schedules reads, with the registry's own switch wiring."""
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self.scheduler = _RecordingWorkflowScheduler(settings.resolved_heartbeat_schedule_id)
+        self.repository = InMemoryFillDayRepository()
+
+        async def schedule(tenant_id: str, enabled: bool) -> None:
+            await apply_checkin_fill_schedule(self.scheduler, settings, tenant_on=enabled)
+
+        self.fill_day = FillDaySettingsService(self.repository, on_change=schedule)
+
+    def workflow_scheduler(self) -> _RecordingWorkflowScheduler:
+        return self.scheduler
+
+    def fill_day_settings_service(self) -> FillDaySettingsService:
+        return self.fill_day
+
+
+def _fill_configs(scheduler: _RecordingWorkflowScheduler) -> list[str]:
+    return [c.schedule_id for c in scheduler.sync_configs if c.connector == "checkin_fill"]
+
+
+async def test_send_off_fill_on_keeps_only_the_fill_schedule_and_fills_not_asked() -> None:
+    settings = _settings(checkin_fanout_enabled=False)
+    registry = _BootRegistry(settings)
+
+    await schedule.ensure_workflow_schedules(registry)  # type: ignore[arg-type]
+
+    # The send's off switch removes exactly what it removed before.
+    assert settings.checkin_fanout_schedule_id in registry.scheduler.removed
+    assert settings.checkin_reconcile_schedule_id in registry.scheduler.removed
+    assert registry.scheduler.checkin_configs == []
+    assert registry.scheduler.checkin_reconcile_configs == []
+    assert _fill_configs(registry.scheduler) == [settings.checkin_fill_schedule_id]
+    assert settings.checkin_fill_schedule_id not in registry.scheduler.removed
+    fill = schedule.checkin_fill_schedule_config(settings)
+    assert (fill.cron, fill.connector) == ("*/15 * * * *", "checkin_fill")
+
+    # Nobody was asked: everyone due gets "Not asked today.", once, never green.
+    store = InMemoryGraphStore()
+    await _team(store, "CHK-4")
+    day = _weekday()
+    now = _after_fill_time(day)
+    await store.append_fact(
+        _change("CHK-4", "status", "In Progress", "In Review", at=now - timedelta(hours=2))
+    )
+    run = _fill_pass(store, sends_on=settings.checkin_fanout_enabled)
+    first = [item for item in await run.run("demo", now) if item.as_of == day]
+    again = [
+        item for item in await run.run("demo", now + timedelta(minutes=15)) if item.as_of == day
+    ]
+    assert {item.developer_id: item.status.summary for item in first} == {
+        "dev-kai": "Not asked today. From Jira: CHK-4 moved to In Review (in development).",
+        "dev-ira": "Not asked today. Current status is unknown.",
+    }
+    assert all(item.status.source is not StatusSource.CONFIRMED for item in first)
+    assert again == []
+
+
+async def test_send_off_fill_off_schedules_neither_and_fills_nobody() -> None:
+    settings = _settings(checkin_fanout_enabled=False)
+    registry = _BootRegistry(settings)
+    await registry.repository.save_fill_day(FillDaySetting(tenant_id="demo", enabled=False))
+
+    await schedule.ensure_workflow_schedules(registry)  # type: ignore[arg-type]
+
+    assert {
+        settings.checkin_fanout_schedule_id,
+        settings.checkin_reconcile_schedule_id,
+        settings.checkin_fill_schedule_id,
+    } <= set(registry.scheduler.removed)
+    assert _fill_configs(registry.scheduler) == []
+    store = InMemoryGraphStore()
+    await _team(store)
+    off = FillDaySettingsService(registry.repository)
+    filled = await _fill_pass(store, settings=off).run("demo", _after_fill_time(_weekday()))
+    assert filled == ()
+
+
+async def test_send_on_fill_on_schedules_all_three_and_fills_not_reached() -> None:
+    settings = _settings()
+    registry = _BootRegistry(settings)
+
+    await schedule.ensure_workflow_schedules(registry)  # type: ignore[arg-type]
+
+    assert registry.scheduler.checkin_configs == [schedule.checkin_fanout_config(settings)]
+    assert registry.scheduler.checkin_reconcile_configs == [
+        schedule.checkin_reconcile_config(settings)
+    ]
+    assert _fill_configs(registry.scheduler) == [settings.checkin_fill_schedule_id]
+    assert registry.scheduler.removed == []
     store = InMemoryGraphStore()
     await _team(store)
     day = _weekday()
-    registry = _TickRegistry(store, _fill_pass(store, sends_on=True))
-
-    plan = await checkin_fanout._checkin_reconcile_dispatch_plan(  # type: ignore[arg-type]
-        registry,
-        CheckinReconcileInput(
-            tenant_id="demo",
-            observed_at=_after_fill_time(day).isoformat(),
-            after_local_time="09:45",
-            timezone="UTC",
-        ),
-    )
-
-    assert plan.result.filled >= 2
-    # The fill sends nothing; the catch-up still asks the two it missed.
-    assert {dispatch.developer_id for dispatch in plan.dispatches} == {"dev-kai", "dev-ira"}
-    again = await checkin_fanout._checkin_reconcile_dispatch_plan(  # type: ignore[arg-type]
-        registry,
-        CheckinReconcileInput(
-            tenant_id="demo",
-            observed_at=(_after_fill_time(day) + timedelta(minutes=15)).isoformat(),
-            after_local_time="09:45",
-            timezone="UTC",
-        ),
-    )
-    assert again.result.filled == 0
+    filled = await _fill_pass(store, sends_on=True).run("demo", _after_fill_time(day))
+    assert {item.status.summary for item in filled if item.as_of == day} == {
+        f"{NOT_REACHED_LEAD} Current status is unknown."
+    }
 
 
-async def test_with_the_send_off_the_tick_asks_nobody_and_a_fill_says_not_asked() -> None:
+async def test_the_deployment_switch_off_removes_the_fill_schedule_whatever_the_tenant() -> None:
+    settings = _settings(checkin_fill_enabled=False)
+    registry = _BootRegistry(settings)
+
+    await schedule.ensure_workflow_schedules(registry)  # type: ignore[arg-type]
+
+    assert _fill_configs(registry.scheduler) == []
+    assert settings.checkin_fill_schedule_id in registry.scheduler.removed
+    # The send's schedules are untouched by it.
+    assert registry.scheduler.checkin_configs == [schedule.checkin_fanout_config(settings)]
+
+
+async def test_toggling_the_switch_removes_and_adds_the_fill_schedule_only() -> None:
+    settings = _settings(checkin_fanout_enabled=False)
+    registry = _BootRegistry(settings)
+
+    await registry.fill_day.set("demo", False, actor="U-admin")
+    assert registry.scheduler.removed == [settings.checkin_fill_schedule_id]
+    assert _fill_configs(registry.scheduler) == []
+
+    await registry.fill_day.set("demo", True, actor="U-admin")
+    assert _fill_configs(registry.scheduler) == [settings.checkin_fill_schedule_id]
+    assert registry.scheduler.checkin_configs == []
+    assert registry.scheduler.checkin_reconcile_configs == []
+    assert registry.scheduler.removed == [settings.checkin_fill_schedule_id]
+
+
+async def test_the_registry_wires_the_switch_to_the_fill_schedule() -> None:
+    settings = _settings(runtime_mode="memory", tenant_id="demo", workflow_provider="fake")
+    registry = ServiceRegistry(settings)
+    recorder = _RecordingWorkflowScheduler(settings.resolved_heartbeat_schedule_id)
+    registry.workflow_scheduler = lambda: recorder  # type: ignore[method-assign]
+
+    await registry.fill_day_settings_service().set("demo", False, actor="U-admin")
+    await registry.fill_day_settings_service().set("other-tenant", True, actor="U-admin")
+
+    # Only the deployment's tenant has the schedule; another tenant's save leaves it.
+    assert recorder.removed == [settings.checkin_fill_schedule_id]
+    assert recorder.sync_configs == []
+
+
+async def test_a_fill_tick_checks_both_switches_and_fills_through_the_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     store = InMemoryGraphStore()
     await _team(store)
+    repository = InMemoryFillDayRepository()
+
+    class _Registry:
+        def __init__(self, settings: Settings) -> None:
+            self.settings = settings
+
+        def fill_day_settings_service(self) -> FillDaySettingsService:
+            return FillDaySettingsService(repository)
+
+        def fill_day_pass(self) -> FillDayPass:
+            return _fill_pass(store, settings=FillDaySettingsService(repository))
+
+        async def close(self) -> None:
+            return None
+
     day = _weekday()
-    registry = _TickRegistry(store, _fill_pass(store, sends_on=False))
-    registry.settings.checkin_fanout_enabled = False
+    tick = CheckinFillInput(tenant_id="demo", observed_at=_after_fill_time(day).isoformat())
+    for deployment_on, tenant_on, expected in (
+        (False, True, "disabled"),
+        (True, False, "off"),
+        (True, True, "ok"),
+    ):
+        await repository.save_fill_day(FillDaySetting(tenant_id="demo", enabled=tenant_on))
+        registry = _Registry(_settings(checkin_fill_enabled=deployment_on))
+        monkeypatch.setattr(checkin_fill, "_service_registry", lambda r=registry: r)
+        result = await checkin_fill.run_checkin_fill_activity(tick)
+        assert result.status == expected
+        assert (result.filled > 0) is (expected == "ok")
 
-    plan = await checkin_fanout._checkin_reconcile_dispatch_plan(  # type: ignore[arg-type]
-        registry,
-        CheckinReconcileInput(
-            tenant_id="demo",
-            observed_at=_after_fill_time(day).isoformat(),
-            after_local_time="09:45",
-            timezone="UTC",
-        ),
+    dispatched = sync_workflow_input(
+        sync_dispatch_for_schedule(
+            schedule.checkin_fill_schedule_config(_settings()), _after_fill_time(day)
+        )
     )
-
-    assert plan.result.status == "disabled" and plan.dispatches == []
-    status = await store.latest_developer_status("demo", "dev-kai", day)
-    assert status is not None and status.summary.startswith(NOT_ASKED_LEAD)
+    assert dispatched == CheckinFillInput(
+        tenant_id="demo", observed_at=_after_fill_time(day).isoformat()
+    )

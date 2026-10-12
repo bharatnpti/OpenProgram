@@ -10,6 +10,7 @@ import pytest
 from config.settings import Settings
 from core.application.agents.status_agent import StatusAgentNode
 from core.application.conversation_history import llm_messages_from_turns
+from core.application.fill_day import FillDaySettingsService
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import SyncRunResult
 from core.domain.conversation import ConversationRole, ConversationTurn
@@ -46,6 +47,7 @@ from core.domain.workflows import (
 from infra.adapters.workflows import dbos as dbos_workflows
 from infra.adapters.workflows import temporal as temporal_workflows
 from infra.adapters.workflows.fake import FakeWorkflowScheduler
+from infra.persistence.in_memory_fill_day import InMemoryFillDayRepository
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.workflows import (
     checkin_fanout,
@@ -606,6 +608,7 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
         ("day_report", "dispatch"),
         ("gate_scan", "issues"),
         ("readiness_scan", "findings"),
+        ("checkin_fill", "tenant"),
     ]
     assert [result.schedule_id for result in results] == [
         "heartbeat-test",
@@ -1787,9 +1790,14 @@ class _ScheduleBootstrapRegistry:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.scheduler = _RecordingWorkflowScheduler(settings.resolved_heartbeat_schedule_id)
+        # The tenant's "Fill the day from Jira" switch, never saved: on.
+        self.fill_day = FillDaySettingsService(InMemoryFillDayRepository())
 
     def workflow_scheduler(self) -> _RecordingWorkflowScheduler:
         return self.scheduler
+
+    def fill_day_settings_service(self) -> FillDaySettingsService:
+        return self.fill_day
 
 
 class _WorkerStartupRegistry:
@@ -1886,8 +1894,6 @@ class _FanoutSettings:
     checkin_fanout_concurrency = 10
     checkin_fanout_enabled = True
     checkin_reconcile_enabled = True
-    # The fill pass has its own tests (test_jira_observed_day.py).
-    checkin_fill_enabled = False
 
 
 class _FanoutRegistry:

@@ -12,6 +12,7 @@ from core.domain.workflows import (
 )
 from infra.workflows.brief_generation import BriefGenerationInput
 from infra.workflows.calendar_sync import CalendarSyncInput
+from infra.workflows.checkin_fill import CheckinFillInput
 from infra.workflows.daily_checkin import DailyCheckinInput
 from infra.workflows.delivery_reports import (
     DayReportDispatchInput,
@@ -40,6 +41,7 @@ type SyncWorkflowInput = (
     | DayReportDispatchInput
     | GateScanInput
     | ReadinessScanInput
+    | CheckinFillInput
 )
 
 
@@ -170,6 +172,11 @@ def _derived_workflow_input(
             tenant_id=input.tenant_id,
             observed_at=_optional_str(input.payload, "observed_at"),
         )
+    if connector == "checkin_fill":
+        return CheckinFillInput(
+            tenant_id=input.tenant_id,
+            observed_at=_optional_str(input.payload, "observed_at"),
+        )
     return None
 
 
@@ -187,6 +194,7 @@ _WORKFLOW_NAMES = {
     "day_report": "day-report",
     "gate_scan": "gate-scan",
     "readiness_scan": "readiness-scan",
+    "checkin_fill": "checkin-fill",
 }
 
 
@@ -218,6 +226,7 @@ _CONNECTOR_ALIASES = {
         "day_report": ("day_report", "day_report_dispatch"),
         "gate_scan": ("gate_scan", "issue_text_scan"),
         "readiness_scan": ("readiness_scan", "release_readiness"),
+        "checkin_fill": ("checkin_fill", "fill_day"),
     }.items()
     for alias in aliases
 }

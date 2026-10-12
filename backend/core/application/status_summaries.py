@@ -176,13 +176,18 @@ def observed_sources(*, tracker: str | None, vcs: str | None) -> str:
 
 
 def observed_summary(lead: str, sources: str, lines: Sequence[str]) -> str:
-    """``Not asked today. Inferred from Jira: CHK-4 moved to In Review; CHK-7 resolved.``
+    """``Not asked today. From Jira: CHK-4 moved to In Review; CHK-7 resolved.``
 
     ``lead`` says why there is no reply (``NON_RESPONSE_LEAD``, ``NOT_ASKED_LEAD``,
     ``NOT_REACHED_LEAD``, ``NON_STATUS_REPLY_LEAD``); the rest is the digest,
     which names keys, stages, dates and numbers only (``core.domain.observed_day``).
+    After a nudge it reads "Inferred from", as every inference there always has.
     """
-    return f"{lead} Inferred from {sources}: {'; '.join(lines)}."
+    return f"{lead} {_observed_opening(lead)}{sources}: {'; '.join(lines)}."
+
+
+def _observed_opening(lead: str) -> str:
+    return "Inferred from " if lead == NON_RESPONSE_LEAD else "From "
 
 
 def with_no_active_work(summary: str, *, no_active_work: bool) -> str:
@@ -202,7 +207,7 @@ def inferred_basis(summary: str) -> str | None:
     reply without a status, not asked, not reached.
     """
     for lead in _OBSERVED_LEADS:
-        opening = f"{lead} Inferred from "
+        opening = f"{lead} {_observed_opening(lead)}"
         if summary.startswith(opening):
             basis = summary.removeprefix(opening).strip().removesuffix(".").rstrip()
             return basis or None
@@ -221,6 +226,52 @@ def observed_evidence(summary: str) -> tuple[str, ...]:
         return ()
     basis = _SOURCES_PREFIX.sub("", basis, count=1)
     return tuple(part.strip() for part in basis.split("; ") if part.strip())
+
+
+# The lines of a digest (core.domain.observed_day.lines), read back for counts.
+_TASK_LINE = re.compile(r"^[A-Z][A-Z0-9_]*-\d+ ")
+_MORE_MOVED = re.compile(r"^(\d+) more tasks? moved$")
+_QUIET_LINE = re.compile(r"^no movement on \S+ for (\d+) days$")
+_MORE_QUIET = re.compile(r"^(\d+) more tasks? without movement$")
+
+
+def observed_factor(summary: str) -> str | None:
+    """The rollup's reason for an inferred day: "Inferred from Jira: 2 tasks moved, 1
+    without movement for 8 days."
+
+    Counted from the lines the day was inferred from, so it names tasks, never
+    people. None for a day not inferred from what moved (the earlier rule), or
+    one whose lines name neither moved nor quiet tasks.
+    """
+    basis = inferred_basis(summary)
+    sources = _SOURCES_PREFIX.match(basis or "")
+    if basis is None or sources is None:
+        return None
+    moved = quiet = 0
+    quiet_days: list[int] = []
+    for line in observed_evidence(summary):
+        if more := _MORE_MOVED.match(line):
+            moved += int(more.group(1))
+        elif more := _MORE_QUIET.match(line):
+            quiet += int(more.group(1))
+        elif still := _QUIET_LINE.match(line):
+            quiet += 1
+            quiet_days.append(int(still.group(1)))
+        elif _TASK_LINE.match(line):
+            moved += 1
+    parts: list[str] = []
+    if moved:
+        parts.append(f"{moved} {'task' if moved == 1 else 'tasks'} moved")
+    if quiet and quiet_days:
+        days = max(quiet_days)
+        parts.append(
+            f"1 without movement for {days} days"
+            if quiet == 1
+            else f"{quiet} without movement for up to {days} days"
+        )
+    if not parts:
+        return None
+    return f"Inferred from {sources.group(0).removesuffix(': ')}: {', '.join(parts)}."
 
 
 def reported_text(summary: str) -> str:

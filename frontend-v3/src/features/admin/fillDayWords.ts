@@ -17,7 +17,7 @@ export function fillDayLine(fill: Pick<CheckinFillResponse, "enabled" | "deploym
   if (!fill.enabled) {
     return "Off: people the check-in does not reach have no status for the day.";
   }
-  return "On: when the check-in does not reach someone, their day is inferred from what moved in Jira and Git once their nudge would have gone out. It says so in its first words and stays amber, never green. It runs with the scheduled send.";
+  return "On: when the check-in does not reach someone, or is not sent at all, their day is inferred from what moved in Jira and Git once their nudge would have gone out. It says so in its first words (not asked, not reached) and stays amber, never green.";
 }
 
 /** "On by default", or "Set by Asha Rao on Tue 6 Oct". */

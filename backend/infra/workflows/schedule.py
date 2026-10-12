@@ -14,6 +14,7 @@ from core.domain.workflows import (
 )
 from core.ports.workflows import WorkflowScheduler
 from infra.registry import ServiceRegistry
+from infra.workflows.checkin_fill import checkin_fill_schedule_config
 from infra.workflows.dispatch import safe_workflow_id
 
 
@@ -82,6 +83,12 @@ async def ensure_workflow_schedules(
         sync_configs = (*sync_configs, readiness_scan_schedule_config(settings))
     else:
         results.append(await scheduler.remove_schedule(settings.readiness_scan_schedule_id))
+    # The day's fill sends nothing, so the send's switches never decide it: its
+    # own and the tenant's do (infra/workflows/checkin_fill.py).
+    if settings.checkin_fill_enabled and await _tenant_fill_on(registry, settings):
+        sync_configs = (*sync_configs, checkin_fill_schedule_config(settings))
+    else:
+        results.append(await scheduler.remove_schedule(settings.checkin_fill_schedule_id))
     results.extend(await scheduler.ensure_sync_schedules(sync_configs))
     return results
 
@@ -105,6 +112,23 @@ async def _ensure_checkin_schedules(
     else:
         reconcile = await scheduler.remove_schedule(settings.checkin_reconcile_schedule_id)
     return [fanout, reconcile]
+
+
+async def _tenant_fill_on(registry: ServiceRegistry, settings: Settings) -> bool:
+    """The tenant's "Fill the day from Jira" switch; on (its default) when unreadable.
+
+    A schedule kept on an unreadable switch fills nobody: each run reads it again.
+    """
+    try:
+        setting = await registry.fill_day_settings_service().effective(settings.tenant_id)
+    except Exception as exc:  # noqa: BLE001 - start-up never fails on this read
+        import structlog
+
+        structlog.get_logger(__name__).warning(
+            "checkin_fill_switch_unreadable", error_type=type(exc).__name__
+        )
+        return True
+    return setting.enabled
 
 
 def checkin_fanout_config(settings: Settings) -> CheckinScheduleConfig:

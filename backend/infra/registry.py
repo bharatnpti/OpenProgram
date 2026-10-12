@@ -212,6 +212,7 @@ from infra.persistence.psycopg_executor import (
     close_shared_executors,
     shared_executor,
 )
+from infra.workflows.checkin_fill import apply_checkin_fill_schedule
 from infra.workflows.runtime_sync import legacy_issue_dispatches, legacy_vcs_dispatches
 
 _CHAT_SIMULATOR_PROVIDER = "mock_slack"
@@ -659,8 +660,19 @@ class ServiceRegistry:
         return self._fill_day_repository
 
     def fill_day_settings_service(self) -> FillDaySettingsService:
-        """The tenant's switch "Fill the day from Jira for people who were not asked"."""
-        return FillDaySettingsService(self.fill_day_repository())
+        """The tenant's switch "Fill the day from Jira for people who were not asked".
+
+        Saving it adds or removes the fill's own schedule for the deployment's
+        tenant (never the fan-out's or the reconcile's).
+        """
+
+        async def schedule(tenant_id: str, enabled: bool) -> None:
+            if tenant_id == self.settings.tenant_id:
+                await apply_checkin_fill_schedule(
+                    self.workflow_scheduler(), self.settings, tenant_on=enabled
+                )
+
+        return FillDaySettingsService(self.fill_day_repository(), on_change=schedule)
 
     def observed_day_reader(self) -> ObservedDayReader:
         """What moved on a member's work: the facts the day's digest reads."""

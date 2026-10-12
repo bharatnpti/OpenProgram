@@ -58,6 +58,7 @@ from infra.workflows import (
 )
 from infra.workflows.brief_generation import BriefGenerationInput, BriefGenerationResult
 from infra.workflows.calendar_sync import CalendarSyncInput, CalendarSyncWorkflowResult
+from infra.workflows.checkin_fill import CheckinFillInput, CheckinFillResult
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
 from infra.workflows.delivery_reports import (
     DayReportDispatchInput,
@@ -102,6 +103,7 @@ SyncWorkflowResult = (
     | DeliverySnapshotResult
     | DayReportDispatchResult
     | GateScanResult
+    | CheckinFillResult
     | ReadinessScanResult
 )
 
@@ -421,6 +423,24 @@ async def run_readiness_scan_activity(payload: ReadinessScanInput) -> ReadinessS
     return await readiness.run_readiness_scan_activity(payload)
 
 
+@activity.defn
+async def run_checkin_fill_activity(payload: CheckinFillInput) -> CheckinFillResult:
+    from infra.workflows import checkin_fill
+
+    return await checkin_fill.run_checkin_fill_activity(payload)
+
+
+@workflow.defn
+class CheckinFillWorkflow:
+    @workflow.run
+    async def run(self, payload: CheckinFillInput) -> CheckinFillResult:
+        return await workflow.execute_activity(
+            run_checkin_fill_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=10),
+        )
+
+
 @workflow.defn
 class ReadinessScanWorkflow:
     @workflow.run
@@ -641,7 +661,8 @@ async def _execute_sync_activity(
     | DeliverySnapshotInput
     | DayReportDispatchInput
     | GateScanInput
-    | ReadinessScanInput,
+    | ReadinessScanInput
+    | CheckinFillInput,
 ) -> SyncWorkflowResult:
     if isinstance(payload, JiraSyncInput):
         return await workflow.execute_activity(
@@ -725,6 +746,12 @@ async def _execute_derived_activity(payload: object) -> SyncWorkflowResult:
             run_readiness_scan_activity,
             payload,
             start_to_close_timeout=timedelta(minutes=20),
+        )
+    if isinstance(payload, CheckinFillInput):
+        return await workflow.execute_activity(
+            run_checkin_fill_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=10),
         )
     raise ValueError("unsupported sync payload")
 
@@ -1067,6 +1094,13 @@ class TemporalWorkflowScheduler:
                 id=workflow_id,
                 task_queue=self.task_queue,
             )
+        elif isinstance(workflow_input, CheckinFillInput):
+            await client.start_workflow(
+                CheckinFillWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
         elif isinstance(workflow_input, ReadinessScanInput):
             await client.start_workflow(
                 ReadinessScanWorkflow.run,
@@ -1143,6 +1177,7 @@ class TemporalWorkflowWorker:
                 DayReportDispatchWorkflow,
                 GateScanWorkflow,
                 ReadinessScanWorkflow,
+                CheckinFillWorkflow,
                 ScheduledSyncWorkflow,
                 DailyCheckinWorkflow,
                 NudgeWorkflow,
@@ -1168,6 +1203,7 @@ class TemporalWorkflowWorker:
                 run_day_report_dispatch_activity,
                 run_gate_scan_activity,
                 run_readiness_scan_activity,
+                run_checkin_fill_activity,
                 start_daily_checkin_activity,
                 send_checkin_nudge_activity,
                 send_escalation_step_activity,

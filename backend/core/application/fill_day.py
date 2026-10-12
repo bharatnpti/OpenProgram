@@ -26,7 +26,7 @@ The tenant switch "Fill the day from Jira for people who were not asked"
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Protocol
@@ -59,6 +59,10 @@ class DayFiller(Protocol):
     ) -> DeveloperStatus: ...
 
 
+#: Told of each save (tenant, on): the registry adds or removes the fill's schedule.
+FillDaySwitched = Callable[[str, bool], Awaitable[None]]
+
+
 class FillDaySettingsService:
     """The tenant's switch: what is in force, and saving it with who and when."""
 
@@ -67,9 +71,11 @@ class FillDaySettingsService:
         repository: FillDayRepository,
         *,
         clock: Callable[[], datetime] | None = None,
+        on_change: FillDaySwitched | None = None,
     ) -> None:
         self._repository = repository
         self._clock = clock or (lambda: datetime.now(tz=UTC))
+        self._on_change = on_change
 
     async def effective(self, tenant_id: str) -> FillDaySetting:
         setting, _ = await self.read(tenant_id)
@@ -87,6 +93,16 @@ class FillDaySettingsService:
             tenant_id=tenant_id, enabled=enabled, updated_at=self._clock(), updated_by=actor
         )
         await self._repository.save_fill_day(setting)
+        if self._on_change is not None:
+            try:
+                await self._on_change(tenant_id, enabled)
+            except Exception as exc:  # noqa: BLE001 - the switch is saved; each run reads it
+                _logger.warning(
+                    "checkin_fill_schedule_not_updated",
+                    tenant_id=tenant_id,
+                    enabled=enabled,
+                    error_type=type(exc).__name__,
+                )
         return setting
 
 

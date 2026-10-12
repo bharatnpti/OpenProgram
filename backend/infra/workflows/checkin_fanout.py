@@ -131,34 +131,6 @@ async def _checkin_reconcile_dispatch_plan(
 ) -> CheckinReconcileDispatchPlan:
     observed_at = _observed_at(payload.observed_at)
     local_observed_at = observed_at.astimezone(_timezone(payload.timezone))
-    # Each member's own fill time decides, not the tick's cutoff, and the fill
-    # sends nothing, so it runs whether or not anyone is asked on this tick.
-    filled = await _fill_days(registry, payload.tenant_id, observed_at)
-    plan = await _reconcile_dispatches(registry, payload, observed_at, local_observed_at)
-    return replace(plan, result=replace(plan.result, filled=filled))
-
-
-async def _fill_days(registry: ServiceRegistry, tenant_id: str, observed_at: datetime) -> int:
-    """Fill the day from Jira for members the check-in never reached; how many were."""
-    if not registry.settings.checkin_fill_enabled:
-        return 0
-    try:
-        return len(await registry.fill_day_pass().run(tenant_id, observed_at))
-    except Exception as exc:  # noqa: BLE001 - the catch-up send never waits on the fill
-        import structlog
-
-        structlog.get_logger(__name__).warning(
-            "checkin_fill_failed", tenant_id=tenant_id, error_type=type(exc).__name__
-        )
-        return 0
-
-
-async def _reconcile_dispatches(
-    registry: ServiceRegistry,
-    payload: CheckinReconcileInput,
-    observed_at: datetime,
-    local_observed_at: datetime,
-) -> CheckinReconcileDispatchPlan:
     checkin_date = local_observed_at.date()
     settings = registry.settings
     if not (settings.checkin_fanout_enabled and settings.checkin_reconcile_enabled):
