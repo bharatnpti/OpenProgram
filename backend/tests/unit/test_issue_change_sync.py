@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from datetime import UTC, datetime, timedelta
+
+from structlog.testing import capture_logs
 
 from core.application.persona_views import _task_status_from_facts
 from core.application.sync_services import (
     ISSUE_CHANGE_FACT_SOURCE,
+    ISSUE_CHANGES_FAILURES_KEY,
     ISSUE_CHANGES_SINCE_KEY,
+    ISSUE_CHANGES_SKIPPED_KEY,
     ISSUE_CHANGES_THROUGH_KEY,
     ISSUE_CHANGES_WAITING_KEY,
+    ISSUE_HISTORY_MARKER_CONNECTOR,
     IssueReadSyncService,
 )
 from core.domain.graph import EntityRef, FactEvent, GraphNode, NodeKind
@@ -419,3 +426,179 @@ def test_a_field_change_never_colours_the_task() -> None:
     status = _task_status_from_facts(node, [done, change], NOW.date())
 
     assert status.rag is Rag.GREEN
+
+
+async def test_an_issue_whose_history_keeps_failing_is_skipped_then_tried_once_a_day() -> None:
+    store = await _store()
+    base = NOW - timedelta(days=2)
+    tracker = _tracker(
+        [
+            _issue("CHK-1", base),
+            _issue("CHK-2", base + timedelta(hours=1)),
+            _issue("CHK-3", base + timedelta(hours=2)),
+        ],
+        {f"CHK-{n}": [_change(str(n), base + timedelta(hours=n - 1))] for n in (1, 2, 3)},
+    )
+    tracker.failing_changes.add("CHK-2")
+    service = _service(store, tracker)
+
+    async def cursor_after(at: datetime) -> SyncCursor:
+        await _sync(service, at)
+        return await store.get_cursor(TENANT, "issue", "project:CHK")
+
+    first = await cursor_after(NOW)
+    second = await cursor_after(NOW + timedelta(hours=1))
+    with capture_logs() as logs:
+        third = await cursor_after(NOW + timedelta(hours=2))
+
+    # Twice it holds the target at CHK-2; the third failure skips it.
+    assert first.metadata[ISSUE_CHANGES_FAILURES_KEY] == '{"CHK-2": 1}'
+    assert second.metadata[ISSUE_CHANGES_FAILURES_KEY] == '{"CHK-2": 2}'
+    assert first.metadata[ISSUE_CHANGES_THROUGH_KEY] == base.isoformat()
+    assert second.metadata[ISSUE_CHANGES_THROUGH_KEY] == base.isoformat()
+    assert ISSUE_CHANGES_FAILURES_KEY not in third.metadata
+    assert third.metadata[ISSUE_CHANGES_WAITING_KEY] == 0
+    skipped = json.loads(str(third.metadata[ISSUE_CHANGES_SKIPPED_KEY]))
+    backfill_start = NOW - timedelta(days=120)
+    assert skipped == {
+        "CHK-2": {
+            "since": backfill_start.isoformat(),
+            "tried": (NOW + timedelta(hours=2)).isoformat(),
+            "project_key": "CHK",
+        }
+    }
+    assert [fact.payload["history_id"] for fact in await _changes_on(store, "CHK-3")] == ["3"]
+    # One warning, naming the key and the count, with no text from the tracker.
+    assert [entry for entry in logs if entry["event"] == "issue_history_skipped"] == [
+        {
+            "event": "issue_history_skipped",
+            "log_level": "warning",
+            "tenant_id": TENANT,
+            "issue_key": "CHK-2",
+            "failed_reads": 3,
+        }
+    ]
+
+    # Not tried again within a day.
+    tracker.failing_changes.clear()
+    reads = len(tracker.change_reads)
+    await _sync(service, NOW + timedelta(hours=5))
+    assert len(tracker.change_reads) == reads
+
+    # A day after the last try it is read from where its history stood.
+    retried = await cursor_after(NOW + timedelta(days=1, hours=2))
+    assert tracker.change_reads[-1] == ("CHK-2", backfill_start - timedelta(minutes=1))
+    assert [fact.payload["history_id"] for fact in await _changes_on(store, "CHK-2")] == ["2"]
+    assert ISSUE_CHANGES_SKIPPED_KEY not in retried.metadata
+
+
+async def test_overlapping_targets_read_each_history_once_and_spend_only_their_own_reads() -> None:
+    store = await _store()
+    base = NOW - timedelta(days=1)
+    issues = [_issue(f"CHK-{n}", base + timedelta(hours=n)) for n in range(1, 5)]
+    tracker = _tracker(
+        issues, {f"CHK-{n}": [_change(str(n), base + timedelta(hours=n))] for n in range(1, 5)}
+    )
+    service = _service(store, tracker, changes_per_tick=2)
+
+    await service.sync_project(tenant_id=TENANT, project_key="CHK", observed_at=NOW)
+    await service.sync_query(
+        tenant_id=TENANT,
+        jql='project = "CHK"',
+        target_node_id="pod-checkout",
+        target_node_kind=NodeKind.POD,
+        cursor_scope="query:pod:pod-checkout:hash",
+        observed_at=NOW,
+    )
+
+    # The project read CHK-1 and CHK-2; the pod found them read and spent its
+    # two reads on CHK-3 and CHK-4.
+    assert [key for key, _since in tracker.change_reads] == ["CHK-1", "CHK-2", "CHK-3", "CHK-4"]
+    project = await store.get_cursor(TENANT, "issue", "project:CHK")
+    pod = await store.get_cursor(TENANT, "issue", "query:pod:pod-checkout:hash")
+    assert project.metadata[ISSUE_CHANGES_WAITING_KEY] == 2
+    assert pod.metadata[ISSUE_CHANGES_WAITING_KEY] == 0
+
+    # Next tick the project finds CHK-3 and CHK-4 read and reads nothing.
+    await service.sync_project(
+        tenant_id=TENANT, project_key="CHK", observed_at=NOW + timedelta(hours=1)
+    )
+    assert len(tracker.change_reads) == 4
+    project = await store.get_cursor(TENANT, "issue", "project:CHK")
+    assert project.metadata[ISSUE_CHANGES_WAITING_KEY] == 0
+    for n in range(1, 5):
+        assert len(await _changes_on(store, f"CHK-{n}")) == 1
+
+
+class _SlowTracker(FakeIssueTracker):
+    """Yields while reading a history, so two targets running at once interleave."""
+
+    async def list_issue_changes(
+        self, tenant_id: str, key: str, since: datetime | None
+    ) -> list[IssueChange]:
+        await asyncio.sleep(0)
+        return await super().list_issue_changes(tenant_id, key, since)
+
+
+async def test_targets_running_at_once_never_both_read_an_issue() -> None:
+    store = await _store()
+    base = NOW - timedelta(days=1)
+    issues = {f"CHK-{n}": _issue(f"CHK-{n}", base + timedelta(hours=n)) for n in range(1, 7)}
+    tracker = _SlowTracker(
+        projects=[Project(tenant_id=TENANT, id="10000", key="CHK", name="Checkout")],
+        issues=issues,
+        changes={f"CHK-{n}": [_change(str(n), base + timedelta(hours=n))] for n in range(1, 7)},
+    )
+    service = _service(store, tracker)
+
+    await asyncio.gather(
+        service.sync_project(tenant_id=TENANT, project_key="CHK", observed_at=NOW),
+        *(
+            service.sync_query(
+                tenant_id=TENANT,
+                jql='project = "CHK"',
+                target_node_id=pod,
+                target_node_kind=NodeKind.POD,
+                cursor_scope=f"query:pod:{pod}:hash",
+                observed_at=NOW,
+            )
+            for pod in ("pod-a", "pod-b")
+        ),
+    )
+
+    read = [key for key, _since in tracker.change_reads]
+    assert sorted(read) == sorted(issues)
+    for n in range(1, 7):
+        assert len(await _changes_on(store, f"CHK-{n}")) == 1
+
+
+async def test_a_claim_older_than_its_lease_is_a_dead_reader_and_is_taken_over() -> None:
+    store = await _store()
+    updated = NOW - timedelta(hours=3)
+    tracker = _tracker(
+        [_issue("CHK-1", updated), _issue("CHK-2", updated + timedelta(hours=1))],
+        {"CHK-1": [_change("1", updated)], "CHK-2": [_change("2", updated + timedelta(hours=1))]},
+    )
+
+    def claimed(key: str, at: datetime) -> None:
+        marker = {
+            "read": None,
+            "claim": (NOW - timedelta(hours=1)).isoformat(),
+            "at": at.isoformat(),
+            "by": f"other-{key}",
+        }
+        value = json.dumps(marker, sort_keys=True)
+        store._sync_cursors[(TENANT, ISSUE_HISTORY_MARKER_CONNECTOR, f"issue:{key}")] = SyncCursor(
+            value=value
+        )
+
+    # CHK-1's reader died an hour ago; CHK-2's claimed a minute ago and still reads.
+    claimed("CHK-1", NOW - timedelta(hours=1))
+    claimed("CHK-2", NOW - timedelta(minutes=1))
+
+    await _sync(_service(store, tracker))
+
+    assert [key for key, _since in tracker.change_reads] == ["CHK-1"]
+    cursor = await store.get_cursor(TENANT, "issue", "project:CHK")
+    assert cursor.metadata[ISSUE_CHANGES_THROUGH_KEY] == updated.isoformat()
+    assert cursor.metadata[ISSUE_CHANGES_WAITING_KEY] == 1

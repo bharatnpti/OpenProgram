@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from contextlib import AbstractAsyncContextManager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
+from enum import StrEnum
+from uuid import uuid4
 
 from core.application.sync_recording import recording_sync_failure, succeeded_cursor
 from core.domain.errors import ProviderUnavailable
@@ -351,8 +354,16 @@ class IssueReadSyncService:
         backfill window, and anything over the per tick budget waits for the
         next tick, found again by a search from ``through``; until that backlog
         is read, every history is read from ``since``, so no change made before
-        an issue's turn is lost. A history that cannot be read stops the pass
-        where it got to, for the next tick, and never fails the sync.
+        an issue's turn is lost.
+
+        Every target of the tenant's connection shares one marker per issue
+        (``issue_history`` cursors): an issue already read through its update,
+        or being read by another target, is not read again, and only this
+        target's own reads count against its budget. A history that cannot be
+        read stops the pass where it got to, for the next tick; after
+        ``MAX_HISTORY_FAILURES`` in a row the issue is skipped, kept in
+        ``issue_changes_skipped`` with where its history stands, and tried again
+        once a day. It never fails the sync.
         """
         if self._changes_per_tick <= 0:
             return current
@@ -365,47 +376,43 @@ class IssueReadSyncService:
             caught_up = previous.updated_at is None
         else:
             caught_up = previous.updated_at is None or through >= _timestamp(previous.updated_at)
+        state = _HistoryState.from_metadata(previous.metadata)
         try:
             candidates = synced if caught_up else await search(SyncCursor(updated_at=through))
         except ProviderUnavailable:
-            return _with_changes_read(current, through=through, since=since, waiting=None)
+            return _with_changes_read(
+                current, through=through, since=since, waiting=None, state=state
+            )
         start = through
         pending = sorted(
             (issue for issue in candidates if _issue_updated_at(issue, observed_at) > start),
             key=lambda issue: _issue_updated_at(issue, observed_at),
         )
-        budget = min(len(pending), self._changes_per_tick)
-        # Issues updated at the same moment are read together: the cursor is a time.
-        while 0 < budget < len(pending) and _issue_updated_at(
-            pending[budget], observed_at
-        ) == _issue_updated_at(pending[budget - 1], observed_at):
-            budget += 1
-        read = 0
-        for issue in pending[:budget]:
-            try:
-                changes = await self._issue_tracker.list_issue_changes(
-                    tenant_id, issue.key, since - _CHANGES_MARGIN
-                )
-            except ProviderUnavailable:
-                break
-            project_key = _project_key_for_issue(issue, fallback_project_key)
-            for change in changes:
-                await self._time_series_repository.append_fact_once(
-                    issue_change_fact(
-                        tenant_id, issue.key, change, project_key=project_key, members=developers
-                    )
-                )
-            read += 1
-            updated = _issue_updated_at(issue, observed_at)
-            if read == len(pending) or _issue_updated_at(pending[read], observed_at) > updated:
-                through = updated
-        waiting = len(pending) - read
+        reading = _HistoryPass(
+            tracker=self._issue_tracker,
+            facts=self._time_series_repository,
+            markers=_HistoryMarkers(self._cursor_repository, tenant_id),
+            tenant_id=tenant_id,
+            since=since,
+            state=state,
+            members=developers,
+            fallback_project_key=fallback_project_key,
+            observed_at=observed_at,
+            budget=self._changes_per_tick,
+        )
+        await reading.retry_skipped({issue.key for issue in pending})
+        done = _settled_run(pending, await reading.read(pending), observed_at)
+        if done:
+            through = _issue_updated_at(pending[done - 1], observed_at)
+        waiting = len(pending) - done
         if waiting == 0:
             # Everything seen changed is read: what the search or the sync saw
             # up to its newest issue is recorded.
             newest = _timestamp(current.updated_at) if current.updated_at is not None else through
             through = since = max(through, newest)
-        return _with_changes_read(current, through=through, since=since, waiting=waiting)
+        return _with_changes_read(
+            current, through=through, since=since, waiting=waiting, state=state
+        )
 
     async def _developers_by_tracker_account(self, tenant_id: str) -> dict[str, str]:
         return await developers_by_tracker_account(
@@ -423,6 +430,19 @@ ISSUE_CHANGES_THROUGH_KEY = "issue_changes_through"
 ISSUE_CHANGES_SINCE_KEY = "issue_changes_since"
 #: How many issues seen changed still wait for their history to be read.
 ISSUE_CHANGES_WAITING_KEY = "issue_changes_waiting"
+#: JSON, issue key -> history reads failed in a row (below the skip).
+ISSUE_CHANGES_FAILURES_KEY = "issue_changes_failures"
+#: JSON, issue key -> {since, tried, project_key}: issues whose history is skipped.
+ISSUE_CHANGES_SKIPPED_KEY = "issue_changes_skipped"
+#: Failed reads in a row after which an issue's history is skipped.
+MAX_HISTORY_FAILURES = 3
+#: How often a skipped issue's history is tried again.
+HISTORY_RETRY_AFTER = timedelta(days=1)
+#: The per-issue markers every target of a tenant's connection shares.
+ISSUE_HISTORY_MARKER_CONNECTOR = "issue_history"
+# A claim older than this is a reader that died: another target may take it.
+_CLAIM_LEASE = timedelta(minutes=10)
+_SWAP_ATTEMPTS = 3
 # Histories are read from a little before ``since``; a re-read change is one fact.
 _CHANGES_MARGIN = timedelta(minutes=1)
 
@@ -472,20 +492,331 @@ def issue_change_fact(
     )
 
 
+class _Read(StrEnum):
+    """How one issue's turn in the pass ended."""
+
+    #: Its history is recorded through this update, or it is skipped.
+    SETTLED = "settled"
+    #: Another target of the connection is reading it.
+    ELSEWHERE = "elsewhere"
+    #: Its history could not be read: the pass stops here for this tick.
+    HELD = "held"
+
+
+@dataclass(kw_only=True)
+class _HistoryPass:
+    """One target's history reads in one tick, within its budget."""
+
+    tracker: IssueTracker
+    facts: TimeSeriesRepository
+    markers: _HistoryMarkers
+    tenant_id: str
+    since: datetime
+    state: _HistoryState
+    members: Mapping[str, str]
+    fallback_project_key: str
+    observed_at: datetime
+    budget: int
+    #: Only the reads this target makes count against its budget.
+    reads: int = 0
+
+    async def retry_skipped(self, seen: set[str]) -> None:
+        """Try again, once a day, a skipped issue nobody changed since."""
+        for key, skipped in sorted(self.state.skipped.items()):
+            if self.reads >= self.budget:
+                return
+            if key in seen or self.observed_at - skipped.tried < HISTORY_RETRY_AFTER:
+                continue
+            if await self._record(key, skipped.since, skipped.project_key):
+                del self.state.skipped[key]
+            else:
+                self.state.skipped[key] = replace(skipped, tried=self.observed_at)
+
+    async def read(self, pending: list[Issue]) -> list[bool]:
+        """Whether each issue, oldest first, is settled, as far as the pass got."""
+        settled: list[bool] = []
+        elsewhere: list[int] = []
+        for index, issue in enumerate(pending):
+            updated = _issue_updated_at(issue, self.observed_at)
+            # Issues updated at the same moment are read together: the cursor is a time.
+            if self.reads >= self.budget and (
+                index == 0 or _issue_updated_at(pending[index - 1], self.observed_at) != updated
+            ):
+                break
+            outcome = await self._read_one(issue, updated)
+            settled.append(outcome is _Read.SETTLED)
+            if outcome is _Read.ELSEWHERE:
+                elsewhere.append(index)
+            elif outcome is _Read.HELD:
+                break
+        for index in elsewhere:
+            # The other target may have finished meanwhile.
+            read_through = await self.markers.read_through(pending[index].key)
+            updated = _issue_updated_at(pending[index], self.observed_at)
+            settled[index] = read_through is not None and read_through >= updated
+        return settled
+
+    async def _read_one(self, issue: Issue, updated: datetime) -> _Read:
+        claim = await self.markers.claim(issue.key, updated, self.observed_at)
+        if claim is None:
+            # Already read through this update, by this target or another.
+            return _Read.SETTLED
+        if not claim:
+            return _Read.ELSEWHERE
+        skipped = self.state.skipped.get(issue.key)
+        since = min(self.since, skipped.since) if skipped is not None else self.since
+        project_key = _project_key_for_issue(issue, self.fallback_project_key)
+        if await self._record(issue.key, since, project_key):
+            await self.markers.finish(issue.key, updated, claim)
+            self.state.failures.pop(issue.key, None)
+            self.state.skipped.pop(issue.key, None)
+            return _Read.SETTLED
+        await self.markers.release(issue.key, claim)
+        if skipped is not None:
+            # Skipped before: it waits for tomorrow's retry, holding nothing.
+            self.state.skipped[issue.key] = replace(skipped, tried=self.observed_at)
+            return _Read.SETTLED
+        failures = self.state.failures.get(issue.key, 0) + 1
+        if failures < MAX_HISTORY_FAILURES:
+            self.state.failures[issue.key] = failures
+            return _Read.HELD
+        self.state.failures.pop(issue.key, None)
+        self.state.skipped[issue.key] = _SkippedIssue(
+            since=since, tried=self.observed_at, project_key=project_key
+        )
+        _warn_history_skipped(self.tenant_id, issue.key, failures)
+        return _Read.SETTLED
+
+    async def _record(self, key: str, since: datetime, project_key: str) -> bool:
+        """Append the issue's changes after ``since``; False when its history cannot be read."""
+        self.reads += 1
+        try:
+            changes = await self.tracker.list_issue_changes(
+                self.tenant_id, key, since - _CHANGES_MARGIN
+            )
+        except ProviderUnavailable:
+            return False
+        for change in changes:
+            await self.facts.append_fact_once(
+                issue_change_fact(
+                    self.tenant_id, key, change, project_key=project_key, members=self.members
+                )
+            )
+        return True
+
+
+def _settled_run(pending: list[Issue], settled: list[bool], observed_at: datetime) -> int:
+    """How many issues, oldest first, are settled without a gap or a split moment."""
+    done = 0
+    while done < len(settled) and settled[done]:
+        done += 1
+    # Never stop between issues updated at the same moment.
+    while 0 < done < len(pending) and _issue_updated_at(
+        pending[done], observed_at
+    ) == _issue_updated_at(pending[done - 1], observed_at):
+        done -= 1
+    return done
+
+
 def _with_changes_read(
-    cursor: SyncCursor, *, through: datetime, since: datetime, waiting: int | None
+    cursor: SyncCursor,
+    *,
+    through: datetime,
+    since: datetime,
+    waiting: int | None,
+    state: _HistoryState,
 ) -> SyncCursor:
     metadata: dict[str, JsonScalar] = {
-        **cursor.metadata,
-        ISSUE_CHANGES_THROUGH_KEY: through.isoformat(),
-        ISSUE_CHANGES_SINCE_KEY: since.isoformat(),
+        key: value
+        for key, value in cursor.metadata.items()
+        if key not in (ISSUE_CHANGES_FAILURES_KEY, ISSUE_CHANGES_SKIPPED_KEY)
     }
+    metadata[ISSUE_CHANGES_THROUGH_KEY] = through.isoformat()
+    metadata[ISSUE_CHANGES_SINCE_KEY] = since.isoformat()
     if waiting is not None:
         metadata[ISSUE_CHANGES_WAITING_KEY] = waiting
+    metadata.update(state.to_metadata())
     return replace(cursor, metadata=metadata)
 
 
-def _metadata_datetime(metadata: Mapping[str, JsonScalar], key: str) -> datetime | None:
+@dataclass(frozen=True, kw_only=True)
+class _SkippedIssue:
+    #: Changes up to here are recorded; its next read starts here.
+    since: datetime
+    tried: datetime
+    project_key: str
+
+
+@dataclass(kw_only=True)
+class _HistoryState:
+    """The failing and skipped issues a target's cursor keeps, read and written as JSON."""
+
+    failures: dict[str, int] = field(default_factory=dict)
+    skipped: dict[str, _SkippedIssue] = field(default_factory=dict)
+
+    @classmethod
+    def from_metadata(cls, metadata: Mapping[str, JsonScalar]) -> _HistoryState:
+        failures = {
+            key: count
+            for key, count in _json_object(metadata.get(ISSUE_CHANGES_FAILURES_KEY)).items()
+            if isinstance(count, int) and not isinstance(count, bool)
+        }
+        skipped: dict[str, _SkippedIssue] = {}
+        for key, value in _json_object(metadata.get(ISSUE_CHANGES_SKIPPED_KEY)).items():
+            entry = value if isinstance(value, dict) else {}
+            since = _metadata_datetime(entry, "since")
+            tried = _metadata_datetime(entry, "tried")
+            project_key = entry.get("project_key")
+            if since is not None and tried is not None and isinstance(project_key, str):
+                skipped[key] = _SkippedIssue(since=since, tried=tried, project_key=project_key)
+        return cls(failures=failures, skipped=skipped)
+
+    def to_metadata(self) -> dict[str, JsonScalar]:
+        metadata: dict[str, JsonScalar] = {}
+        if self.failures:
+            metadata[ISSUE_CHANGES_FAILURES_KEY] = json.dumps(self.failures, sort_keys=True)
+        if self.skipped:
+            metadata[ISSUE_CHANGES_SKIPPED_KEY] = json.dumps(
+                {
+                    key: {
+                        "since": item.since.isoformat(),
+                        "tried": item.tried.isoformat(),
+                        "project_key": item.project_key,
+                    }
+                    for key, item in self.skipped.items()
+                },
+                sort_keys=True,
+            )
+        return metadata
+
+
+def _json_object(value: object) -> dict[str, object]:
+    if not isinstance(value, str) or not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except ValueError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _warn_history_skipped(tenant_id: str, key: str, failures: int) -> None:
+    """One warning per skipped issue: its key and count, never the tracker's text."""
+    # Imported here, as in sync_recording: the workflow sandbox refuses
+    # structlog's import-time randomness.
+    import structlog
+
+    structlog.get_logger(__name__).warning(
+        "issue_history_skipped", tenant_id=tenant_id, issue_key=key, failed_reads=failures
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
+class _Marker:
+    """One issue's history marker: read through when, and who is reading it now."""
+
+    read: datetime | None = None
+    #: The update a target is reading through, when it claimed it, and its token.
+    claim: datetime | None = None
+    at: datetime | None = None
+    by: str | None = None
+
+    @classmethod
+    def from_cursor(cls, cursor: SyncCursor) -> _Marker:
+        values = _json_object(cursor.value)
+        token = values.get("by")
+        return cls(
+            read=_metadata_datetime(values, "read"),
+            claim=_metadata_datetime(values, "claim"),
+            at=_metadata_datetime(values, "at"),
+            by=token if isinstance(token, str) else None,
+        )
+
+    def to_cursor(self) -> SyncCursor:
+        def iso(value: datetime | None) -> str | None:
+            return value.isoformat() if value is not None else None
+
+        value = json.dumps(
+            {"read": iso(self.read), "claim": iso(self.claim), "at": iso(self.at), "by": self.by},
+            sort_keys=True,
+        )
+        return SyncCursor(value=value, updated_at=self.read)
+
+
+@dataclass(frozen=True)
+class _HistoryMarkers:
+    """Per-issue markers shared by every target of the tenant's connection.
+
+    A target claims an issue before reading its history, with one conditional
+    write, so two targets running at once never both read it: the second
+    finds it claimed. A claim older than the lease is a reader that died.
+    """
+
+    cursors: SyncCursorRepository
+    tenant_id: str
+
+    async def claim(self, key: str, updated: datetime, now: datetime) -> str | None:
+        """A token when this target may read it; None when read through ``updated``; "" busy."""
+        for _attempt in range(_SWAP_ATTEMPTS):
+            stored = await self._get(key)
+            marker = _Marker.from_cursor(stored)
+            if marker.read is not None and marker.read >= updated:
+                return None
+            if (
+                marker.by is not None
+                and marker.at is not None
+                and marker.claim is not None
+                and marker.claim >= updated
+                and now - marker.at < _CLAIM_LEASE
+            ):
+                return ""
+            token = uuid4().hex
+            claimed = replace(marker, claim=updated, at=now, by=token)
+            if await self._swap(key, stored.value, claimed):
+                return token
+        return ""
+
+    async def finish(self, key: str, updated: datetime, token: str) -> None:
+        """Mark it read through ``updated``, and end this target's claim."""
+        for _attempt in range(_SWAP_ATTEMPTS):
+            stored = await self._get(key)
+            marker = _Marker.from_cursor(stored)
+            read = max(marker.read, updated) if marker.read is not None else updated
+            done = replace(marker, read=read)
+            if marker.by == token:
+                done = replace(done, claim=None, at=None, by=None)
+            if await self._swap(key, stored.value, done):
+                return
+
+    async def release(self, key: str, token: str) -> None:
+        """End this target's claim without marking anything read."""
+        for _attempt in range(_SWAP_ATTEMPTS):
+            stored = await self._get(key)
+            marker = _Marker.from_cursor(stored)
+            if marker.by != token:
+                return
+            if await self._swap(key, stored.value, replace(marker, claim=None, at=None, by=None)):
+                return
+
+    async def read_through(self, key: str) -> datetime | None:
+        return _Marker.from_cursor(await self._get(key)).read
+
+    async def _get(self, key: str) -> SyncCursor:
+        return await self.cursors.get_cursor(
+            self.tenant_id, ISSUE_HISTORY_MARKER_CONNECTOR, f"issue:{key}"
+        )
+
+    async def _swap(self, key: str, expected: str | None, marker: _Marker) -> bool:
+        return await self.cursors.swap_cursor(
+            self.tenant_id,
+            ISSUE_HISTORY_MARKER_CONNECTOR,
+            f"issue:{key}",
+            expected,
+            marker.to_cursor(),
+        )
+
+
+def _metadata_datetime(metadata: Mapping[str, object], key: str) -> datetime | None:
     value = metadata.get(key)
     if not isinstance(value, str) or not value:
         return None

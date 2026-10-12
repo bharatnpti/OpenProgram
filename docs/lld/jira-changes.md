@@ -79,9 +79,31 @@ backlog is read, every history is read from `since`, so a change made before
 an issue's turn is not lost; then both times move to the newest issue read.
 
 The first read of a target goes back `OPENPROGRAM_JIRA_CHANGES_BACKFILL_DAYS`
-(default 120). A history that cannot be read stops the pass where it got to and
-never fails the sync. Clearing the cursor reads the window again; the facts
-are the same facts.
+(default 120). Clearing the cursor reads the window again; the facts are the
+same facts.
+
+**One read per issue update, across targets.** A project and its pods often
+return the same issues, and their syncs run at once on the queue. Every target
+of the tenant's connection shares one marker per issue: a cursor row
+(connector `issue_history`, scope `issue:{KEY}`) holding when the issue was
+read through and who is reading it now.
+
+- A target claims an issue before reading it, with one conditional write
+  (`SyncCursorRepository.swap_cursor`), so of two targets only one reads it.
+- An issue already read through its update costs no read. Neither does one
+  another target is reading; that one counts once the other has finished.
+- Only a target's own reads count against its budget.
+- A claim older than 10 minutes is a reader that died, and another target takes
+  it over.
+
+**A failing issue.** A history that cannot be read stops the pass where it got
+to and never fails the sync.
+
+- The third failure in a row (`issue_changes_failures`) skips the issue. The
+  pass moves past it, and one warning names the key and the count, never the
+  tracker's text.
+- The skipped issue is kept in `issue_changes_skipped` with where its history
+  stood, and is tried again at most once a day, or as soon as it changes again.
 
 ## Readers kept unchanged
 
