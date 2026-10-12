@@ -674,6 +674,23 @@ Functional requirements:
 - The assistant's pod check-in read shall return each inferred day's evidence and the pod's coverage, and say that an inferred day is not the person's word.
 - Nothing shall count, rank or compare people's activity.
 
+### 4.36 Jira Hygiene
+
+**Business requirement:** Issues that do not meet the tenant's own rules, above all scope added after planning without the change label that marks an agreed change, shall be found in the synced Jira data and reported, with an owner and a suggested fix, without anyone being asked until an admin decides a rule should ask.
+
+Functional requirements:
+
+- Admins shall define per-issue rules on the Jira hygiene tab, from a blank form or one of eight generic examples; none is on until an admin adds it, and each lists only until an admin switches it to ask. A rule reads each project's, release's or pod's issues (the sets release readiness uses, 4.31), narrowed to counted requirements or every issue type, a stage filter and matchers (label, issue type, title phrase, title words, epic), and finds one condition: added after the planning baseline (4.33) and its grace without a change label, a missing label, an empty field (story points, due date, epic, fix version, priority, assignee, component, severity), no gate items of a kind found by the gates' scan (4.29), no Jira change for some working days in a stage, past its due date while open, or more story points than a limit.
+- The change labels shall be tenant data: the scan's own list (default "CR", a generic word) and the baseline's label. No rule shall carry a fixed company label or field name.
+- Try on a project shall show, before a rule is saved, how many issues it looks at and finds per scope, and the first issues with what is wrong, who would be asked and the suggested fix. It saves nothing and asks nobody.
+- A scan, switched on per tenant (and per deployment with `OPENPROGRAM_HYGIENE_SCAN_ENABLED`), shall run inside the hourly readiness tick and on demand (Check now on Overall), over the issues OpenProgram already syncs, without calling or writing to Jira. Readiness off shall not stop it, nor the other way round. A finding attaches to one issue under one rule in one scope; an unchanged one is not written again. While the Jira sync is failing or behind, a finding shall never close, and a new finding of an asking rule shall wait for fresh data before the day report says it. A finding closes when the breach is gone, or as "left the scope".
+- Each finding shall name its owner: the rule's (the assignee, the reporter, the holder of a profile in the issue's pod (4.32), the pod's scrum master, or whoever decides on the project), else the pod's scrum master, else whoever decides. It carries fixed words for what is wrong and a suggested fix filled only with keys, titles, stages, names, field names, labels, numbers and dates; never Jira text.
+- People who act on readiness shall waive a finding with a reason, mark it not applicable (only a manager or admin for a rule marked blocking), re-check it after a fix in Jira, or reopen a decision. A waived finding asks nobody while the breach stands. Every action, and every change the scan makes, is audited.
+- Overall shall show Jira hygiene, after release readiness, to the product owner, manager, admin and to a scrum master for the projects their pods work on: the rule stated first, each rule's open count, new today and oldest, and per rule its issues with what is wrong, the owner, the suggested fix, days open and the actions, with a pod filter. An executive shall read each rule's counts only, never which issues or who; a developer has no section and is refused by the server.
+- The day report shall add one count line under Where we stand ("Jira hygiene: 7 open (2 new today).") while the scan is on, and for each asking rule one ask per owner per scope naming up to five keys ("Checkout Revamp: label 2 additions after planning as changes or take them out: CHK-20, CHK-21"). It waits from the earliest finding's day (the change-label rule's from when the addition passed planning's grace) and climbs the project's escalation matrix (4.30). An ask the gates already raise for the same issue is not repeated.
+- The assistant shall answer "is Jira clean", "which stories have no estimate" and "what was added after planning without a change label" from a read-only `jira_hygiene` tool, behind the readiness board's own read rule: counts only for an executive, no tool for a developer.
+- Nothing shall count or rank people: findings are about issues, aggregates stop at rules and scopes.
+
 ## 5. Key Business Data Flows
 
 ### 5.1 Read Sync Flow
