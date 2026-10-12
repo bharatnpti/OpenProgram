@@ -603,6 +603,19 @@ Functional requirements:
 - The day report shall list such gaps first under Most important, so its line cap never hides one, and ask one person to decide on each: the project's recorded owner (the escalation matrix's decision owner, else the project's owner), else a product owner of the scope's pods, else for a pod's gap its scrum master, else a manager from the escalation contacts. The ask climbs the escalation matrix from the pod that person was found on. It says "Nobody named yet" only when none of them is known.
 - Every person's action and every change the agent makes shall be kept in an audit trail, shown per criterion.
 
+### 4.32 Profiles in a Pod
+
+**Business requirement:** Each person's discipline in a pod (development, QA, security, product, design, delivery, ops and so on) shall be known, so the right person is asked, named and escalated to. A profile is a role in that pod, never a rating, and grants no rights.
+
+Functional requirements:
+
+- A profile shall belong to a pod membership, so one person can hold a different profile in each pod. It sits beside the role in the pod (developer, scrum master, product owner, manager), which keeps saying who is accountable. Until someone sets it, a membership's profile follows its role and reads as not checked.
+- Admins shall pick a profile when they add a person to a pod (Admin › Links), change it later, and give one to everyone imported into a pod (Admin › Directory). A scrum master shall change profiles in the pods they run, from the pod's Delivery panel, and nowhere else; anyone else is refused in words. Each change holds from its day, and earlier days keep the profile they had.
+- A suggestion shall come from the person's directory title, the types and labels of their issues in the pod and their Git work, with its reasons in words. It is shown only to whoever sets the profile, never stored, and never applied on its own. A list of the profiles nobody checked yet shall offer every suggestion at once (Accept all), after a confirmation that names each change.
+- The catalog shall start with generic profiles; admins shall rename, hide or add profiles (Admin › Profiles). A hidden profile is offered nowhere, and a membership already holding it keeps it.
+- Profiles shall route, read per pod: whether a person's "in review" is code work that needs a merge request (only a profile someone chose decides this; otherwise the person's app roles do), who a release criterion asks to create or link its evidence (4.31) beside the unchanged decision ask, how the day report names an ask's owner ("Mina Patel (Product, Payments Pod)", for profiles someone chose), and who the assistant names for "who is the security, QA or product person for X".
+- Each person shall read their own profiles, beside their check-in schedule.
+
 ## 5. Key Business Data Flows
 
 ### 5.1 Read Sync Flow
