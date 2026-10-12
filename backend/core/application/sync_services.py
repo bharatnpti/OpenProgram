@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from core.application.sync_recording import recording_sync_failure, succeeded_cursor
+from core.domain.errors import ProviderUnavailable
 from core.domain.graph import (
     EdgeKind,
     EntityRef,
@@ -24,6 +25,8 @@ from core.domain.graph import (
 from core.domain.integrations import (
     Commit,
     Issue,
+    IssueChange,
+    IssueChangeField,
     Project,
     PullRequest,
     Repo,
@@ -50,6 +53,12 @@ class SyncRunResult:
     cursor: SyncCursor
 
 
+#: Issues whose history one sync target reads per tick; the rest wait a tick.
+DEFAULT_CHANGES_PER_TICK = 200
+#: How far back a target's first history read goes.
+DEFAULT_CHANGES_BACKFILL_DAYS = 120
+
+
 class IssueReadSyncService:
     connector = "issue"
 
@@ -61,12 +70,16 @@ class IssueReadSyncService:
         time_series_repository: TimeSeriesRepository,
         cursor_repository: SyncCursorRepository,
         identity_link_repository: IdentityLinkRepository | None = None,
+        changes_per_tick: int = DEFAULT_CHANGES_PER_TICK,
+        changes_backfill_days: int = DEFAULT_CHANGES_BACKFILL_DAYS,
     ) -> None:
         self._issue_tracker = issue_tracker
         self._graph_repository = graph_repository
         self._time_series_repository = time_series_repository
         self._cursor_repository = cursor_repository
         self._identity_link_repository = identity_link_repository
+        self._changes_per_tick = changes_per_tick
+        self._changes_backfill = timedelta(days=changes_backfill_days)
 
     async def sync_project(
         self,
@@ -99,6 +112,22 @@ class IssueReadSyncService:
 
             next_cursor = _next_cursor(
                 cursor, (_issue_updated_at(issue, observed) for issue in issues)
+            )
+
+            async def search_project(since: SyncCursor) -> list[Issue]:
+                return await self._issue_tracker.list_issues_updated_since(
+                    tenant_id, project_key, since
+                )
+
+            next_cursor = await self._read_issue_changes(
+                tenant_id=tenant_id,
+                previous=cursor,
+                current=next_cursor,
+                synced=issues,
+                search=search_project,
+                fallback_project_key=project.id,
+                developers=developers,
+                observed_at=observed,
             )
             recorded_cursor = succeeded_cursor(next_cursor, observed, len(issues))
             await self._cursor_repository.record_cursor(
@@ -142,6 +171,20 @@ class IssueReadSyncService:
 
             next_cursor = _next_cursor(
                 cursor, (_issue_updated_at(issue, observed) for issue in issues)
+            )
+
+            async def search_query(since: SyncCursor) -> list[Issue]:
+                return await self._issue_tracker.list_issues_for_query(tenant_id, jql, since)
+
+            next_cursor = await self._read_issue_changes(
+                tenant_id=tenant_id,
+                previous=cursor,
+                current=next_cursor,
+                synced=issues,
+                search=search_query,
+                fallback_project_key=target.id,
+                developers=developers,
+                observed_at=observed,
             )
             recorded_cursor = succeeded_cursor(next_cursor, observed, len(issues))
             await self._cursor_repository.record_cursor(
@@ -261,7 +304,9 @@ class IssueReadSyncService:
         )
         project_key = _project_key_for_issue(issue, parent.id)
         await self._graph_repository.upsert_node(
-            issue_task_node(issue, project_key=project_key, member_id=member_id)
+            issue_task_node(
+                issue, project_key=project_key, member_id=member_id, developers=developers
+            )
         )
         await self._graph_repository.add_edge(
             GraphEdge(
@@ -284,6 +329,84 @@ class IssueReadSyncService:
             issue_fact(issue, project_key=project_key, observed_at=observed_at)
         )
 
+    async def _read_issue_changes(
+        self,
+        *,
+        tenant_id: str,
+        previous: SyncCursor,
+        current: SyncCursor,
+        synced: list[Issue],
+        search: Callable[[SyncCursor], Awaitable[list[Issue]]],
+        fallback_project_key: str,
+        developers: Mapping[str, str],
+        observed_at: datetime,
+    ) -> SyncCursor:
+        """Read the history of the issues seen changed, as ``issue_change`` facts.
+
+        Two times in the cursor's metadata say how far it got: every issue
+        updated up to ``issue_changes_through`` has had its history read, and
+        every change made up to ``issue_changes_since`` is recorded. While
+        ``through`` is at or past the sync's own cursor, the issues this sync
+        just returned are exactly the ones to read. A first read goes back the
+        backfill window, and anything over the per tick budget waits for the
+        next tick, found again by a search from ``through``; until that backlog
+        is read, every history is read from ``since``, so no change made before
+        an issue's turn is lost. A history that cannot be read stops the pass
+        where it got to, for the next tick, and never fails the sync.
+        """
+        if self._changes_per_tick <= 0:
+            return current
+        through = _metadata_datetime(previous.metadata, ISSUE_CHANGES_THROUGH_KEY)
+        since = _metadata_datetime(previous.metadata, ISSUE_CHANGES_SINCE_KEY)
+        if through is None or since is None:
+            through = since = observed_at - self._changes_backfill
+            # A first sync read every issue of the target; a later one only
+            # the issues changed since its cursor.
+            caught_up = previous.updated_at is None
+        else:
+            caught_up = previous.updated_at is None or through >= _timestamp(previous.updated_at)
+        try:
+            candidates = synced if caught_up else await search(SyncCursor(updated_at=through))
+        except ProviderUnavailable:
+            return _with_changes_read(current, through=through, since=since, waiting=None)
+        start = through
+        pending = sorted(
+            (issue for issue in candidates if _issue_updated_at(issue, observed_at) > start),
+            key=lambda issue: _issue_updated_at(issue, observed_at),
+        )
+        budget = min(len(pending), self._changes_per_tick)
+        # Issues updated at the same moment are read together: the cursor is a time.
+        while 0 < budget < len(pending) and _issue_updated_at(
+            pending[budget], observed_at
+        ) == _issue_updated_at(pending[budget - 1], observed_at):
+            budget += 1
+        read = 0
+        for issue in pending[:budget]:
+            try:
+                changes = await self._issue_tracker.list_issue_changes(
+                    tenant_id, issue.key, since - _CHANGES_MARGIN
+                )
+            except ProviderUnavailable:
+                break
+            project_key = _project_key_for_issue(issue, fallback_project_key)
+            for change in changes:
+                await self._time_series_repository.append_fact_once(
+                    issue_change_fact(
+                        tenant_id, issue.key, change, project_key=project_key, members=developers
+                    )
+                )
+            read += 1
+            updated = _issue_updated_at(issue, observed_at)
+            if read == len(pending) or _issue_updated_at(pending[read], observed_at) > updated:
+                through = updated
+        waiting = len(pending) - read
+        if waiting == 0:
+            # Everything seen changed is read: what the search or the sync saw
+            # up to its newest issue is recorded.
+            newest = _timestamp(current.updated_at) if current.updated_at is not None else through
+            through = since = max(through, newest)
+        return _with_changes_read(current, through=through, since=since, waiting=waiting)
+
     async def _developers_by_tracker_account(self, tenant_id: str) -> dict[str, str]:
         return await developers_by_tracker_account(
             self._graph_repository, self._identity_link_repository, tenant_id
@@ -291,10 +414,99 @@ class IssueReadSyncService:
 
 
 ISSUE_FACT_SOURCE = IssueReadSyncService.connector
+#: A field change read from the tracker's history of an issue, on the task.
+ISSUE_CHANGE_FACT_SOURCE = "issue_change"
+#: In an issue sync cursor's metadata: every issue updated up to this time has
+#: had its history read.
+ISSUE_CHANGES_THROUGH_KEY = "issue_changes_through"
+#: Every change made up to this time, on any issue of the target, is recorded.
+ISSUE_CHANGES_SINCE_KEY = "issue_changes_since"
+#: How many issues seen changed still wait for their history to be read.
+ISSUE_CHANGES_WAITING_KEY = "issue_changes_waiting"
+# Histories are read from a little before ``since``; a re-read change is one fact.
+_CHANGES_MARGIN = timedelta(minutes=1)
 
 
-def issue_task_node(issue: Issue, *, project_key: str, member_id: str | None) -> Task:
-    """The task node the issue sync stores for ``issue``."""
+def issue_change_fact(
+    tenant_id: str,
+    key: str,
+    change: IssueChange,
+    *,
+    project_key: str,
+    members: Mapping[str, str],
+) -> FactEvent:
+    """One field change as a fact on the task, its author mapped onto a member.
+
+    The fact belongs to the work item, never to the person: an author who is
+    a member is named by member id, one who is not keeps the tracker's
+    account id, and no name is kept. Values are names, keys, dates, numbers or
+    account ids; a summary or description change carries none.
+    """
+    payload: dict[str, JsonScalar] = {
+        "key": key,
+        "field": change.field.value,
+        "from": change.from_value,
+        "to": change.to_value,
+        "project_key": project_key,
+        "history_id": change.history_id,
+    }
+    if change.author is not None:
+        member_id = members.get(change.author.external_id)
+        if member_id is not None:
+            payload["author_member_id"] = member_id
+        else:
+            payload["unlinked_author_id"] = change.author.external_id
+    if change.field is IssueChangeField.ASSIGNEE:
+        for side, account in (("from", change.from_value), ("to", change.to_value)):
+            if account is not None and (member := members.get(account)) is not None:
+                payload[f"{side}_member_id"] = member
+    return FactEvent(
+        tenant_id=tenant_id,
+        source=ISSUE_CHANGE_FACT_SOURCE,
+        entity_ref=EntityRef(tenant_id=tenant_id, kind=NodeKind.TASK, id=key),
+        payload=payload,
+        observed_at=_timestamp(change.at),
+        correlation_id=(
+            f"{ISSUE_CHANGE_FACT_SOURCE}:{tenant_id}:{key}:{change.history_id}:{change.field.value}"
+        ),
+    )
+
+
+def _with_changes_read(
+    cursor: SyncCursor, *, through: datetime, since: datetime, waiting: int | None
+) -> SyncCursor:
+    metadata: dict[str, JsonScalar] = {
+        **cursor.metadata,
+        ISSUE_CHANGES_THROUGH_KEY: through.isoformat(),
+        ISSUE_CHANGES_SINCE_KEY: since.isoformat(),
+    }
+    if waiting is not None:
+        metadata[ISSUE_CHANGES_WAITING_KEY] = waiting
+    return replace(cursor, metadata=metadata)
+
+
+def _metadata_datetime(metadata: Mapping[str, JsonScalar], key: str) -> datetime | None:
+    value = metadata.get(key)
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return _timestamp(datetime.fromisoformat(value))
+    except ValueError:
+        return None
+
+
+def issue_task_node(
+    issue: Issue,
+    *,
+    project_key: str,
+    member_id: str | None,
+    developers: Mapping[str, str] | None = None,
+) -> Task:
+    """The task node the issue sync stores for ``issue``.
+
+    The reporter and creator stay tracker account ids; one who is a member is
+    also named by member id (``reporter_member_id``, ``creator_member_id``).
+    """
     metadata: dict[str, JsonScalar] = {
         **_scalar_mapping(issue.metadata),
         "key": issue.key,
@@ -303,6 +515,11 @@ def issue_task_node(issue: Issue, *, project_key: str, member_id: str | None) ->
         # When the tracker last changed the issue: lets a scan of its text skip it.
         "updated_at": issue.updated_at.isoformat() if issue.updated_at is not None else None,
     }
+    for role in ("reporter", "creator"):
+        account = issue.metadata.get(f"{role}_id")
+        member = (developers or {}).get(account) if isinstance(account, str) else None
+        if member is not None:
+            metadata[f"{role}_member_id"] = member
     if issue.assignee is not None and member_id is None:
         # Nobody is linked to this tracker account yet. It stays on the issue,
         # not as a person: a developer node would show up as a persona and be
@@ -379,7 +596,7 @@ async def record_issue_as_synced(
     )
     member_id = developers.get(issue.assignee.external_id) if issue.assignee is not None else None
     await graph_repository.upsert_node(
-        issue_task_node(issue, project_key=project_key, member_id=member_id)
+        issue_task_node(issue, project_key=project_key, member_id=member_id, developers=developers)
     )
     if member_id is not None:
         await graph_repository.add_edge(
@@ -628,7 +845,9 @@ def _issue_fact_payload(issue: Issue, project_key: str) -> dict[str, JsonScalar]
     }
     # The tracker's own status name, type and size, when it reports them: the
     # delivery stages are read from the status name, so its history is kept.
-    for key in ("status", "issue_type", "story_points"):
+    # The due date, fix versions and labels too, so a moved date or a release
+    # or label change can be told from the timeline.
+    for key in ("status", "issue_type", "story_points", "due_date", "fix_versions", "labels"):
         value = issue.metadata.get(key)
         if value is not None:
             payload[key] = value
