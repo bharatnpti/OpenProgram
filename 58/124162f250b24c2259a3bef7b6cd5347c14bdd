@@ -1,0 +1,29 @@
+frontend-v3/src/features/admin/ProfilesTab.tsx
+  s_22b399281058a2::t_21993d9ca2a7ea 1-203,209-226
+  s_22b399281058a2::t_6ae57a7199b2d5 204-208
+frontend-v3/src/features/admin/profileForm.test.ts
+  s_22b399281058a2::t_09a78119a86bba 1-63,70-97
+  s_22b399281058a2::t_6ae57a7199b2d5 64-69
+frontend-v3/src/features/admin/profileForm.ts
+  s_22b399281058a2::t_65678f0de20117 1-127
+frontend-v3/src/pages/AdminPage.tsx
+  s_22b399281058a2::t_86dd1df53914f8 89
+  s_22b399281058a2::t_71cd334bd628c9 16
+  s_22b399281058a2::t_b56cf4eeaedf85 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "58124162f250b24c2259a3bef7b6cd5347c14bdd",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
