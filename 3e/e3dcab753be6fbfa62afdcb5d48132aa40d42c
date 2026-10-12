@@ -1,0 +1,23 @@
+docs/lld/release-readiness.md
+  s_22b399281058a2::t_139cb37f42b7bd 112-114
+features.md
+  s_22b399281058a2::t_5c6b2b7c7d1a88 606-618
+docs/lld/profiles.md
+  s_22b399281058a2::t_e149ca9dc4ca1e 1-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3ee3dcab753be6fbfa62afdcb5d48132aa40d42c",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

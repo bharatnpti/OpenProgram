@@ -1,0 +1,31 @@
+docs/lld/profiles.md
+  s_22b399281058a2::t_c32679cc448b9b 64-67
+backend/api/routers/profiles.py
+  s_22b399281058a2::t_96e31c47e14917 75-77
+  s_22b399281058a2::t_db2cf154730e83 36
+backend/core/application/profile_service.py
+  s_22b399281058a2::t_939cdbd429fdad 34,45
+  s_22b399281058a2::t_10c1ee69dc64aa 180-185
+backend/tests/unit/test_profiles.py
+  s_22b399281058a2::t_ef30f4d4517ff3 33
+  s_22b399281058a2::t_64ca382c0c59e8 542-544
+  s_22b399281058a2::t_599890dba28b55 540-541,545-585
+backend/core/domain/profiles.py
+  s_22b399281058a2::t_71cc229c2ab6fc 49-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e786c12ebb1d9791eef5d6e62130599c9bbcb8bd",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
