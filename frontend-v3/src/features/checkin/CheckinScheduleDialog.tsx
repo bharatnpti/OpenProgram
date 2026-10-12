@@ -8,6 +8,7 @@ import type { CheckinPreferenceResponse } from "../../api/schema";
 import { useReadOnly } from "../../app/viewingDate";
 import { Pill } from "../../components/ui/Pill";
 import { cn } from "../../lib/utils";
+import { MyProfiles } from "../profiles/MyProfiles";
 import { isNoCheckin, useMyCheckinPreference } from "./useMyCheckinPreference";
 import {
   MY_CHECKIN_PREFERENCE_KEY,
@@ -93,6 +94,7 @@ export function CheckinScheduleDialog({
               )}
             </>
           )}
+          <MyProfiles enabled={open} />
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
