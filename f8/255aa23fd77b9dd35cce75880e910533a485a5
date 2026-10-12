@@ -1,0 +1,47 @@
+frontend-v3/scripts/mock/today.mjs
+  s_22b399281058a2::t_e66b88e5fdb7cd 25,580,611,621,673,680
+frontend-v3/src/features/admin/fillDayWords.test.ts
+  s_22b399281058a2::t_e66b88e5fdb7cd 1-34
+frontend-v3/src/api/schema.ts
+  s_22b399281058a2::t_e66b88e5fdb7cd 112-117
+frontend-v3/src/features/admin/fillDayWords.ts
+  s_22b399281058a2::t_e66b88e5fdb7cd 1-40
+frontend-v3/src/lib/observedWords.test.ts
+  s_22b399281058a2::t_e66b88e5fdb7cd 1-87
+frontend-v3/src/lib/checkinWords.ts
+  s_22b399281058a2::t_e66b88e5fdb7cd 4,40-41,44-59,96-97,112-115,145-157,173-175,197-200,209
+frontend-v3/src/features/delivery/PodTasks.tsx
+  s_22b399281058a2::t_e66b88e5fdb7cd 9,102,140-145,147-158,161-162
+frontend-v3/src/api/client.ts
+  s_22b399281058a2::t_e66b88e5fdb7cd 87-88,607-609
+frontend-v3/scripts/mock-api.mjs
+  s_22b399281058a2::t_e66b88e5fdb7cd 37,232
+frontend-v3/src/features/admin/CheckinsTab.tsx
+  s_22b399281058a2::t_e66b88e5fdb7cd 20,232
+frontend-v3/src/lib/observedWords.ts
+  s_22b399281058a2::t_e66b88e5fdb7cd 1-83
+frontend-v3/src/features/admin/FillDayCard.tsx
+  s_22b399281058a2::t_e66b88e5fdb7cd 1-90
+frontend-v3/src/features/today/TaskList.tsx
+  s_22b399281058a2::t_e66b88e5fdb7cd 14,138-139,193
+frontend-v3/src/lib/checkinWords.test.ts
+  s_22b399281058a2::t_e66b88e5fdb7cd 234-292
+frontend-v3/scripts/mock/observed-day.mjs
+  s_22b399281058a2::t_e66b88e5fdb7cd 1-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f8255aa23fd77b9dd35cce75880e910533a485a5",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
