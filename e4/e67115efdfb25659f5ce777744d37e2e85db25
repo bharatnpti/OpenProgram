@@ -1,0 +1,31 @@
+docs/lld/jira-changes.md
+  s_22b399281058a2::t_0e0ef59b1f6556 82-106
+backend/core/application/sync_services.py
+  s_22b399281058a2::t_42179676daeda5 8,391-404,495-618
+  s_22b399281058a2::t_95f5299c889ae3 3,6,9,357-366,379,383-385,405-407,413-415,433-445,622-627,630-632,634-635,638,642-819
+  s_22b399281058a2::t_cdc7ecf610b48a 619-620
+backend/tests/unit/test_issue_change_sync.py
+  s_22b399281058a2::t_bec1b4329857a4 14,16
+  s_22b399281058a2::t_cb925100b20841 429-494,496-545,547-572
+  s_22b399281058a2::t_68b6f71acc6303 19,591-592
+  s_22b399281058a2::t_41951b02ae6f0b 573-590,593-604
+  s_22b399281058a2::t_abf655ecb69602 495,546
+  s_22b399281058a2::t_41dd6cb332b036 5-6,9
+  s_22b399281058a2::t_a8201071be7bcb 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e4e67115efdfb25659f5ce777744d37e2e85db25",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
