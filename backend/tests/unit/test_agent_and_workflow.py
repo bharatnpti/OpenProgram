@@ -718,6 +718,7 @@ async def test_ensure_workflow_schedules_removes_the_readiness_scan_when_disable
         secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
         heartbeat_schedule_id="heartbeat-test",
         readiness_scan_enabled=False,
+        hygiene_scan_enabled=False,
     )
     registry = _ScheduleBootstrapRegistry(settings)
 
@@ -725,6 +726,23 @@ async def test_ensure_workflow_schedules_removes_the_readiness_scan_when_disable
 
     assert registry.scheduler.removed == [settings.readiness_scan_schedule_id]
     assert "readiness_scan" not in {c.connector for c in registry.scheduler.sync_configs}
+
+
+async def test_the_readiness_tick_stays_for_the_jira_hygiene_scan_alone() -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        heartbeat_schedule_id="heartbeat-test",
+        readiness_scan_enabled=False,
+        hygiene_scan_enabled=True,
+    )
+    registry = _ScheduleBootstrapRegistry(settings)
+
+    await schedule.ensure_workflow_schedules(registry)
+
+    assert settings.readiness_scan_schedule_id not in registry.scheduler.removed
+    assert "readiness_scan" in {c.connector for c in registry.scheduler.sync_configs}
 
 
 def test_the_readiness_scan_runs_hourly_after_the_jira_sync_and_the_gate_scan() -> None:

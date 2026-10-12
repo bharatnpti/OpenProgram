@@ -1514,6 +1514,28 @@ class ReleaseReadinessService:
 
     # ---- reading scopes --------------------------------------------------------------
 
+    async def scope_contexts(
+        self, tenant_id: str, project_id: str, today: date
+    ) -> tuple[list[ScopeContext], dict[str, ScopeIssue]]:
+        """A project's scopes as readiness reads them (the project, each release, each
+        pod working on it), and every synced issue by key. Jira hygiene reads the same
+        sets (hygiene_service)."""
+        return await self._project_contexts(tenant_id, project_id, today)
+
+    async def pod_scope_context(
+        self, tenant_id: str, pod_id: str, today: date
+    ) -> tuple[ScopeContext, dict[str, ScopeIssue]]:
+        """One pod's scope as readiness reads it, for a pod's own reads."""
+        return await self._pod_context(tenant_id, pod_id, today)
+
+    async def _assignees(self, tenant_id: str, today: date) -> dict[str, str]:
+        """Each task's assignee in force today, by task id (a member id)."""
+        found: dict[str, str] = {}
+        for edge in await self._graph.list_edges(tenant_id, kind=EdgeKind.ASSIGNED_TO):
+            if edge.is_active_on(today):
+                found.setdefault(edge.to_node_id, edge.from_node_id)
+        return found
+
     async def _project_contexts(
         self, tenant_id: str, project_id: str, today: date
     ) -> tuple[list[ScopeContext], dict[str, ScopeIssue]]:
@@ -1525,7 +1547,8 @@ class ReleaseReadinessService:
         mapping = (await self._delivery.delivery_settings(tenant_id)).settings.mapping
         tasks = await self._graph.list_nodes(tenant_id, NodeKind.TASK)
         titles = {_key(task): task.name for task in tasks}
-        known = {_key(task): _scope_issue(task, mapping, titles) for task in tasks}
+        assignees = await self._assignees(tenant_id, today)
+        known = {_key(task): _scope_issue(task, mapping, titles, assignees) for task in tasks}
         owned = (await owned_project_tasks(self._graph, tenant_id, [project_id], today)).get(
             project_id, ()
         )
@@ -1601,7 +1624,8 @@ class ReleaseReadinessService:
             mapping = (await self._delivery.delivery_settings(tenant_id)).settings.mapping
             tasks = await self._graph.list_nodes(tenant_id, NodeKind.TASK)
             titles = {_key(task): task.name for task in tasks}
-            known = {_key(task): _scope_issue(task, mapping, titles) for task in tasks}
+            assignees = await self._assignees(tenant_id, today)
+            known = {_key(task): _scope_issue(task, mapping, titles, assignees) for task in tasks}
             by_id = {task.id: task for task in tasks}
             mine = [
                 by_id[i] for i in await self._pod_task_ids(tenant_id, pod_id, today) if i in by_id
@@ -2083,7 +2107,12 @@ def _stages(
     return tuple(stages)
 
 
-def _scope_issue(task: GraphNode, mapping: StageMapping, titles: Mapping[str, str]) -> ScopeIssue:
+def _scope_issue(
+    task: GraphNode,
+    mapping: StageMapping,
+    titles: Mapping[str, str],
+    assignees: Mapping[str, str] | None = None,
+) -> ScopeIssue:
     state = _text(task.metadata.get("state"))
     # Only a task the tracker synced carries ``state``; without it ``status`` is a
     # colour a seed or a person set, not the tracker's status (persona_views'
@@ -2092,10 +2121,12 @@ def _scope_issue(task: GraphNode, mapping: StageMapping, titles: Mapping[str, st
     placement = place(mapping, status=status, state=state)
     parent = _text(task.metadata.get("parent_key"))
     updated = task.metadata.get("updated_at")
+    issue_type = _text(task.metadata.get("issue_type"))
+    assignee = (assignees or {}).get(task.id)
     return ScopeIssue(
         key=_key(task),
         title=task.name,
-        issue_type=_text(task.metadata.get("issue_type")),
+        issue_type=issue_type,
         labels=split_names(task.metadata.get("labels")),
         parent_key=parent,
         parent_title=titles.get(parent) if parent else None,
@@ -2103,7 +2134,32 @@ def _scope_issue(task: GraphNode, mapping: StageMapping, titles: Mapping[str, st
         done=state == "done" or placement.stage is DeliveryStage.PRODUCTION,
         counted=placement.stage is not None,
         updated_at=updated if isinstance(updated, str) else None,
+        stage=placement.stage,
+        requirement=placement.stage is not None and mapping.counts_type(issue_type),
+        created_at=_text(task.metadata.get("created_at")),
+        due_date=_text(task.metadata.get("due_date")),
+        story_points=_points(task.metadata.get("story_points")),
+        priority=_text(task.metadata.get("priority")),
+        fix_versions=split_names(task.metadata.get("fix_versions")),
+        components=split_names(task.metadata.get("components")),
+        severity=_text(task.metadata.get("severity")),
+        assignee_id=assignee,
+        assigned=assignee is not None or bool(_text(task.metadata.get("unlinked_assignee_id"))),
+        reporter_id=_text(task.metadata.get("reporter_member_id")),
     )
+
+
+def _points(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
 
 
 def _known_key(issue_key: str, known: Mapping[str, ScopeIssue]) -> str:

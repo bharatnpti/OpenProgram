@@ -30,6 +30,7 @@ from core.application.fill_day import FillDayPass, FillDaySettingsService
 from core.application.forecast_service import ForecastService
 from core.application.gate_extraction import ModelItemFinder
 from core.application.gate_service import GateService
+from core.application.hygiene_service import HygieneService
 from core.application.impact_service import DeliveryImpactService
 from core.application.jira_writes_service import JiraWritesService
 from core.application.observed_day_service import ObservedDayReader
@@ -86,6 +87,7 @@ from core.ports.gates import (
     IssueScanRepository,
     QuestionRepository,
 )
+from core.ports.hygiene import HygieneRepository
 from core.ports.investigation import InvestigationEngine
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
@@ -161,6 +163,7 @@ from infra.persistence.in_memory_gates import (
     InMemoryQuestionRepository,
 )
 from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
+from infra.persistence.in_memory_hygiene import InMemoryHygieneRepository
 from infra.persistence.in_memory_jira_writes import InMemoryJiraWritesRepository
 from infra.persistence.in_memory_profiles import InMemoryProfileRepository
 from infra.persistence.in_memory_readiness import InMemoryReleaseReadinessRepository
@@ -193,6 +196,7 @@ from infra.persistence.postgres_graph import (
     PostgresTimeSeriesRepository,
     PostgresVectorStore,
 )
+from infra.persistence.postgres_hygiene import PostgresHygieneRepository
 from infra.persistence.postgres_inbound import PostgresInboundChatEventRepository
 from infra.persistence.postgres_jira_writes import PostgresJiraWritesRepository
 from infra.persistence.postgres_profiles import PostgresProfileRepository
@@ -302,6 +306,7 @@ class ServiceRegistry:
         default=None, init=False
     )
     _jira_writes_repository: JiraWritesRepository | None = field(default=None, init=False)
+    _hygiene_repository: HygieneRepository | None = field(default=None, init=False)
     _profile_repository: ProfileRepository | None = field(default=None, init=False)
     _fill_day_repository: FillDayRepository | None = field(default=None, init=False)
     _connection_resolver: CachedConnectionResolver | None = field(default=None, init=False)
@@ -731,6 +736,31 @@ class ServiceRegistry:
             today=self._tenant_today,
         )
 
+    def hygiene_repository(self) -> HygieneRepository:
+        if self._hygiene_repository is None:
+            self._hygiene_repository = (
+                InMemoryHygieneRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresHygieneRepository(self._executor())
+            )
+        return self._hygiene_repository
+
+    def hygiene_service(self) -> HygieneService:
+        """Jira hygiene: per-issue rules over readiness's scope sets, read-only on Jira."""
+        return HygieneService(
+            repository=self.hygiene_repository(),
+            readiness=self.release_readiness_service(),
+            graph_repository=self.graph_repository(),
+            time_series_repository=self.time_series_repository(),
+            forecast_service=self.forecast_service(),
+            jira_health=self._readiness_jira_health,
+            baselines=self.baseline_service(),
+            profiles=self.profile_service(),
+            escalation=self.escalation_matrix_service(),
+            gates=self.gate_service(),
+            today=self._tenant_today,
+        )
+
     async def _readiness_jira_health(self, tenant_id: str) -> JiraData:
         """How fresh the synced Jira data is: stale while the issue sync fails or lags."""
         try:
@@ -827,6 +857,7 @@ class ServiceRegistry:
             readiness_service=self.release_readiness_service(),
             profile_service=self.profile_service(),
             impact_service=self.delivery_impact_service(),
+            hygiene_service=self.hygiene_service(),
         )
 
     def day_report_service(self) -> DayReportService:

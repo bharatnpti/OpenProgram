@@ -271,6 +271,7 @@ def get_ask_service(request: Request) -> AskService:
         model=settings.default_llm_model,
         max_tool_iterations=settings.ask_max_tool_iterations,
         profile_service=registry.profile_service(),
+        hygiene_service=registry.hygiene_service(),
     )
 
 

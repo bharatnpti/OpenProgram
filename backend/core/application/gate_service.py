@@ -381,6 +381,27 @@ class GateService:
         await self._questions.save(question)
         return question
 
+    async def issue_kinds(
+        self, tenant_id: str, issue_keys: Sequence[str]
+    ) -> dict[str, tuple[bool, frozenset[str]]]:
+        """Per issue: whether the scan read its text, and the item kinds it holds.
+
+        A kind counts once an item of it is suggested or confirmed; a dismissed
+        suggestion does not. Jira hygiene's "no acceptance criteria" rule reads it.
+        """
+        keys = list(dict.fromkeys(issue_keys))
+        if not keys:
+            return {}
+        kinds: dict[str, set[str]] = {}
+        for item in await self._items.list_for_issues(tenant_id, keys):
+            if item.status is not ItemStatus.DISMISSED:
+                kinds.setdefault(item.issue_key, set()).add(item.kind)
+        found: dict[str, tuple[bool, frozenset[str]]] = {}
+        for key in keys:
+            scanned = await self._scans.last_scanned(tenant_id, key) is not None
+            found[key] = (scanned or key in kinds, frozenset(kinds.get(key, ())))
+        return found
+
     # ---- scanning ------------------------------------------------------------------
 
     async def scan_scope(

@@ -8676,6 +8676,809 @@
         }
       }
     },
+    "/projects/{project_id}/hygiene": {
+      "get": {
+        "tags": ["hygiene"],
+        "summary": "Project Hygiene",
+        "operationId": "project_hygiene_projects__project_id__hygiene_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Release Id"
+            }
+          },
+          {
+            "name": "pod_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HygieneBoardResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pods/{pod_id}/hygiene": {
+      "get": {
+        "tags": ["hygiene"],
+        "summary": "Pod Hygiene",
+        "operationId": "pod_hygiene_pods__pod_id__hygiene_get",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HygieneBoardResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/hygiene/run": {
+      "post": {
+        "tags": ["hygiene"],
+        "summary": "Run Project",
+        "description": "Check now: the project, its releases and its pods, inline. Reads only synced data.",
+        "operationId": "run_project_projects__project_id__hygiene_run_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Release Id"
+            }
+          },
+          {
+            "name": "pod_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HygieneRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hygiene-findings/{finding_id}/waive": {
+      "post": {
+        "tags": ["hygiene"],
+        "summary": "Waive",
+        "operationId": "waive_hygiene_findings__finding_id__waive_post",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Finding Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HygieneReasonRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HygieneFindingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hygiene-findings/{finding_id}/not-applicable": {
+      "post": {
+        "tags": ["hygiene"],
+        "summary": "Not Applicable",
+        "operationId": "not_applicable_hygiene_findings__finding_id__not_applicable_post",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Finding Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HygieneReasonRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HygieneFindingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hygiene-findings/{finding_id}/reopen": {
+      "post": {
+        "tags": ["hygiene"],
+        "summary": "Reopen",
+        "operationId": "reopen_hygiene_findings__finding_id__reopen_post",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Finding Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HygieneFindingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hygiene-findings/{finding_id}/recheck": {
+      "post": {
+        "tags": ["hygiene"],
+        "summary": "Recheck",
+        "description": "Read the issue again as the last Jira sync left it, after a fix in Jira.",
+        "operationId": "recheck_hygiene_findings__finding_id__recheck_post",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Finding Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HygieneFindingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hygiene-findings/{finding_id}/history": {
+      "get": {
+        "tags": ["hygiene"],
+        "summary": "History",
+        "operationId": "history_hygiene_findings__finding_id__history_get",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Finding Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HygieneHistoryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/hygiene": {
+      "get": {
+        "tags": ["hygiene"],
+        "summary": "Hygiene Config",
+        "operationId": "hygiene_config_config_hygiene_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HygieneConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/hygiene/settings": {
+      "put": {
+        "tags": ["hygiene"],
+        "summary": "Save Settings",
+        "operationId": "save_settings_config_hygiene_settings_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HygieneSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HygieneSettingsDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/hygiene/rules": {
+      "put": {
+        "tags": ["hygiene"],
+        "summary": "Save Rule",
+        "description": "Create a rule (empty id, or an example's id) or replace the one with that id.",
+        "operationId": "save_rule_config_hygiene_rules_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HygieneRuleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HygieneRuleDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/hygiene/rules/{rule_id}": {
+      "delete": {
+        "tags": ["hygiene"],
+        "summary": "Remove Rule",
+        "operationId": "remove_rule_config_hygiene_rules__rule_id__delete",
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rule Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/hygiene/rules/preview": {
+      "post": {
+        "tags": ["hygiene"],
+        "summary": "Preview Rule",
+        "description": "Try on a project: what the scan would find with this rule. Writes nothing.",
+        "operationId": "preview_rule_config_hygiene_rules_preview_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HygienePreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HygienePreviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/day-reports": {
       "get": {
         "tags": ["reports"],
@@ -14137,6 +14940,19 @@
         "required": ["from_date", "to_date", "on", "by", "note", "after_added"],
         "title": "CommittedChangeResponse"
       },
+      "ConditionKind": {
+        "type": "string",
+        "enum": [
+          "added_after_baseline_without_label",
+          "missing_label",
+          "missing_field",
+          "missing_gate_kind",
+          "stale_in_status",
+          "past_due_open",
+          "too_big"
+        ],
+        "title": "ConditionKind"
+      },
       "ConfigEdgeResponse": {
         "properties": {
           "from_node_id": {
@@ -17829,6 +18645,961 @@
         ],
         "title": "HistoryForecastResponse"
       },
+      "HygieneActionsDto": {
+        "properties": {
+          "waive": {
+            "type": "boolean",
+            "title": "Waive"
+          },
+          "not_applicable": {
+            "type": "boolean",
+            "title": "Not Applicable"
+          },
+          "recheck": {
+            "type": "boolean",
+            "title": "Recheck"
+          },
+          "reopen": {
+            "type": "boolean",
+            "title": "Reopen"
+          }
+        },
+        "type": "object",
+        "required": ["waive", "not_applicable", "recheck", "reopen"],
+        "title": "HygieneActionsDto"
+      },
+      "HygieneBoardResponse": {
+        "properties": {
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "scope_name": {
+            "type": "string",
+            "title": "Scope Name"
+          },
+          "scan": {
+            "$ref": "#/components/schemas/HygieneScanDto"
+          },
+          "counts_only": {
+            "type": "boolean",
+            "title": "Counts Only"
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open"
+          },
+          "held": {
+            "type": "integer",
+            "title": "Held"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/HygieneRuleRowDto"
+            },
+            "type": "array",
+            "title": "Rules"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/HygieneFindingResponse"
+            },
+            "type": "array",
+            "title": "Findings"
+          },
+          "pods": {
+            "items": {
+              "$ref": "#/components/schemas/HygieneChoiceDto"
+            },
+            "type": "array",
+            "title": "Pods"
+          },
+          "releases": {
+            "items": {
+              "$ref": "#/components/schemas/HygieneChoiceDto"
+            },
+            "type": "array",
+            "title": "Releases"
+          },
+          "can_run": {
+            "type": "boolean",
+            "title": "Can Run"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "pod_id",
+          "release_id",
+          "scope_name",
+          "scan",
+          "counts_only",
+          "open",
+          "held",
+          "rules",
+          "findings",
+          "pods",
+          "releases",
+          "can_run"
+        ],
+        "title": "HygieneBoardResponse",
+        "description": "A project's (or a pod's) Jira hygiene: each rule's counts, then the issues that break it."
+      },
+      "HygieneChoiceDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name"],
+        "title": "HygieneChoiceDto"
+      },
+      "HygieneConditionDto": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ConditionKind"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Labels",
+            "description": "added_after_baseline_without_label: the change labels (empty: the planning baseline's and the tenant's); missing_label: any of these."
+          },
+          "field": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IssueField"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gate_kind": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Gate Kind",
+            "description": "A gate item kind's key.",
+            "default": ""
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "working_days": {
+            "type": "integer",
+            "maximum": 60.0,
+            "minimum": 0.0,
+            "title": "Working Days",
+            "default": 0
+          },
+          "points_over": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Points Over",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "HygieneConditionDto"
+      },
+      "HygieneConfigResponse": {
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/HygieneSettingsDto"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/HygieneRuleDto"
+            },
+            "type": "array",
+            "title": "Rules"
+          },
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/HygieneRuleDto"
+            },
+            "type": "array",
+            "title": "Examples"
+          },
+          "gate_kinds": {
+            "items": {
+              "$ref": "#/components/schemas/HygieneGateKindDto"
+            },
+            "type": "array",
+            "title": "Gate Kinds"
+          },
+          "placeholders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Placeholders"
+          }
+        },
+        "type": "object",
+        "required": ["settings", "is_default", "rules", "examples", "gate_kinds", "placeholders"],
+        "title": "HygieneConfigResponse"
+      },
+      "HygieneDecisionDto": {
+        "properties": {
+          "by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By Name"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": ["by_name", "at", "reason"],
+        "title": "HygieneDecisionDto"
+      },
+      "HygieneFindingResponse": {
+        "properties": {
+          "finding_id": {
+            "type": "string",
+            "title": "Finding Id"
+          },
+          "rule_id": {
+            "type": "string",
+            "title": "Rule Id"
+          },
+          "issue_key": {
+            "type": "string",
+            "title": "Issue Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/HygieneScopeDto"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "what": {
+            "type": "string",
+            "title": "What"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/HygieneOwnerViewDto"
+          },
+          "suggested_fix": {
+            "type": "string",
+            "title": "Suggested Fix"
+          },
+          "state": {
+            "$ref": "#/components/schemas/HygieneState"
+          },
+          "held": {
+            "type": "boolean",
+            "title": "Held"
+          },
+          "first_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "First Seen At"
+          },
+          "open_days": {
+            "type": "integer",
+            "title": "Open Days"
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Resolution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HygieneDecisionDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "can": {
+            "$ref": "#/components/schemas/HygieneActionsDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "finding_id",
+          "rule_id",
+          "issue_key",
+          "title",
+          "scope",
+          "stage",
+          "what",
+          "owner",
+          "suggested_fix",
+          "state",
+          "held",
+          "first_seen_at",
+          "open_days",
+          "resolution",
+          "decision",
+          "can"
+        ],
+        "title": "HygieneFindingResponse"
+      },
+      "HygieneGateKindDto": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": ["key", "label"],
+        "title": "HygieneGateKindDto"
+      },
+      "HygieneHistoryEntryDto": {
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "actor_name": {
+            "type": "string",
+            "title": "Actor Name"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": ["at", "action", "actor_name", "note"],
+        "title": "HygieneHistoryEntryDto"
+      },
+      "HygieneHistoryResponse": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/HygieneHistoryEntryDto"
+            },
+            "type": "array",
+            "title": "Entries"
+          }
+        },
+        "type": "object",
+        "required": ["entries"],
+        "title": "HygieneHistoryResponse"
+      },
+      "HygieneMatcherDto": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/MatcherKind"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "value"],
+        "title": "HygieneMatcherDto"
+      },
+      "HygieneOwnerDto": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/OwnerKind"
+          },
+          "profile": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Profile",
+            "description": "A profile id (GET /profiles), for kind profile.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "HygieneOwnerDto"
+      },
+      "HygieneOwnerViewDto": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "via": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OwnerKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profile_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Label"
+          }
+        },
+        "type": "object",
+        "required": ["name", "via", "profile_label"],
+        "title": "HygieneOwnerViewDto"
+      },
+      "HygienePreviewIssueDto": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "what": {
+            "type": "string",
+            "title": "What"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
+          },
+          "suggested_fix": {
+            "type": "string",
+            "title": "Suggested Fix"
+          }
+        },
+        "type": "object",
+        "required": ["key", "title", "what", "owner_name", "suggested_fix"],
+        "title": "HygienePreviewIssueDto"
+      },
+      "HygienePreviewRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Project Id"
+          },
+          "rule": {
+            "$ref": "#/components/schemas/HygieneRuleDto"
+          }
+        },
+        "type": "object",
+        "required": ["project_id", "rule"],
+        "title": "HygienePreviewRequest"
+      },
+      "HygienePreviewResponse": {
+        "properties": {
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/HygienePreviewScopeDto"
+            },
+            "type": "array",
+            "title": "Scopes"
+          }
+        },
+        "type": "object",
+        "required": ["scopes"],
+        "title": "HygienePreviewResponse"
+      },
+      "HygienePreviewScopeDto": {
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/HygieneScopeDto"
+          },
+          "looked_at": {
+            "type": "integer",
+            "title": "Looked At"
+          },
+          "found": {
+            "type": "integer",
+            "title": "Found"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/HygienePreviewIssueDto"
+            },
+            "type": "array",
+            "title": "Issues"
+          },
+          "needs_baseline": {
+            "type": "boolean",
+            "title": "Needs Baseline"
+          }
+        },
+        "type": "object",
+        "required": ["scope", "looked_at", "found", "issues", "needs_baseline"],
+        "title": "HygienePreviewScopeDto"
+      },
+      "HygieneReasonRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": ["reason"],
+        "title": "HygieneReasonRequest"
+      },
+      "HygieneRuleDto": {
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Rule Id",
+            "description": "Empty creates one; an example's id adds it.",
+            "default": ""
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Read only: +1 on every save.",
+            "default": 0
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/RuleScope",
+            "default": "project"
+          },
+          "select": {
+            "$ref": "#/components/schemas/HygieneSelectDto"
+          },
+          "condition": {
+            "$ref": "#/components/schemas/HygieneConditionDto"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/RuleSeverity",
+            "description": "list_only shows it on Overall and counts it; ask also asks its owner.",
+            "default": "list_only"
+          },
+          "need": {
+            "$ref": "#/components/schemas/RuleNeed",
+            "default": "fix"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/HygieneOwnerDto"
+          },
+          "blocking_before": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "suggested_fix": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Suggested Fix",
+            "default": ""
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": ["name", "condition"],
+        "title": "HygieneRuleDto"
+      },
+      "HygieneRuleRowDto": {
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "title": "Rule Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "stated": {
+            "type": "string",
+            "title": "Stated"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/RuleSeverity"
+          },
+          "need": {
+            "$ref": "#/components/schemas/RuleNeed"
+          },
+          "condition": {
+            "$ref": "#/components/schemas/ConditionKind"
+          },
+          "blocking": {
+            "type": "boolean",
+            "title": "Blocking"
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open"
+          },
+          "new_today": {
+            "type": "integer",
+            "title": "New Today"
+          },
+          "oldest_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Days"
+          },
+          "held": {
+            "type": "integer",
+            "title": "Held"
+          },
+          "decided": {
+            "type": "integer",
+            "title": "Decided"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rule_id",
+          "name",
+          "stated",
+          "severity",
+          "need",
+          "condition",
+          "blocking",
+          "open",
+          "new_today",
+          "oldest_days",
+          "held",
+          "decided"
+        ],
+        "title": "HygieneRuleRowDto"
+      },
+      "HygieneRunResponse": {
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/HygieneRunSummaryDto"
+          },
+          "board": {
+            "$ref": "#/components/schemas/HygieneBoardResponse"
+          }
+        },
+        "type": "object",
+        "required": ["run", "board"],
+        "title": "HygieneRunResponse"
+      },
+      "HygieneRunSummaryDto": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/core__domain__release_readiness__RunStatus"
+          },
+          "scopes": {
+            "type": "integer",
+            "title": "Scopes"
+          },
+          "opened": {
+            "type": "integer",
+            "title": "Opened"
+          },
+          "resolved": {
+            "type": "integer",
+            "title": "Resolved"
+          },
+          "changed": {
+            "type": "integer",
+            "title": "Changed"
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open"
+          }
+        },
+        "type": "object",
+        "required": ["status", "scopes", "opened", "resolved", "changed", "open"],
+        "title": "HygieneRunSummaryDto"
+      },
+      "HygieneScanDto": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "last_run_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/core__domain__release_readiness__RunStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data_as_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data As Of"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale"
+          }
+        },
+        "type": "object",
+        "required": ["enabled", "last_run_at", "last_run_status", "data_as_of", "stale"],
+        "title": "HygieneScanDto"
+      },
+      "HygieneScopeDto": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ScopeKind"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "id", "name"],
+        "title": "HygieneScopeDto"
+      },
+      "HygieneSelectDto": {
+        "properties": {
+          "matchers": {
+            "items": {
+              "$ref": "#/components/schemas/HygieneMatcherDto"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Matchers"
+          },
+          "stage_filter": {
+            "$ref": "#/components/schemas/StageFilter",
+            "default": "any"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "every_type": {
+            "type": "boolean",
+            "title": "Every Type",
+            "description": "False looks only at the requirements the stage mapping counts.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "HygieneSelectDto",
+        "description": "Which of a scope's issues the rule looks at: every matcher must match."
+      },
+      "HygieneSettingsDto": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "The scan checks every hour; off, a tick does nothing."
+          },
+          "change_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Change Labels",
+            "description": "The tenant's labels for scope agreed after planning; empty keeps CR."
+          },
+          "stale_working_days": {
+            "type": "integer",
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Stale Working Days",
+            "default": 5
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "required": ["enabled"],
+        "title": "HygieneSettingsDto"
+      },
+      "HygieneState": {
+        "type": "string",
+        "enum": ["open", "resolved", "waived", "not_applicable"],
+        "title": "HygieneState"
+      },
       "IdentityAutoMatchMemberDto": {
         "properties": {
           "id": {
@@ -18351,6 +20122,20 @@
         "required": ["index", "question", "status", "tools_used", "findings"],
         "title": "InvestigateStepResponse",
         "description": "One step of an investigation: its question, how it went, and what it found."
+      },
+      "IssueField": {
+        "type": "string",
+        "enum": [
+          "story_points",
+          "due_date",
+          "parent",
+          "fix_version",
+          "priority",
+          "assignee",
+          "components",
+          "severity"
+        ],
+        "title": "IssueField"
       },
       "IssueGatesResponse": {
         "properties": {
@@ -19467,6 +21252,11 @@
         "required": ["status", "stage", "since"],
         "title": "ObservedTaskDto",
         "description": "What the tracker says of a task today (\"Jira today\"), beside what its people said."
+      },
+      "OwnerKind": {
+        "type": "string",
+        "enum": ["assignee", "reporter", "profile", "decision_owner", "pod_scrum_master"],
+        "title": "OwnerKind"
       },
       "PeriodKind": {
         "type": "string",
@@ -24334,6 +26124,11 @@
         "title": "RequirementsResponse",
         "description": "A project's requirements by delivery stage, with counts over time."
       },
+      "Resolution": {
+        "type": "string",
+        "enum": ["fixed", "left_scope"],
+        "title": "Resolution"
+      },
       "ReviewStage": {
         "type": "string",
         "enum": ["coding", "awaiting_review", "in_review", "awaiting_merge"],
@@ -24560,6 +26355,22 @@
           "applies_to_pod_ids"
         ],
         "title": "RollupFactorDto"
+      },
+      "RuleNeed": {
+        "type": "string",
+        "enum": ["fix", "decision"],
+        "title": "RuleNeed"
+      },
+      "RuleScope": {
+        "type": "string",
+        "enum": ["project", "release", "pod"],
+        "title": "RuleScope",
+        "description": "Which issue set a rule reads: readiness's scope builders."
+      },
+      "RuleSeverity": {
+        "type": "string",
+        "enum": ["list_only", "ask"],
+        "title": "RuleSeverity"
       },
       "RunTrigger": {
         "type": "string",
@@ -24839,6 +26650,11 @@
         "type": "string",
         "enum": ["blocking", "advisory"],
         "title": "Severity"
+      },
+      "StageFilter": {
+        "type": "string",
+        "enum": ["any", "before", "at_or_past"],
+        "title": "StageFilter"
       },
       "StageStatusesDto": {
         "properties": {

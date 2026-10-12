@@ -1994,6 +1994,239 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/projects/{project_id}/hygiene": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Project Hygiene */
+    get: operations["project_hygiene_projects__project_id__hygiene_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/pods/{pod_id}/hygiene": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Pod Hygiene */
+    get: operations["pod_hygiene_pods__pod_id__hygiene_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/hygiene/run": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Run Project
+     * @description Check now: the project, its releases and its pods, inline. Reads only synced data.
+     */
+    post: operations["run_project_projects__project_id__hygiene_run_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/hygiene-findings/{finding_id}/waive": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Waive */
+    post: operations["waive_hygiene_findings__finding_id__waive_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/hygiene-findings/{finding_id}/not-applicable": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Not Applicable */
+    post: operations["not_applicable_hygiene_findings__finding_id__not_applicable_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/hygiene-findings/{finding_id}/reopen": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reopen */
+    post: operations["reopen_hygiene_findings__finding_id__reopen_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/hygiene-findings/{finding_id}/recheck": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Recheck
+     * @description Read the issue again as the last Jira sync left it, after a fix in Jira.
+     */
+    post: operations["recheck_hygiene_findings__finding_id__recheck_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/hygiene-findings/{finding_id}/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** History */
+    get: operations["history_hygiene_findings__finding_id__history_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/hygiene": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Hygiene Config */
+    get: operations["hygiene_config_config_hygiene_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/hygiene/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Save Settings */
+    put: operations["save_settings_config_hygiene_settings_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/hygiene/rules": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Save Rule
+     * @description Create a rule (empty id, or an example's id) or replace the one with that id.
+     */
+    put: operations["save_rule_config_hygiene_rules_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/hygiene/rules/{rule_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Remove Rule */
+    delete: operations["remove_rule_config_hygiene_rules__rule_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/hygiene/rules/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview Rule
+     * @description Try on a project: what the scan would find with this rule. Writes nothing.
+     */
+    post: operations["preview_rule_config_hygiene_rules_preview_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/day-reports": {
     parameters: {
       query?: never;
@@ -3701,6 +3934,18 @@ export interface components {
       /** After Added */
       after_added: string[];
     };
+    /**
+     * ConditionKind
+     * @enum {string}
+     */
+    ConditionKind:
+      | "added_after_baseline_without_label"
+      | "missing_label"
+      | "missing_field"
+      | "missing_gate_kind"
+      | "stale_in_status"
+      | "past_due_open"
+      | "too_big";
     /** ConfigEdgeResponse */
     ConfigEdgeResponse: {
       /** From Node Id */
@@ -5054,6 +5299,377 @@ export interface components {
        */
       needed_days: number;
     };
+    /** HygieneActionsDto */
+    HygieneActionsDto: {
+      /** Waive */
+      waive: boolean;
+      /** Not Applicable */
+      not_applicable: boolean;
+      /** Recheck */
+      recheck: boolean;
+      /** Reopen */
+      reopen: boolean;
+    };
+    /**
+     * HygieneBoardResponse
+     * @description A project's (or a pod's) Jira hygiene: each rule's counts, then the issues that break it.
+     */
+    HygieneBoardResponse: {
+      /** Project Id */
+      project_id: string | null;
+      /** Pod Id */
+      pod_id: string | null;
+      /** Release Id */
+      release_id: string | null;
+      /** Scope Name */
+      scope_name: string;
+      scan: components["schemas"]["HygieneScanDto"];
+      /** Counts Only */
+      counts_only: boolean;
+      /** Open */
+      open: number;
+      /** Held */
+      held: number;
+      /** Rules */
+      rules: components["schemas"]["HygieneRuleRowDto"][];
+      /** Findings */
+      findings: components["schemas"]["HygieneFindingResponse"][];
+      /** Pods */
+      pods: components["schemas"]["HygieneChoiceDto"][];
+      /** Releases */
+      releases: components["schemas"]["HygieneChoiceDto"][];
+      /** Can Run */
+      can_run: boolean;
+    };
+    /** HygieneChoiceDto */
+    HygieneChoiceDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+    };
+    /** HygieneConditionDto */
+    HygieneConditionDto: {
+      kind: components["schemas"]["ConditionKind"];
+      /**
+       * Labels
+       * @description added_after_baseline_without_label: the change labels (empty: the planning baseline's and the tenant's); missing_label: any of these.
+       */
+      labels?: string[];
+      field?: components["schemas"]["IssueField"] | null;
+      /**
+       * Gate Kind
+       * @description A gate item kind's key.
+       * @default
+       */
+      gate_kind: string;
+      stage?: components["schemas"]["DeliveryStage"] | null;
+      /**
+       * Working Days
+       * @default 0
+       */
+      working_days: number;
+      /**
+       * Points Over
+       * @default 0
+       */
+      points_over: number;
+    };
+    /** HygieneConfigResponse */
+    HygieneConfigResponse: {
+      settings: components["schemas"]["HygieneSettingsDto"];
+      /** Is Default */
+      is_default: boolean;
+      /** Rules */
+      rules: components["schemas"]["HygieneRuleDto"][];
+      /** Examples */
+      examples: components["schemas"]["HygieneRuleDto"][];
+      /** Gate Kinds */
+      gate_kinds: components["schemas"]["HygieneGateKindDto"][];
+      /** Placeholders */
+      placeholders: string[];
+    };
+    /** HygieneDecisionDto */
+    HygieneDecisionDto: {
+      /** By Name */
+      by_name: string | null;
+      /**
+       * At
+       * Format: date-time
+       */
+      at: string;
+      /** Reason */
+      reason: string;
+    };
+    /** HygieneFindingResponse */
+    HygieneFindingResponse: {
+      /** Finding Id */
+      finding_id: string;
+      /** Rule Id */
+      rule_id: string;
+      /** Issue Key */
+      issue_key: string;
+      /** Title */
+      title: string;
+      scope: components["schemas"]["HygieneScopeDto"];
+      stage: components["schemas"]["DeliveryStage"] | null;
+      /** What */
+      what: string;
+      owner: components["schemas"]["HygieneOwnerViewDto"];
+      /** Suggested Fix */
+      suggested_fix: string;
+      state: components["schemas"]["HygieneState"];
+      /** Held */
+      held: boolean;
+      /**
+       * First Seen At
+       * Format: date-time
+       */
+      first_seen_at: string;
+      /** Open Days */
+      open_days: number;
+      resolution: components["schemas"]["Resolution"] | null;
+      decision: components["schemas"]["HygieneDecisionDto"] | null;
+      can: components["schemas"]["HygieneActionsDto"];
+    };
+    /** HygieneGateKindDto */
+    HygieneGateKindDto: {
+      /** Key */
+      key: string;
+      /** Label */
+      label: string;
+    };
+    /** HygieneHistoryEntryDto */
+    HygieneHistoryEntryDto: {
+      /**
+       * At
+       * Format: date-time
+       */
+      at: string;
+      /** Action */
+      action: string;
+      /** Actor Name */
+      actor_name: string;
+      /** Note */
+      note: string | null;
+    };
+    /** HygieneHistoryResponse */
+    HygieneHistoryResponse: {
+      /** Entries */
+      entries: components["schemas"]["HygieneHistoryEntryDto"][];
+    };
+    /** HygieneMatcherDto */
+    HygieneMatcherDto: {
+      kind: components["schemas"]["MatcherKind"];
+      /** Value */
+      value: string;
+    };
+    /** HygieneOwnerDto */
+    HygieneOwnerDto: {
+      kind: components["schemas"]["OwnerKind"];
+      /**
+       * Profile
+       * @description A profile id (GET /profiles), for kind profile.
+       * @default
+       */
+      profile: string;
+    };
+    /** HygieneOwnerViewDto */
+    HygieneOwnerViewDto: {
+      /** Name */
+      name: string | null;
+      via: components["schemas"]["OwnerKind"] | null;
+      /** Profile Label */
+      profile_label: string | null;
+    };
+    /** HygienePreviewIssueDto */
+    HygienePreviewIssueDto: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      /** What */
+      what: string;
+      /** Owner Name */
+      owner_name: string | null;
+      /** Suggested Fix */
+      suggested_fix: string;
+    };
+    /** HygienePreviewRequest */
+    HygienePreviewRequest: {
+      /** Project Id */
+      project_id: string;
+      rule: components["schemas"]["HygieneRuleDto"];
+    };
+    /** HygienePreviewResponse */
+    HygienePreviewResponse: {
+      /** Scopes */
+      scopes: components["schemas"]["HygienePreviewScopeDto"][];
+    };
+    /** HygienePreviewScopeDto */
+    HygienePreviewScopeDto: {
+      scope: components["schemas"]["HygieneScopeDto"];
+      /** Looked At */
+      looked_at: number;
+      /** Found */
+      found: number;
+      /** Issues */
+      issues: components["schemas"]["HygienePreviewIssueDto"][];
+      /** Needs Baseline */
+      needs_baseline: boolean;
+    };
+    /** HygieneReasonRequest */
+    HygieneReasonRequest: {
+      /** Reason */
+      reason: string;
+    };
+    /** HygieneRuleDto */
+    HygieneRuleDto: {
+      /**
+       * Rule Id
+       * @description Empty creates one; an example's id adds it.
+       * @default
+       */
+      rule_id: string;
+      /**
+       * Version
+       * @description Read only: +1 on every save.
+       * @default 0
+       */
+      version: number;
+      /** Name */
+      name: string;
+      /** @default project */
+      scope: components["schemas"]["RuleScope"];
+      select?: components["schemas"]["HygieneSelectDto"];
+      condition: components["schemas"]["HygieneConditionDto"];
+      /**
+       * @description list_only shows it on Overall and counts it; ask also asks its owner.
+       * @default list_only
+       */
+      severity: components["schemas"]["RuleSeverity"];
+      /** @default fix */
+      need: components["schemas"]["RuleNeed"];
+      owner?: components["schemas"]["HygieneOwnerDto"];
+      blocking_before?: components["schemas"]["DeliveryStage"] | null;
+      /**
+       * Suggested Fix
+       * @default
+       */
+      suggested_fix: string;
+      /**
+       * Enabled
+       * @default true
+       */
+      enabled: boolean;
+    };
+    /** HygieneRuleRowDto */
+    HygieneRuleRowDto: {
+      /** Rule Id */
+      rule_id: string;
+      /** Name */
+      name: string;
+      /** Stated */
+      stated: string;
+      severity: components["schemas"]["RuleSeverity"];
+      need: components["schemas"]["RuleNeed"];
+      condition: components["schemas"]["ConditionKind"];
+      /** Blocking */
+      blocking: boolean;
+      /** Open */
+      open: number;
+      /** New Today */
+      new_today: number;
+      /** Oldest Days */
+      oldest_days: number | null;
+      /** Held */
+      held: number;
+      /** Decided */
+      decided: number;
+    };
+    /** HygieneRunResponse */
+    HygieneRunResponse: {
+      run: components["schemas"]["HygieneRunSummaryDto"];
+      board: components["schemas"]["HygieneBoardResponse"];
+    };
+    /** HygieneRunSummaryDto */
+    HygieneRunSummaryDto: {
+      status: components["schemas"]["core__domain__release_readiness__RunStatus"];
+      /** Scopes */
+      scopes: number;
+      /** Opened */
+      opened: number;
+      /** Resolved */
+      resolved: number;
+      /** Changed */
+      changed: number;
+      /** Open */
+      open: number;
+    };
+    /** HygieneScanDto */
+    HygieneScanDto: {
+      /** Enabled */
+      enabled: boolean;
+      /** Last Run At */
+      last_run_at: string | null;
+      last_run_status: components["schemas"]["core__domain__release_readiness__RunStatus"] | null;
+      /** Data As Of */
+      data_as_of: string | null;
+      /** Stale */
+      stale: boolean;
+    };
+    /** HygieneScopeDto */
+    HygieneScopeDto: {
+      kind: components["schemas"]["ScopeKind"];
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+    };
+    /**
+     * HygieneSelectDto
+     * @description Which of a scope's issues the rule looks at: every matcher must match.
+     */
+    HygieneSelectDto: {
+      /** Matchers */
+      matchers?: components["schemas"]["HygieneMatcherDto"][];
+      /** @default any */
+      stage_filter: components["schemas"]["StageFilter"];
+      stage?: components["schemas"]["DeliveryStage"] | null;
+      /**
+       * Every Type
+       * @description False looks only at the requirements the stage mapping counts.
+       * @default false
+       */
+      every_type: boolean;
+    };
+    /** HygieneSettingsDto */
+    HygieneSettingsDto: {
+      /**
+       * Enabled
+       * @description The scan checks every hour; off, a tick does nothing.
+       */
+      enabled: boolean;
+      /**
+       * Change Labels
+       * @description The tenant's labels for scope agreed after planning; empty keeps CR.
+       */
+      change_labels?: string[];
+      /**
+       * Stale Working Days
+       * @default 5
+       */
+      stale_working_days: number;
+      /** Updated At */
+      updated_at?: string | null;
+      /** Updated By */
+      updated_by?: string | null;
+    };
+    /**
+     * HygieneState
+     * @enum {string}
+     */
+    HygieneState: "open" | "resolved" | "waived" | "not_applicable";
     /** IdentityAutoMatchMemberDto */
     IdentityAutoMatchMemberDto: {
       /** Id */
@@ -5252,6 +5868,19 @@ export interface components {
       /** Error */
       error?: string | null;
     };
+    /**
+     * IssueField
+     * @enum {string}
+     */
+    IssueField:
+      | "story_points"
+      | "due_date"
+      | "parent"
+      | "fix_version"
+      | "priority"
+      | "assignee"
+      | "components"
+      | "severity";
     /** IssueGatesResponse */
     IssueGatesResponse: {
       /** Key */
@@ -5705,6 +6334,11 @@ export interface components {
        */
       quiet_days?: number | null;
     };
+    /**
+     * OwnerKind
+     * @enum {string}
+     */
+    OwnerKind: "assignee" | "reporter" | "profile" | "decision_owner" | "pod_scrum_master";
     /**
      * PeriodKind
      * @enum {string}
@@ -7586,6 +8220,11 @@ export interface components {
       forecast_needed_days: number;
     };
     /**
+     * Resolution
+     * @enum {string}
+     */
+    Resolution: "fixed" | "left_scope";
+    /**
      * ReviewStage
      * @enum {string}
      */
@@ -7660,6 +8299,22 @@ export interface components {
       /** Applies To Pod Ids */
       applies_to_pod_ids: string[];
     };
+    /**
+     * RuleNeed
+     * @enum {string}
+     */
+    RuleNeed: "fix" | "decision";
+    /**
+     * RuleScope
+     * @description Which issue set a rule reads: readiness's scope builders.
+     * @enum {string}
+     */
+    RuleScope: "project" | "release" | "pod";
+    /**
+     * RuleSeverity
+     * @enum {string}
+     */
+    RuleSeverity: "list_only" | "ask";
     /**
      * RunTrigger
      * @enum {string}
@@ -7779,6 +8434,11 @@ export interface components {
      * @enum {string}
      */
     Severity: "blocking" | "advisory";
+    /**
+     * StageFilter
+     * @enum {string}
+     */
+    StageFilter: "any" | "before" | "at_or_past";
     /** StageStatusesDto */
     StageStatusesDto: {
       stage: components["schemas"]["DeliveryStage"];
@@ -13421,6 +14081,451 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ReadinessPreviewResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_hygiene_projects__project_id__hygiene_get: {
+    parameters: {
+      query?: {
+        release_id?: string | null;
+        pod_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneBoardResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  pod_hygiene_pods__pod_id__hygiene_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneBoardResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  run_project_projects__project_id__hygiene_run_post: {
+    parameters: {
+      query?: {
+        release_id?: string | null;
+        pod_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneRunResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  waive_hygiene_findings__finding_id__waive_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["HygieneReasonRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneFindingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  not_applicable_hygiene_findings__finding_id__not_applicable_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["HygieneReasonRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneFindingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  reopen_hygiene_findings__finding_id__reopen_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneFindingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  recheck_hygiene_findings__finding_id__recheck_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneFindingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  history_hygiene_findings__finding_id__history_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneHistoryResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  hygiene_config_config_hygiene_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneConfigResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_settings_config_hygiene_settings_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["HygieneSettingsDto"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneSettingsDto"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_rule_config_hygiene_rules_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["HygieneRuleDto"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneRuleDto"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  remove_rule_config_hygiene_rules__rule_id__delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        rule_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  preview_rule_config_hygiene_rules_preview_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["HygienePreviewRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygienePreviewResponse"];
         };
       };
       /** @description Validation Error */

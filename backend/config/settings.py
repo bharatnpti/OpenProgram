@@ -189,6 +189,10 @@ class Settings(BaseSettings):
     readiness_scan_enabled: bool = True
     readiness_scan_cron: str = "45 * * * *"
     readiness_scan_schedule_id: str = "openprogram-readiness-scan"
+    # Jira hygiene: each scope's issues checked against the tenant's per-issue
+    # rules, inside the readiness tick. Its own switch: readiness off doesn't stop
+    # it, nor the other way round. The tenant's own switch decides as well.
+    hygiene_scan_enabled: bool = True
     # Ask the language model for items in text with no headings (quotes only).
     gate_text_model_enabled: bool = True
     temporal_target: str = "localhost:7233"

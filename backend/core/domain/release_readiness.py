@@ -276,6 +276,24 @@ class ScopeIssue:
     #: False in a stage marked "not counted" (won't do, duplicate): never evidence.
     counted: bool = True
     updated_at: str | None = None
+    # Read by Jira hygiene's rules (core/domain/hygiene.py); readiness ignores them.
+    #: Where the stage mapping places it; None in a stage marked "not counted".
+    stage: DeliveryStage | None = None
+    #: A type the stage mapping counts as a requirement, placed on a stage.
+    requirement: bool = False
+    created_at: str | None = None
+    due_date: str | None = None
+    story_points: float | None = None
+    priority: str | None = None
+    fix_versions: tuple[str, ...] = ()
+    components: tuple[str, ...] = ()
+    severity: str | None = None
+    #: The member it is assigned to; None when nobody is, or the account is not a member.
+    assignee_id: str | None = None
+    #: Assigned to anyone, a member or an account no member is linked to.
+    assigned: bool = False
+    #: The member who reported it, when linked.
+    reporter_id: str | None = None
 
 
 # ---- findings ---------------------------------------------------------------------------

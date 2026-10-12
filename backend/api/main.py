@@ -27,6 +27,7 @@ from api.routers import (
     gates,
     graph,
     health,
+    hygiene,
     integrations,
     jira_writes,
     ops,
@@ -153,6 +154,7 @@ def create_app(
     app.include_router(delivery_impact.router)
     app.include_router(gates.router)
     app.include_router(readiness.router)
+    app.include_router(hygiene.router)
     app.include_router(reports.router)
     app.include_router(escalation.router)
     app.include_router(ask.router)

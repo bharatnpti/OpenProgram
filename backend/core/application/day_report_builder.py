@@ -49,11 +49,13 @@ from core.application.day_report_asks import (
     team_from,
     trimmed,
 )
+from core.application.day_report_hygiene import HygienePart, hygiene_part
 from core.application.delivery_scope import PROJECT_OWNER_KEY, member_scope
 from core.application.delivery_service import DeliveryService
 from core.application.escalation_matrix_service import EscalationMatrixService
 from core.application.forecast_service import ForecastService, ScopeDeliveryView
 from core.application.gate_service import GateBoardView, GateService, IssueGatesView
+from core.application.hygiene_service import HygieneService
 from core.application.impact_service import DeliveryImpactService, ImpactLine
 from core.application.person_names import UNKNOWN_PERSON
 from core.application.persona_views import owned_project_tasks
@@ -158,6 +160,7 @@ class DayReportBuilder:
         readiness_service: ReleaseReadinessService | None = None,
         profile_service: ProfileService | None = None,
         impact_service: DeliveryImpactService | None = None,
+        hygiene_service: HygieneService | None = None,
     ) -> None:
         self._graph = graph_repository
         self._delivery = delivery_service
@@ -173,6 +176,7 @@ class DayReportBuilder:
         # and finds the holder a readiness criterion's profile asks for.
         self._profiles = profile_service
         self._impact = impact_service
+        self._hygiene = hygiene_service
         self._console_base_url = console_base_url.rstrip("/") if console_base_url else None
 
     async def build(
@@ -186,9 +190,10 @@ class DayReportBuilder:
         note: DayReportNote | None = None,
     ) -> DayReport:
         facts = await self._facts(tenant_id, project_id, day, release_id)
+        hygiene = await self._hygiene_part(tenant_id, facts, day)
         asks = [
             escalated(ask, facts.matrix, facts.scope)
-            for ask in await self._asks(tenant_id, facts, day)
+            for ask in [*await self._asks(tenant_id, facts, day), *hygiene.asks]
         ]
         scope = facts.scope
         status = await self._rollups.latest_node_status(tenant_id, scope.project.ref, day)
@@ -210,7 +215,10 @@ class DayReportBuilder:
             progress_line=_progress_line(facts.snapshot, facts.previous),
             sections=(
                 ReportSection(title="In short", lines=_in_short(facts, asks, note)),
-                ReportSection(title="Where we stand", groups=_where_we_stand(facts, stand)),
+                ReportSection(
+                    title="Where we stand",
+                    groups=(*_where_we_stand(facts, stand), *hygiene.groups()),
+                ),
                 ReportSection(
                     title="Most important",
                     lines=_most_important(facts),
@@ -241,7 +249,7 @@ class DayReportBuilder:
             facts=DayReportFacts(
                 note=_note_facts(scope, note),
                 delivery=_date_facts(facts),
-                progress=_progress_facts(facts, stand),
+                progress=hygiene.progress(_progress_facts(facts, stand)),
                 gates=_gate_facts(facts.board),
                 important=_important_facts(facts),
                 asks=_owner_asks(owners, most_needed(asks), scope),
@@ -450,6 +458,13 @@ class DayReportBuilder:
         asks.extend(open_question_asks(facts.board, scope, day))
         asks.extend(_readiness_asks(facts.readiness, scope, facts.matrix, day))
         return asks
+
+    async def _hygiene_part(self, tenant_id: str, facts: _Facts, day: date) -> HygienePart:
+        """Jira hygiene's count line, and its asking rules' asks (day_report_hygiene)."""
+        if self._hygiene is None:
+            return HygienePart()
+        report = await self._hygiene.report(tenant_id, facts.scope.project.id, facts.release, day)
+        return hygiene_part(report, facts.scope, facts.matrix, day)
 
     async def _incoming(
         self, tenant_id: str, scope: AskScope, day: date

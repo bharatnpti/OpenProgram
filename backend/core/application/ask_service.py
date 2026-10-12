@@ -8,6 +8,7 @@ from datetime import UTC, date, datetime, time, timedelta
 
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.ask_conversation import AskContext, AskConversation, context_for
+from core.application.ask_hygiene import HYGIENE_TOOL_GUIDANCE, JiraHygieneTool
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.delivery_scope import DeliveryScopeService, reads_pod_dates, reads_project
 from core.application.flow_metrics_service import (
@@ -16,6 +17,7 @@ from core.application.flow_metrics_service import (
     WorkstreamFlowView,
 )
 from core.application.forecast_service import ForecastService, ScopeDeliveryView
+from core.application.hygiene_service import HygieneService
 from core.application.impact_service import (
     DeliveryImpactService,
     ImpactEnd,
@@ -144,7 +146,8 @@ ASK_TOOL_GUIDANCE = (
     "from team_profiles: each member's profile in each pod, and the profiles a project's "
     "release criteria ask for that none of its pods holds. A profile is a role in that pod, "
     "never a rating, and grants no rights. "
-    "What blocks a project or pod is answered from pod_blockers: for each pod it names "
+    + HYGIENE_TOOL_GUIDANCE
+    + "What blocks a project or pod is answered from pod_blockers: for each pod it names "
     "or works through, or for every pod with pod_id unset. Never say anything has no "
     "blockers, no risks or nothing missing unless a tool you called says so. "
     "An inferred day in pod_checkins says what moved in Jira and Git (its evidence); it is "
@@ -415,6 +418,7 @@ _READ_WORDS: Mapping[str, str] = {
     "delivery_impact": "what moved the date",
     "release_readiness": "the release readiness",
     "team_profiles": "the profiles",
+    "jira_hygiene": "the Jira hygiene",
 }
 _EVERY_POD_READS = frozenset({"pod_checkins", "pod_blockers"})
 _NODE_ARGUMENTS = ("node_id", "pod_id", "project_id", "workstream_id", "program_root_id")
@@ -2109,6 +2113,7 @@ class AskService:
         tool_agent: ToolCallingAgent | None = None,
         max_tool_iterations: int = ASK_MAX_TOOL_ITERATIONS,
         profile_service: ProfileService | None = None,
+        hygiene_service: HygieneService | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._graph_repository = graph_repository
@@ -2121,6 +2126,7 @@ class AskService:
         self._release_readiness_service = release_readiness_service
         self._profile_service = profile_service
         self._impact_service = impact_service
+        self._hygiene_service = hygiene_service
         self._model = model
         self._tool_agent = tool_agent or ToolCallingAgent(
             llm_provider=llm_provider,
@@ -2326,6 +2332,23 @@ class AskService:
                         as_of=as_of,
                     ),
                     _reads_impact,
+                ),
+            )
+        if self._hygiene_service is not None:
+            # /projects/{id}/hygiene and /pods/{id}/hygiene: the readiness board's read
+            # rule (readiness_access), per project or pod; an executive reads counts only.
+            offered = (
+                *offered,
+                (
+                    JiraHygieneTool(
+                        principal=principal,
+                        service=self._hygiene_service,
+                        readiness=self._release_readiness_service,
+                        forecasts=self._forecast_service,
+                        repository=graph,
+                        as_of=as_of,
+                    ),
+                    reads_some_board,
                 ),
             )
         return tuple(tool for tool, allowed in offered if allowed(principal))

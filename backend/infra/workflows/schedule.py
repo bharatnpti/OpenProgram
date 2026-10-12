@@ -79,7 +79,8 @@ async def ensure_workflow_schedules(
         sync_configs = (*sync_configs, gate_scan_schedule_config(settings))
     else:
         results.append(await scheduler.remove_schedule(settings.gate_scan_schedule_id))
-    if settings.readiness_scan_enabled:
+    # The readiness tick also runs the Jira hygiene scan: it stays while either is on.
+    if settings.readiness_scan_enabled or settings.hygiene_scan_enabled:
         sync_configs = (*sync_configs, readiness_scan_schedule_config(settings))
     else:
         results.append(await scheduler.remove_schedule(settings.readiness_scan_schedule_id))
