@@ -33,7 +33,7 @@ from core.application.delivery_scope import DeliveryScopeService
 from core.application.profile_service import NOT_A_SETTER, AcceptChoice, ProfileService
 from core.domain.auth import Principal
 from core.domain.errors import AuthorizationDenied, GraphNotFound
-from core.domain.profiles import ProfileDefinition, ProfileError, ProfileSource
+from core.domain.profiles import ProfileConflict, ProfileDefinition, ProfileError, ProfileSource
 
 router = APIRouter(tags=["profiles"])
 
@@ -72,6 +72,9 @@ async def save_profile(
             ),
             by=principal.subject,
         )
+    except ProfileConflict as exc:
+        # Another of the tenant's profiles has the name, compared without case.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ProfileError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)

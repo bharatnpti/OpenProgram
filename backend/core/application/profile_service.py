@@ -31,6 +31,7 @@ from core.domain.graph import EdgeKind, FactEvent, GraphEdge, GraphNode, NodeKin
 from core.domain.profiles import (
     SUGGESTION_WINDOW_DAYS,
     PodMemberProfile,
+    ProfileConflict,
     ProfileDefinition,
     ProfileError,
     ProfileSource,
@@ -41,6 +42,7 @@ from core.domain.profiles import (
     merged_catalog,
     profile_for_pod_role,
     profile_label,
+    same_name_as,
     suggest_profile,
     validated_entry,
 )
@@ -175,6 +177,12 @@ class ProfileService:
             raise ProfileError("A tenant keeps at most 30 profiles. Hide one you don't use.")
         if tidy.hidden and all(item.hidden or item.slug == tidy.slug for item in current):
             raise ProfileError("Keep at least one profile offered.")
+        taken = same_name_as(tidy.label, tidy.slug, current)
+        if taken is not None:
+            raise ProfileConflict(
+                f"Another profile ({taken.slug}) is already called {taken.label!r}. "
+                "Give this one a different name."
+            )
         await self._repository.save_catalog_entry(tenant_id, tidy, updated_by=by)
         return next(item for item in await self.catalog(tenant_id) if item.slug == tidy.slug)
 

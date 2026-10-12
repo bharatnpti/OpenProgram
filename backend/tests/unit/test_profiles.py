@@ -30,6 +30,7 @@ from core.domain.escalation_matrix import NeedType, default_matrix
 from core.domain.graph import Developer, EdgeKind, GraphEdge, Pod, Project
 from core.domain.profiles import (
     PodMemberProfile,
+    ProfileConflict,
     ProfileDefinition,
     ProfileError,
     ProfileSource,
@@ -534,6 +535,52 @@ def test_a_hidden_profile_cannot_be_picked(client: TestClient) -> None:
 
     assert refused.status_code == 422
     assert "is hidden" in refused.json()["detail"]
+
+
+def test_a_profile_name_is_one_per_tenant_whatever_its_case(client: TestClient) -> None:
+    taken = client.put("/config/profiles/quality", json={"label": "  qa AND   test "})
+    hidden_too = client.put(
+        "/config/profiles/design", json={"label": "UX and design", "hidden": True}
+    )
+    of_hidden = client.put("/config/profiles/look", json={"label": "ux and DESIGN"})
+    own_name = client.put("/config/profiles/qa", json={"label": "QA AND TEST"})
+    fresh = client.put("/config/profiles/compliance", json={"label": "Compliance"})
+
+    assert taken.status_code == 409
+    assert taken.json()["detail"] == (
+        "Another profile (qa) is already called 'QA and test'. Give this one a different name."
+    )
+    assert hidden_too.status_code == 200
+    # A hidden profile keeps its name: it can be offered again.
+    assert of_hidden.status_code == 409
+    # Renaming a profile to its own name in other letters is not a clash.
+    assert own_name.status_code == 200
+    assert own_name.json()["label"] == "QA AND TEST"
+    assert fresh.status_code == 200
+
+
+def test_another_tenants_profile_names_never_clash() -> None:
+    async def run() -> None:
+        service, _graph = await _service([date(2026, 10, 5)])
+        await service.save_catalog_entry(
+            "other",
+            ProfileDefinition(slug="compliance", label="Compliance", code_work=False),
+            by="U-ADMIN",
+        )
+        saved = await service.save_catalog_entry(
+            TENANT,
+            ProfileDefinition(slug="audit", label="COMPLIANCE", code_work=False),
+            by="U-ADMIN",
+        )
+        assert saved.label == "COMPLIANCE"
+        with pytest.raises(ProfileConflict, match="already called 'COMPLIANCE'"):
+            await service.save_catalog_entry(
+                TENANT,
+                ProfileDefinition(slug="checks", label="compliance", code_work=False),
+                by="U-ADMIN",
+            )
+
+    asyncio.run(run())
 
 
 # ---- the day report ------------------------------------------------------------------------

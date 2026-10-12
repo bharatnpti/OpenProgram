@@ -61,7 +61,10 @@ catalog is read by everyone; changing it needs `MANAGE_CONFIG`.
 
 ## API
 
-- `GET /profiles`; `PUT /config/profiles/{slug}` (rename, hide, add).
+- `GET /profiles`; `PUT /config/profiles/{slug}` (rename, hide, add). A name
+  another of the tenant's profiles has, hidden ones included, compared without
+  case or extra spaces, is a 409; other refusals (id, name length, title
+  words, at most 30, at least one offered) are a 422.
 - `GET /pods/{id}/profiles?as_of=`: each member's role, profile, source,
   checked, and `can_edit` for the caller.
 - `GET /me/profiles?as_of=`.

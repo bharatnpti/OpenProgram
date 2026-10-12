@@ -46,6 +46,29 @@ class ProfileError(OpenProgramError):
     """A profile or catalog entry that cannot be saved, in plain words."""
 
 
+class ProfileConflict(ProfileError):
+    """A catalog entry whose name another of the tenant's profiles already has."""
+
+
+def same_name_as(
+    label: str, slug: str, catalog: Iterable[ProfileDefinition]
+) -> ProfileDefinition | None:
+    """Another entry called ``label``, compared without case or extra spaces; None when unique.
+
+    Hidden entries count: a hidden one can be offered again, and two alike in a
+    picker could not be told apart.
+    """
+    folded = " ".join(label.split()).casefold()
+    return next(
+        (
+            item
+            for item in catalog
+            if item.slug != slug and " ".join(item.label.split()).casefold() == folded
+        ),
+        None,
+    )
+
+
 class ProfileSource(StrEnum):
     """How a profile row came to be."""
 
