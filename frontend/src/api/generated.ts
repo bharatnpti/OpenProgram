@@ -636,7 +636,15 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Create Config Members From Directory */
+    /**
+     * Create Config Members From Directory
+     * @description Import people as members; with ``pod_id``, also put each in that pod.
+     *
+     *     Each joins the pod with ``role`` (developer when not given) and, when
+     *     given, ``profile`` (recorded as set by the import). Someone already in the
+     *     pod keeps their membership and role; only a given profile is recorded for
+     *     them. The pod and the profile are checked before anyone is imported.
+     */
     post: operations["create_config_members_from_directory_config_members_from_directory_post"];
     delete?: never;
     options?: never;
@@ -762,7 +770,14 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Link Config Pod Member */
+    /**
+     * Link Config Pod Member
+     * @description Add the member to the pod with their role and, when given, their profile in it.
+     *
+     *     The profile is checked before the link is made, so a refused profile adds
+     *     nobody. Without one, the membership's profile reads from its role until
+     *     someone sets it.
+     */
     post: operations["link_config_pod_member_config_pods__pod_id__members__member_id__post"];
     /** Unlink Config Pod Member */
     delete: operations["unlink_config_pod_member_config_pods__pod_id__members__member_id__delete"];
@@ -2625,6 +2640,153 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/profiles": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Profiles
+     * @description The tenant's profile catalog: the generic defaults with its own changes.
+     */
+    get: operations["list_profiles_profiles_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/profiles/{slug}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Save Profile
+     * @description Rename, hide or add a catalog entry. Admins only.
+     */
+    put: operations["save_profile_config_profiles__slug__put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/pods/{pod_id}/profiles": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Pod Profiles
+     * @description The pod's people, each with their role and profile in it: the pod panel's readers.
+     */
+    get: operations["pod_profiles_pods__pod_id__profiles_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/profiles": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * My Profiles
+     * @description The caller's own profile in each pod they are in, to read.
+     */
+    get: operations["my_profiles_me_profiles_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/pods/{pod_id}/members/{member_id}/profile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Membership Profile
+     * @description The membership's profile, its history, and a suggestion with its reasons.
+     *
+     *     Also for someone not in the pod yet, so the add dialog can preselect one;
+     *     ``role`` is the pod role they are about to get.
+     */
+    get: operations["membership_profile_config_pods__pod_id__members__member_id__profile_get"];
+    /**
+     * Set Membership Profile
+     * @description Change the member's profile in the pod from today; earlier days keep theirs.
+     */
+    put: operations["set_membership_profile_config_pods__pod_id__members__member_id__profile_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/profiles/review": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Review Profiles
+     * @description Profiles nobody checked yet (from the pod role or the backfill), with suggestions.
+     */
+    get: operations["review_profiles_config_profiles_review_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/profiles/review/accept": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Accept Profiles
+     * @description Accept the suggestions shown, each as its own dated row; nothing is set otherwise.
+     */
+    post: operations["accept_profiles_config_profiles_review_accept_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/test/chat-simulator/status": {
     parameters: {
       query?: never;
@@ -2745,6 +2907,28 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** AcceptProfileItem */
+    AcceptProfileItem: {
+      /** Pod Id */
+      pod_id: string;
+      /** Member Id */
+      member_id: string;
+      /** Profile */
+      profile: string;
+    };
+    /**
+     * AcceptProfilesRequest
+     * @description The suggestions the person saw and accepts, exactly as shown.
+     */
+    AcceptProfilesRequest: {
+      /** Items */
+      items: components["schemas"]["AcceptProfileItem"][];
+    };
+    /** AcceptProfilesResponse */
+    AcceptProfilesResponse: {
+      /** Accepted */
+      accepted: components["schemas"]["MemberProfileResponse"][];
+    };
     /**
      * AppliesTo
      * @enum {string}
@@ -4896,11 +5080,66 @@ export interface components {
     MemberFromDirectoryRequest: {
       /** External Ids */
       external_ids: string[];
+      /** Pod Id */
+      pod_id?: string | null;
+      /** Role */
+      role?: string | null;
+      /** Profile */
+      profile?: string | null;
+    };
+    /** MemberProfileResponse */
+    MemberProfileResponse: {
+      /** Pod Id */
+      pod_id: string;
+      /** Pod Name */
+      pod_name: string;
+      /** Member Id */
+      member_id: string;
+      /** Member Name */
+      member_name: string;
+      /** Role */
+      role: string | null;
+      /** Profile */
+      profile: string;
+      /** Label */
+      label: string;
+      /** Code Work */
+      code_work: boolean;
+      /**
+       * Source
+       * @enum {string}
+       */
+      source: "pod_role" | "backfill" | "admin" | "import" | "suggestion_accepted";
+      /** Checked */
+      checked: boolean;
+      /** Since */
+      since: string | null;
+      /** Set By Name */
+      set_by_name: string | null;
+      /** Set At */
+      set_at: string | null;
+      /** Is Lead */
+      is_lead: boolean;
     };
     /** MemberTaskAssignmentRequest */
     MemberTaskAssignmentRequest: {
       /** Task Id */
       task_id: string;
+    };
+    /** MembershipProfileResponse */
+    MembershipProfileResponse: {
+      /** Pod Id */
+      pod_id: string;
+      /** Pod Name */
+      pod_name: string;
+      /** Member Id */
+      member_id: string;
+      /** Member Name */
+      member_name: string;
+      current: components["schemas"]["MemberProfileResponse"] | null;
+      /** History */
+      history: components["schemas"]["ProfileHistoryEntry"][];
+      suggestion: components["schemas"]["ProfileSuggestionResponse"];
     };
     /**
      * MyRequestRelation
@@ -5106,6 +5345,24 @@ export interface components {
     PodMemberLinkRequest: {
       /** Role */
       role: string;
+      /** Profile */
+      profile?: string | null;
+    };
+    /** PodProfilesResponse */
+    PodProfilesResponse: {
+      /** Pod Id */
+      pod_id: string;
+      /** Pod Name */
+      pod_name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Can Edit */
+      can_edit: boolean;
+      /** Members */
+      members: components["schemas"]["MemberProfileResponse"][];
     };
     /** PodProjectDeliveryResponse */
     PodProjectDeliveryResponse: {
@@ -5326,6 +5583,84 @@ export interface components {
        * @default []
        */
       drift: components["schemas"]["DriftFindingResponse"][];
+    };
+    /** ProfileHistoryEntry */
+    ProfileHistoryEntry: {
+      /** Profile */
+      profile: string;
+      /**
+       * Valid From
+       * Format: date
+       */
+      valid_from: string;
+      /**
+       * Source
+       * @enum {string}
+       */
+      source: "pod_role" | "backfill" | "admin" | "import" | "suggestion_accepted";
+      /** Set At */
+      set_at: string | null;
+    };
+    /** ProfileResponse */
+    ProfileResponse: {
+      /** Slug */
+      slug: string;
+      /** Label */
+      label: string;
+      /** Code Work */
+      code_work: boolean;
+      /** Title Words */
+      title_words: string[];
+      /** Sort */
+      sort: number;
+      /** Hidden */
+      hidden: boolean;
+      /** Customized */
+      customized: boolean;
+    };
+    /** ProfileReviewItemResponse */
+    ProfileReviewItemResponse: {
+      current: components["schemas"]["MemberProfileResponse"];
+      suggestion: components["schemas"]["ProfileSuggestionResponse"];
+    };
+    /** ProfileReviewResponse */
+    ProfileReviewResponse: {
+      /** Items */
+      items: components["schemas"]["ProfileReviewItemResponse"][];
+    };
+    /** ProfileSuggestionResponse */
+    ProfileSuggestionResponse: {
+      /** Profile */
+      profile: string;
+      /** Label */
+      label: string;
+      /** Reasons */
+      reasons: string[];
+    };
+    /**
+     * ProfileUpdateRequest
+     * @description A catalog entry as the tenant wants it: a rename, hiding it, or a new one.
+     */
+    ProfileUpdateRequest: {
+      /** Label */
+      label: string;
+      /**
+       * Code Work
+       * @default false
+       */
+      code_work: boolean;
+      /**
+       * Hidden
+       * @default false
+       */
+      hidden: boolean;
+      /** Title Words */
+      title_words?: string[];
+      /**
+       * Sort
+       * @default 100
+       */
+      sort: number;
     };
     /** ProgramProjectLinkRequest */
     ProgramProjectLinkRequest: {
@@ -5771,6 +6106,12 @@ export interface components {
        * @default true
        */
       enabled: boolean;
+      /**
+       * Owner Profile
+       * @description A profile id (GET /profiles): while the criterion is missing, its holder in the scope's pods is asked to create or link it. Empty asks only the decider.
+       * @default
+       */
+      owner_profile: string;
     };
     /** ReadinessCriterionSummaryDto */
     ReadinessCriterionSummaryDto: {
@@ -6793,6 +7134,16 @@ export interface components {
       timezone?: string | null;
       /** Weekdays */
       weekdays?: number[] | null;
+    };
+    /** SetProfileRequest */
+    SetProfileRequest: {
+      /** Profile */
+      profile: string;
+      /**
+       * Accepted Suggestion
+       * @default false
+       */
+      accepted_suggestion: boolean;
     };
     /**
      * SettingSource
@@ -13748,6 +14099,284 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PortfolioRisksResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_profiles_profiles_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProfileResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_profile_config_profiles__slug__put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProfileUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProfileResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  pod_profiles_pods__pod_id__profiles_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PodProfilesResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  my_profiles_me_profiles_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MemberProfileResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  membership_profile_config_pods__pod_id__members__member_id__profile_get: {
+    parameters: {
+      query?: {
+        role?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MembershipProfileResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  set_membership_profile_config_pods__pod_id__members__member_id__profile_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetProfileRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MemberProfileResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  review_profiles_config_profiles_review_get: {
+    parameters: {
+      query?: {
+        pod_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProfileReviewResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  accept_profiles_config_profiles_review_accept_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AcceptProfilesRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AcceptProfilesResponse"];
         };
       };
       /** @description Validation Error */

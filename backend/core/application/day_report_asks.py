@@ -110,6 +110,12 @@ class AskScope:
     owner: str | None = None
     #: Every team each member is on, by member id, by name.
     member_team_ids: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    #: Each team's members' profiles on the day, by team id, then member id (catalog slugs).
+    profiles: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    #: The ones of those someone chose (not the pod role's default or the backfill).
+    checked_profiles: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    #: The catalog's label of each profile slug.
+    profile_labels: Mapping[str, str] = field(default_factory=dict)
 
     def task_by_key(self, key: str) -> str | None:
         return next(
@@ -297,6 +303,71 @@ def readiness_decider(
         if team.manager:
             return Decider(owner=team.manager, team=None)
     return Decider(owner=None, team=first)
+
+
+# ---- Profiles ---------------------------------------------------------------------------
+
+
+def profile_holder(
+    scope: AskScope, profile: str, pod_id: str | None = None
+) -> tuple[str | None, Team | None]:
+    """Who holds ``profile`` in the scope's pods, and the team they hold it in.
+
+    A pod's gap looks in that pod; a project's or a release's in the project's
+    pods, by name. Several holders in one pod: the first by name. Nobody: None,
+    with the first team the search looked in, so the ask still climbs from it.
+    """
+    if pod_id is not None:
+        team = scope.all_teams.get(pod_id)
+        teams = [team] if team is not None else []
+    else:
+        teams = sorted(
+            scope.teams.values(), key=lambda item: (item.node.name.casefold(), item.node.id)
+        )
+    for team in teams:
+        holders = sorted(
+            name
+            for member_id, slug in scope.profiles.get(team.node.id, {}).items()
+            if slug == profile and (name := scope.names.get(member_id))
+        )
+        if holders:
+            return holders[0], team
+    return None, teams[0] if teams else None
+
+
+def owner_heading(owner: str | None, scope: AskScope) -> str:
+    """'Mina Patel (Product, Payments Pod)': an owner with the profile someone chose for them.
+
+    Only a chosen profile is named: one read from the pod role says nothing the
+    role does not. Their teams on the project come first; several teams with
+    one profile read "Product, Payments Pod and Storefront Pod", and at most two
+    profiles are named.
+    """
+    if not owner:
+        return "Nobody named yet"
+    held: dict[str, list[str]] = {}
+    for member_id, name in scope.names.items():
+        if name != owner:
+            continue
+        team_ids = scope.member_team_ids.get(member_id, ())
+        on_project = [team_id for team_id in team_ids if team_id in scope.teams]
+        for team_id in on_project or list(team_ids):
+            slug = scope.checked_profiles.get(team_id, {}).get(member_id)
+            team = scope.all_teams.get(team_id)
+            if slug and team is not None:
+                label = scope.profile_labels.get(slug, slug)
+                held.setdefault(label, []).append(team.node.name)
+    if not held:
+        return owner
+    parts = [f"{label}, {_and(pods)}" for label, pods in list(held.items())[:2]]
+    return f"{owner} ({'; '.join(parts)})"
+
+
+def _and(names: Sequence[str]) -> str:
+    unique = list(dict.fromkeys(names))
+    if len(unique) <= 1:
+        return "".join(unique)
+    return f"{', '.join(unique[:-1])} and {unique[-1]}"
 
 
 # ---- Escalation ------------------------------------------------------------------------

@@ -497,6 +497,8 @@ class PodMemberLinkRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     role: str = Field(min_length=1)
+    #: Their profile in the pod (a catalog slug). Left out, it reads from the role, unchecked.
+    profile: str | None = Field(default=None, min_length=1, max_length=32)
 
 
 class MemberTaskAssignmentRequest(BaseModel):
@@ -713,6 +715,16 @@ class MemberFromDirectoryRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     external_ids: list[str] = Field(min_length=1)
+    #: Also add everyone imported to this pod, with ``role`` and ``profile`` (optional).
+    pod_id: str | None = Field(default=None, min_length=1)
+    role: str | None = Field(default=None, min_length=1)
+    profile: str | None = Field(default=None, min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def _pod_for_role_and_profile(self) -> MemberFromDirectoryRequest:
+        if self.pod_id is None and (self.role is not None or self.profile is not None):
+            raise ValueError("a role or profile needs the pod they hold it in (pod_id)")
+        return self
 
 
 class ChatWebhookResponse(BaseModel):

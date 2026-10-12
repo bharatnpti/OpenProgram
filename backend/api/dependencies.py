@@ -28,6 +28,7 @@ from core.application.jira_writes_service import JiraWritesService
 from core.application.person_names import PersonNames
 from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
+from core.application.profile_service import ProfileService
 from core.application.pull_request_flow_service import PullRequestFlowService
 from core.application.risk_service import RiskService
 from core.application.self_status_service import SelfStatusService
@@ -158,6 +159,11 @@ def config_service_for(
     )
 
 
+def get_profile_service(request: Request) -> ProfileService:
+    """Profiles per pod membership: who brings what to each pod."""
+    return get_registry(request).profile_service()
+
+
 def get_flow_metrics_service(request: Request) -> FlowMetricsService:
     registry = get_registry(request)
     return FlowMetricsService(
@@ -256,6 +262,7 @@ def get_ask_service(request: Request) -> AskService:
         release_readiness_service=registry.release_readiness_service(),
         model=settings.default_llm_model,
         max_tool_iterations=settings.ask_max_tool_iterations,
+        profile_service=registry.profile_service(),
     )
 
 

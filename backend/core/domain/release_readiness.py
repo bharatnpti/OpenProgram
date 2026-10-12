@@ -80,6 +80,7 @@ PLACEHOLDERS = (
 _PLACEHOLDER = re.compile(r"\{([A-Za-z_]+)\}")
 _NON_WORD = re.compile(r"[^\w]+")
 _PROJECT_KEY = re.compile(r"^[A-Z][A-Z0-9_]+$")
+_PROFILE_SLUG = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 _ISSUE_KEY = re.compile(r"^[A-Z][A-Z0-9_]*-\d+$")
 _SLUG = re.compile(r"[^a-z0-9]+")
 
@@ -217,6 +218,10 @@ class ReleaseCriterion:
     when_types: tuple[str, ...] = ()
     draft: DraftTemplate = field(default_factory=DraftTemplate)
     enabled: bool = True
+    #: The profile (a catalog slug) whose holder in the scope's pods is asked to
+    #: create or link the evidence while it is missing, beside the decision ask.
+    #: Empty asks nobody but the decider. A profile grants no rights.
+    owner_profile: str = ""
     #: +1 on every save; findings record the version they were judged on.
     version: int = 1
     updated_at: datetime | None = None
@@ -885,6 +890,9 @@ def validated_criterion(criterion: ReleaseCriterion) -> ReleaseCriterion:
     if any(not _label_ok(label) for label in criterion.when_labels if label.strip()):
         problems.append("a label has no spaces")
     draft = _draft_template(criterion.draft, problems)
+    owner_profile = criterion.owner_profile.strip().lower()
+    if owner_profile and not _PROFILE_SLUG.match(owner_profile):
+        problems.append("the profile to ask is one of the profile list's ids, such as security")
     if problems:
         raise ReadinessError(_sentence_of(problems))
     return replace(
@@ -895,6 +903,7 @@ def validated_criterion(criterion: ReleaseCriterion) -> ReleaseCriterion:
         when_labels=when_labels,
         when_types=when_types,
         draft=draft,
+        owner_profile=owner_profile,
     )
 
 

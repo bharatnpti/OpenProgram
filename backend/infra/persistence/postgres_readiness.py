@@ -435,6 +435,7 @@ def criterion_spec(criterion: ReleaseCriterion) -> dict[str, object]:
         "needs_done": criterion.needs_done,
         "when_labels": list(criterion.when_labels),
         "when_types": list(criterion.when_types),
+        "owner_profile": criterion.owner_profile,
         "matchers": [
             {"kind": item.kind.value, "value": item.value, "strength": item.strength.value}
             for item in criterion.matchers
@@ -556,6 +557,7 @@ def _criterion(row: Mapping[str, object]) -> ReleaseCriterion:
         needs_done=bool(spec.get("needs_done", True)),
         when_labels=_strings(spec.get("when_labels")),
         when_types=_strings(spec.get("when_types")),
+        owner_profile=_text(spec.get("owner_profile")),
         matchers=tuple(matchers),
         draft=DraftTemplate(
             project_key=_text(draft.get("project_key")),

@@ -39,9 +39,10 @@ const SECURITY: ReadinessCriterionDto = {
     labels: ["security-review"],
   },
   enabled: true,
+  owner_profile: "security",
 };
 
-test("a criterion round-trips through the form", () => {
+test("a criterion round-trips through the form, with the profile it asks", () => {
   const back = criterionFromDraft(draftFromCriterion(SECURITY));
   assert.deepEqual({ ...back, version: SECURITY.version }, SECURITY);
 });

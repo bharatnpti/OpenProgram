@@ -347,3 +347,16 @@ export type ReadinessUrgencyKind = components["schemas"]["UrgencyKind"];
 export type ReadinessAppliesTo = components["schemas"]["AppliesTo"];
 export type ReadinessSeverity = components["schemas"]["Severity"];
 export type ReadinessStrength = components["schemas"]["Strength"];
+
+// Profiles per pod membership: who brings what to each pod.
+export type ProfileResponse = components["schemas"]["ProfileResponse"];
+export type ProfileUpdateRequest = components["schemas"]["ProfileUpdateRequest"];
+export type MemberProfileResponse = components["schemas"]["MemberProfileResponse"];
+export type PodProfilesResponse = components["schemas"]["PodProfilesResponse"];
+export type ProfileSuggestionResponse = components["schemas"]["ProfileSuggestionResponse"];
+export type MembershipProfileResponse = components["schemas"]["MembershipProfileResponse"];
+export type SetProfileRequest = components["schemas"]["SetProfileRequest"];
+export type ProfileReviewItemResponse = components["schemas"]["ProfileReviewItemResponse"];
+export type ProfileReviewResponse = components["schemas"]["ProfileReviewResponse"];
+export type AcceptProfilesRequest = components["schemas"]["AcceptProfilesRequest"];
+export type AcceptProfilesResponse = components["schemas"]["AcceptProfilesResponse"];

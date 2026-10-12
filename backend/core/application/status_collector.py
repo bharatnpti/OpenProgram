@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
@@ -165,6 +165,8 @@ COMPOSE_NUDGE_SYSTEM_PROMPT = (
 OUTBOUND_DM_MAX_CHARS = 320
 # How a status summary names the tracker when the deployment does not say (N48).
 DEFAULT_ISSUE_TRACKER_NAME = "the issue tracker"
+#: A member's checked profiles per pod: whether each expects code work there.
+CodeWorkByPod = Callable[[str, str, date], Awaitable[Mapping[str, bool]]]
 # The one ack a check-in gets for replies that carry no status (N22).
 NON_STATUS_ACK_TEXT = "Thanks. I'll keep the check-in open for your status update."
 # The one ack a check-in gets for a status reply that came after it closed (G9).
@@ -296,8 +298,12 @@ class StatusCollector:
         outbound_dm_max_chars: int = OUTBOUND_DM_MAX_CHARS,
         recent_fact_lookback_days: int = RECENT_FACT_LOOKBACK_DAYS,
         issue_tracker_name: str = DEFAULT_ISSUE_TRACKER_NAME,
+        code_work_by_pod: CodeWorkByPod | None = None,
     ) -> None:
         self._issue_tracker = issue_tracker
+        # A member's checked profile per pod says whether their review is code
+        # work there (ProfileService.code_work_by_pod); without one, app roles do.
+        self._code_work_by_pod = code_work_by_pod
         # How a status summary names the tracker a check-in's update went to (N48).
         self._issue_tracker_name = issue_tracker_name
         self._chat_provider = chat_provider
@@ -1030,7 +1036,110 @@ class StatusCollector:
         keys: Sequence[str],
         merge_request_facts: Sequence[FactEvent],
     ) -> tuple[str, ...]:
-        """Those of ``keys`` whose review is code work for this person (``code_work_keys``)."""
+        """Those of ``keys`` whose review is code work for this person.
+
+        A checked profile of theirs in the issue's pod decides first: QA in that
+        pod is not code work, development is, whatever their app roles say. The
+        rest goes by ``code_work_keys`` (app roles, then their own activity).
+        """
+        by_profile = await self._code_work_from_profiles(tenant_id, developer_id, keys)
+        rest = [key for key in keys if key not in by_profile]
+        by_roles = set(
+            await self._code_work_by_roles(tenant_id, developer_id, rest, merge_request_facts)
+            if rest
+            else ()
+        )
+        return tuple(key for key in keys if by_profile.get(key) is True or key in by_roles)
+
+    async def _code_work_from_profiles(
+        self, tenant_id: str, developer_id: str, keys: Sequence[str]
+    ) -> dict[str, bool]:
+        """Whether each issue is code work, where a checked profile of theirs decides it.
+
+        The profiles of the pods the issue sits in (directly, through a
+        workstream, or under a project the pod works on); for an issue no pod
+        is known to hold, every pod where their profile is checked. Several
+        pods: code work when any of their profiles there expects it. An issue
+        none of those decides is left out, for the app-role rule.
+        """
+        if self._code_work_by_pod is None or self._graph_repository is None or not keys:
+            return {}
+        today = datetime.now(tz=UTC).date()
+        by_pod = await self._code_work_by_pod(tenant_id, developer_id, today)
+        if not by_pod:
+            return {}
+        decided: dict[str, bool] = {}
+        for key in keys:
+            task_pods = await self._pods_holding(tenant_id, key, today)
+            pods = (task_pods & by_pod.keys()) if task_pods else set(by_pod)
+            if pods:
+                decided[key] = any(by_pod[pod_id] for pod_id in pods)
+        return decided
+
+    async def _pods_holding(self, tenant_id: str, key: str, today: date) -> set[str]:
+        """The pods an issue sits in: its own pods, else the pods of its project."""
+        graph = self._graph_repository
+        if graph is None:
+            return set()
+        pods = {pod.id for pod in await graph.pods_for_task(tenant_id, key, today)}
+        if pods:
+            return pods
+        for project_id in await self._task_projects(tenant_id, key, today):
+            pods.update(await self._contained(tenant_id, project_id, NodeKind.POD, today))
+        return pods
+
+    async def _task_projects(self, tenant_id: str, key: str, today: date) -> set[str]:
+        """The projects holding an issue, directly or through one of their sprints."""
+        graph = self._graph_repository
+        if graph is None:
+            return set()
+        projects: set[str] = set()
+        for edge in await graph.list_edges(tenant_id, to_node_id=key, kind=EdgeKind.CONTAINS):
+            node = (
+                await graph.get_node(tenant_id, edge.from_node_id)
+                if edge.is_active_on(today)
+                else None
+            )
+            if node is not None and node.kind is NodeKind.PROJECT:
+                projects.add(node.id)
+            elif node is not None and node.kind is NodeKind.SPRINT:
+                projects.update(
+                    parent.from_node_id
+                    for parent in await graph.list_edges(
+                        tenant_id, to_node_id=node.id, kind=EdgeKind.CONTAINS
+                    )
+                    if parent.is_active_on(today)
+                )
+        return projects
+
+    async def _contained(
+        self, tenant_id: str, parent_id: str, kind: NodeKind, today: date
+    ) -> set[str]:
+        """The nodes of ``kind`` the parent contains today."""
+        graph = self._graph_repository
+        if graph is None:
+            return set()
+        found: set[str] = set()
+        for edge in await graph.list_edges(
+            tenant_id, from_node_id=parent_id, kind=EdgeKind.CONTAINS
+        ):
+            child = (
+                await graph.get_node(tenant_id, edge.to_node_id)
+                if edge.is_active_on(today)
+                else None
+            )
+            if child is not None and child.kind is kind:
+                found.add(child.id)
+        return found
+
+    async def _code_work_by_roles(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        keys: Sequence[str],
+        merge_request_facts: Sequence[FactEvent],
+    ) -> tuple[str, ...]:
+        """Those of ``keys`` whose review is code work by app roles (``code_work_keys``)."""
         node = (
             await self._graph_repository.get_node(tenant_id, developer_id)
             if self._graph_repository is not None

@@ -12,6 +12,7 @@ from api.dependencies import (
     get_directory_service,
     get_directory_sync_service,
     get_jira_writes_service,
+    get_profile_service,
     get_settings_from_request,
 )
 from api.dtos import (
@@ -55,6 +56,7 @@ from core.application.config_service import (
 )
 from core.application.directory_sync_service import DirectorySyncService
 from core.application.jira_writes_service import JiraWritesService
+from core.application.profile_service import ProfileService
 from core.domain.auth import Principal
 from core.domain.errors import (
     AuthorizationDenied,
@@ -64,6 +66,7 @@ from core.domain.errors import (
 )
 from core.domain.graph import GraphNode, JsonScalar, NodeKind
 from core.domain.identity import IdentityLink
+from core.domain.profiles import ProfileError, ProfileSource
 from core.domain.status import CheckInPreference, effective_checkin_preference
 from core.domain.writeback import WriteBackGate, WriteBackGateSource
 
@@ -599,13 +602,46 @@ async def create_config_members_from_directory(
     request: MemberFromDirectoryRequest,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ConfigService, Depends(get_config_service)],
+    profiles: Annotated[ProfileService, Depends(get_profile_service)],
 ) -> list[ConfigNodeResponse]:
+    """Import people as members; with ``pod_id``, also put each in that pod.
+
+    Each joins the pod with ``role`` (developer when not given) and, when
+    given, ``profile`` (recorded as set by the import). Someone already in the
+    pod keeps their membership and role; only a given profile is recorded for
+    them. The pod and the profile are checked before anyone is imported.
+    """
     _ensure(principal, Capability.MANAGE_CONFIG)
     try:
+        if request.pod_id is not None:
+            await service.get_node(principal.tenant_id, request.pod_id, NodeKind.POD)
+        if request.profile is not None:
+            await profiles.ensure_offered(principal.tenant_id, request.profile)
         members = await service.add_members_from_directory(
             principal.tenant_id,
             request.external_ids,
         )
+        if request.pod_id is not None:
+            for member in members:
+                try:
+                    await service.link_pod_member(
+                        principal.tenant_id, request.pod_id, member.id, request.role or "developer"
+                    )
+                except ConfigConflict:
+                    pass  # already in the pod: their membership and role stay as they are
+                if request.profile is not None:
+                    await profiles.set_profile(
+                        principal.tenant_id,
+                        request.pod_id,
+                        member.id,
+                        request.profile,
+                        source=ProfileSource.IMPORT,
+                        by=principal.subject,
+                    )
+    except ProfileError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
     except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
         raise _http_error(exc) from exc
     return [ConfigNodeResponse.from_domain(member) for member in members]
@@ -849,10 +885,32 @@ async def link_config_pod_member(
     request: PodMemberLinkRequest,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ConfigService, Depends(get_config_service)],
+    profiles: Annotated[ProfileService, Depends(get_profile_service)],
 ) -> ConfigEdgeResponse:
+    """Add the member to the pod with their role and, when given, their profile in it.
+
+    The profile is checked before the link is made, so a refused profile adds
+    nobody. Without one, the membership's profile reads from its role until
+    someone sets it.
+    """
     _ensure(principal, Capability.MANAGE_CONFIG)
     try:
+        if request.profile is not None:
+            await profiles.ensure_offered(principal.tenant_id, request.profile)
         edge = await service.link_pod_member(principal.tenant_id, pod_id, member_id, request.role)
+        if request.profile is not None:
+            await profiles.set_profile(
+                principal.tenant_id,
+                pod_id,
+                member_id,
+                request.profile,
+                source=ProfileSource.ADMIN,
+                by=principal.subject,
+            )
+    except ProfileError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
     except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
         raise _http_error(exc) from exc
     return ConfigEdgeResponse.from_domain(edge)
