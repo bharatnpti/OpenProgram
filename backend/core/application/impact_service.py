@@ -13,7 +13,12 @@ numbers it says:
   and the team's own latest date, before and after, with its cause;
 - evidence, never a share: requirements open past their date, and the ones with
   no date at all;
-- the timeline's markers for the period, and the link to its row.
+- the timeline's markers for the period, and the link to its row. The timeline
+  (core/application/timeline_service.py) reads the same markers from the kept
+  rows alone, so Ora and the picture never disagree: scope added (with or
+  without the change label), bugs, scope removed, reopened, closing late, the
+  committed date's moves, and blockers opened and closed for the readers of the
+  pod's blockers.
 
 Who reads it is the delivery forecast's own rule, decided once here for the
 route and for Ora alike (``access``). A developer reads none of it. A scrum
@@ -28,8 +33,9 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from enum import StrEnum
+from typing import Protocol
 
-from core.application.authorization import AuthorizationPolicy
+from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.baseline_service import BaselineService
 from core.application.checkin_drift import CHECKIN_DRIFT_FACT_SOURCE, ETA_STATED
 from core.application.delivery_scope import DeliveryScopeService, reads_project
@@ -76,7 +82,7 @@ from core.domain.impact_words import (
     throughput_words,
 )
 from core.ports.forecast import CommitmentRepository
-from core.ports.repositories import GraphRepository, TimeSeriesRepository
+from core.ports.repositories import GraphRepository, StatusRepository, TimeSeriesRepository
 
 #: The items a driver, a marker or a list names; the rest are counted.
 MAX_ITEMS = 10
@@ -90,6 +96,8 @@ COMMITTED_AFTER_ADDED_WORKING_DAYS = 2
 LEADS_WORKING_DAYS = 3
 #: How far before a period's first day its first row may sit.
 _ANCHOR_LOOKBACK_DAYS = 7
+#: The most of a blocker's own words a marker's list repeats.
+_WAITS_ON_CHARS = 120
 #: The change that brings an issue into a project or pod: it becomes a requirement type.
 _ENTERING_FIELDS = frozenset({"issue_type"})
 #: Into a release, also the fix version or label the release is.
@@ -132,6 +140,15 @@ class ImpactAccess:
     detail: ImpactDetail
     #: Whether "added by" is named on an added item (D14: never for executives).
     added_by: bool
+    #: Whether blockers opened and closed are marked: the pod blocker read's readers only.
+    blockers: bool = False
+
+
+class OpenFindings(Protocol):
+    """The issues of a scope with an open Jira hygiene finding (lane F), for the ring on an
+    addition without the change label. Until one is wired, no marker is ringed."""
+
+    async def open_keys(self, tenant_id: str, scope: CommitmentScope) -> frozenset[str]: ...
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -247,6 +264,13 @@ class MarkerItemView:
     stage: DeliveryStage | None
     group: ScopeGroup | None = None
     added_by: str | None = None
+    #: Scope added: whether this item carries the change label.
+    change_label: bool | None = None
+    #: A blocker: what it waits on, in the words of the check-in that raised it.
+    waits_on: str | None = None
+    #: Scope added without the change label: whether a Jira hygiene finding is open on
+    #: it. None until hygiene findings are wired (OpenFindings).
+    hygiene: bool | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -254,7 +278,8 @@ class MarkerView:
     """One kind of event on one day, on the timeline's impact lane."""
 
     day: date
-    #: scope_added, bug, scope_removed, reopened, late or committed_date_changed.
+    #: scope_added, bug, scope_removed, reopened, late, blocker_opened, blocker_closed
+    #: or committed_date_changed.
     kind: str
     count: int
     items: tuple[MarkerItemView, ...] = ()
@@ -338,6 +363,8 @@ class DeliveryImpactService:
         commitment_repository: CommitmentRepository,
         graph_repository: GraphRepository,
         time_series_repository: TimeSeriesRepository,
+        status_repository: StatusRepository | None = None,
+        open_findings: OpenFindings | None = None,
         clock: Callable[[], datetime] = _utc_now,
         today: Callable[[], date] | None = None,
         zone: tzinfo = UTC,
@@ -348,6 +375,8 @@ class DeliveryImpactService:
         self._commitments = commitment_repository
         self._graph = graph_repository
         self._facts = time_series_repository
+        self._status = status_repository
+        self._findings = open_findings
         self._today = today or (lambda: clock().date())
         self._zone = zone
 
@@ -360,18 +389,24 @@ class DeliveryImpactService:
         A pod: whole for a project's readers and for a scrum master who runs it,
         dates only for a scrum master's other pods, nothing for a developer.
         """
+        policy = AuthorizationPolicy()
         names = any(principal.has_role(role) for role in (Role.PO, Role.MGR, Role.ADMIN, Role.SM))
+        # Blockers are per person: the pod blocker read's readers (scrum master, manager,
+        # admin), never a product owner or an executive.
+        blockers = policy.can(principal, Capability.READ_POD_BLOCKERS)
         if scope.kind is not CommitmentScopeKind.POD:
             await self._scope.ensure_project_read(principal, scope.project_id)
-            return ImpactAccess(detail=ImpactDetail.FULL, added_by=names)
-        if reads_project(AuthorizationPolicy(), principal, own=False):
-            return ImpactAccess(detail=ImpactDetail.FULL, added_by=names)
+            return ImpactAccess(detail=ImpactDetail.FULL, added_by=names, blockers=blockers)
+        if reads_project(policy, principal, own=False):
+            return ImpactAccess(detail=ImpactDetail.FULL, added_by=names, blockers=blockers)
         if principal.has_role(Role.SM):
             runs = await self._forecasts.runs_pod(
                 principal.tenant_id, scope.id, principal.subject, self._today()
             )
             return ImpactAccess(
-                detail=ImpactDetail.FULL if runs else ImpactDetail.DATES, added_by=runs
+                detail=ImpactDetail.FULL if runs else ImpactDetail.DATES,
+                added_by=runs,
+                blockers=runs and blockers,
             )
         raise AuthorizationDenied("Not allowed.")
 
@@ -463,7 +498,17 @@ class DeliveryImpactService:
             committed_changes=committed,
             team_date=await self._team_date(tenant_id, data.rows),
             markers=(
-                _markers(attribution, data, committed, late, stages, resolved.start)
+                await self._markers(
+                    tenant_id,
+                    scope,
+                    data,
+                    committed,
+                    late,
+                    stages,
+                    start=resolved.start,
+                    as_of=as_of,
+                    access=access,
+                )
                 if full and attribution is not None
                 else ()
             ),
@@ -579,8 +624,10 @@ class DeliveryImpactService:
         start: date,
         as_of: date,
         access: ImpactAccess,
+        *,
+        live: bool = True,
     ) -> _PeriodData:
-        rows = await self._rows(tenant_id, scope, start, as_of)
+        rows = await self._rows(tenant_id, scope, start, as_of, live=live)
         attribution = (
             summed(
                 [
@@ -623,18 +670,25 @@ class DeliveryImpactService:
         return _PeriodData(rows=tuple(rows), period=attribution, rule=rule, added=added)
 
     async def _rows(
-        self, tenant_id: str, scope: CommitmentScope, start: date, as_of: date
+        self,
+        tenant_id: str,
+        scope: CommitmentScope,
+        start: date,
+        as_of: date,
+        *,
+        live: bool = True,
     ) -> list[ForecastDayRecord]:
         """The period's first row (the last on or before ``start``) and every row after it.
 
-        Today's is computed now, as every read of today is.
+        Today's is computed now, as every read of today is, unless ``live`` is False:
+        the timeline reads the kept rows only, today's as the hourly run last kept it.
         """
         kept = await self._forecasts.kept_days(
             tenant_id, scope, start - timedelta(days=_ANCHOR_LOOKBACK_DAYS), as_of
         )
-        if as_of >= self._today():
-            live = await self._forecasts.forecast_day(tenant_id, scope, as_of)
-            kept = [row for row in kept if row.day < as_of] + ([live] if live else [])
+        if live and as_of >= self._today():
+            today = await self._forecasts.forecast_day(tenant_id, scope, as_of)
+            kept = [row for row in kept if row.day < as_of] + ([today] if today else [])
         before = [row for row in kept if row.day <= start]
         anchor = before[-1] if before else (kept[0] if kept else None)
         if anchor is None:
@@ -732,6 +786,136 @@ class DeliveryImpactService:
                     return creator
         reporter = metadata.get("reporter_member_id")
         return reporter if isinstance(reporter, str) and reporter else None
+
+    # ---- the timeline's markers ---------------------------------------------------
+
+    async def timeline_markers(
+        self,
+        tenant_id: str,
+        scope: CommitmentScope,
+        *,
+        start: date,
+        as_of: date,
+        access: ImpactAccess,
+        open_requirements: Sequence[OpenRequirement],
+        baseline: PlanningBaseline | None,
+        stages: Mapping[str, DeliveryStage],
+    ) -> tuple[MarkerView, ...]:
+        """One timeline row's impact lane after ``start`` up to ``as_of``, from the kept
+        rows alone (no forecast is run): the markers the impact read carries, so the
+        picture and Ora say the same events."""
+        data = await self._period_data(tenant_id, scope, start, as_of, access, live=False)
+        committed = await self._committed_changes(tenant_id, scope, start, as_of, data)
+        return await self._markers(
+            tenant_id,
+            scope,
+            data,
+            committed,
+            _late(open_requirements, as_of, baseline),
+            stages,
+            start=start,
+            as_of=as_of,
+            access=access,
+        )
+
+    async def _markers(
+        self,
+        tenant_id: str,
+        scope: CommitmentScope,
+        data: _PeriodData,
+        committed: Sequence[CommittedChangeView],
+        late: Sequence[LateView],
+        stages: Mapping[str, DeliveryStage],
+        *,
+        start: date,
+        as_of: date,
+        access: ImpactAccess,
+    ) -> tuple[MarkerView, ...]:
+        """The timeline's impact lane: one marker per day and kind, never per person.
+
+        Each is an event on work items: scope added (with or without the change
+        label, ringed where a hygiene finding is open on it), a bug opened in the
+        scope (counted as a requirement or not), scope removed, reopened, a
+        requirement passing its date while open, the committed date's moves, and,
+        for the pod blocker read's readers only, blockers opened and closed on the
+        scope's requirements.
+        """
+        grouped: dict[tuple[date, str, bool | None], list[MarkerItemView]] = {}
+
+        def add(
+            day: date | None, kind: str, item: MarkerItemView, label: bool | None = None
+        ) -> None:
+            if day is not None and start < day <= as_of:
+                grouped.setdefault((day, kind, label), []).append(item)
+
+        flagged = (
+            await self._findings.open_keys(tenant_id, scope) if self._findings is not None else None
+        )
+        if data.period is not None:
+            _attribution_markers(data.period, data, stages, flagged, add)
+        for entry in late:
+            add(
+                entry.date + timedelta(days=1),
+                "late",
+                MarkerItemView(key=entry.key, title=entry.title, stage=entry.stage),
+            )
+        # Bugs that are not counted as requirements: the forecast never sees them, so
+        # the day each was opened is all the timeline says.
+        for key, task in (await self._forecasts.uncounted_bugs(tenant_id, scope, as_of)).items():
+            add(
+                _created_on(task.metadata.get("created_at"), self._zone),
+                "bug",
+                MarkerItemView(key=key, title=task.name, stage=None, group=ScopeGroup.BUG),
+            )
+        if access.blockers and self._status is not None:
+            await self._blocker_markers(tenant_id, scope, stages, start, as_of, add)
+        markers = [
+            MarkerView(
+                day=day,
+                kind=kind,
+                count=len(items),
+                items=tuple(sorted(items, key=lambda item: key_order(item.key)))[:MAX_ITEMS],
+                change_label=label,
+            )
+            for (day, kind, label), items in grouped.items()
+        ]
+        moved: dict[date, int] = {}
+        for change in committed:
+            if start < change.on <= as_of:
+                moved[change.on] = moved.get(change.on, 0) + 1
+        markers += [
+            MarkerView(day=day, kind="committed_date_changed", count=count)
+            for day, count in moved.items()
+        ]
+        return tuple(sorted(markers, key=lambda marker: (marker.day, marker.kind)))
+
+    async def _blocker_markers(
+        self,
+        tenant_id: str,
+        scope: CommitmentScope,
+        stages: Mapping[str, DeliveryStage],
+        start: date,
+        as_of: date,
+        add: _Add,
+    ) -> None:
+        """Blockers opened and closed on the scope's requirements, on the day each was."""
+        assert self._status is not None
+        tasks = await self._forecasts.tasks_by_key(tenant_id, scope.project_id, as_of)
+        keys_by_id = {task.id: key for key, task in tasks.items() if key in stages}
+        for blocker in await self._status.blockers_on_work_items(
+            tenant_id, sorted(keys_by_id), start, as_of
+        ):
+            key = keys_by_id.get(blocker.work_item_id or "")
+            if key is None:
+                continue
+            item = MarkerItemView(
+                key=key,
+                title=tasks[key].name,
+                stage=stages.get(key),
+                waits_on=_clip(blocker.description),
+            )
+            add(blocker.first_seen_on, "blocker_opened", item)
+            add(blocker.resolved_on, "blocker_closed", item)
 
     # ---- the other two dates ---------------------------------------------------------
 
@@ -1145,36 +1329,48 @@ def _late(
     return sorted(found, key=lambda item: (-item.working_days_late, key_order(item.key)))
 
 
-def _markers(
+_Add = Callable[..., None]
+
+
+def _attribution_markers(
     attribution: PeriodAttribution,
     data: _PeriodData,
-    committed: Sequence[CommittedChangeView],
-    late: Sequence[LateView],
     stages: Mapping[str, DeliveryStage],
-    start: date,
-) -> tuple[MarkerView, ...]:
-    """The timeline's impact lane for the period: one marker per day and kind, never per person."""
-    grouped: dict[tuple[date, str, bool | None], list[MarkerItemView]] = {}
-
-    def add(day: date | None, kind: str, item: MarkerItemView, label: bool | None = None) -> None:
-        if day is not None and day > start:
-            grouped.setdefault((day, kind, label), []).append(item)
-
+    flagged: frozenset[str] | None,
+    add: _Add,
+) -> None:
+    """The kept breakdowns' events: scope added (a bug apart), removed and reopened."""
     for item in attribution.added:
         added = data.added.get(item.key)
         group = added.group if added is not None else None
-        kind = "bug" if group is ScopeGroup.BUG else "scope_added"
+        added_by = added.added_by if added is not None else None
+        if group is ScopeGroup.BUG:
+            add(
+                item.day,
+                "bug",
+                MarkerItemView(
+                    key=item.key,
+                    title=item.title,
+                    stage=stages.get(item.key),
+                    group=group,
+                    added_by=added_by,
+                ),
+            )
+            continue
+        labelled = added.change_label if added is not None else False
         add(
             item.day,
-            kind,
+            "scope_added",
             MarkerItemView(
                 key=item.key,
                 title=item.title,
                 stage=stages.get(item.key),
                 group=group,
-                added_by=added.added_by if added is not None else None,
+                added_by=added_by,
+                change_label=labelled,
+                hygiene=(item.key in flagged) if flagged is not None and not labelled else None,
             ),
-            (added.change_label if added is not None else False) if kind == "scope_added" else None,
+            labelled,
         )
     for kind, items in (("scope_removed", attribution.removed), ("reopened", attribution.reopened)):
         for item in items:
@@ -1183,28 +1379,14 @@ def _markers(
                 kind,
                 MarkerItemView(key=item.key, title=item.title, stage=stages.get(item.key)),
             )
-    for entry in late:
-        add(
-            entry.date + timedelta(days=1),
-            "late",
-            MarkerItemView(key=entry.key, title=entry.title, stage=entry.stage),
-        )
-    markers = [
-        MarkerView(
-            day=day,
-            kind=kind,
-            count=len(items),
-            items=tuple(sorted(items, key=lambda item: key_order(item.key)))[:MAX_ITEMS],
-            change_label=label,
-        )
-        for (day, kind, label), items in grouped.items()
-    ]
-    markers += [
-        MarkerView(day=change.on, kind="committed_date_changed", count=1)
-        for change in committed
-        if change.on > start
-    ]
-    return tuple(sorted(markers, key=lambda marker: (marker.day, marker.kind)))
+
+
+def _clip(text: str) -> str | None:
+    """A blocker's words, kept short: what it waits on, never more than a line."""
+    words = " ".join(text.split())
+    if not words:
+        return None
+    return words if len(words) <= _WAITS_ON_CHARS else words[: _WAITS_ON_CHARS - 1].rstrip() + "…"
 
 
 def _negligible(shift: Shift, measure: Measure) -> bool:

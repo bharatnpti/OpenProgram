@@ -400,6 +400,13 @@ class StatusRepository(Protocol):
         self, tenant_id: str, work_item_id: str, as_of: date
     ) -> list[DeveloperBlocker]: ...
 
+    async def blockers_on_work_items(
+        self, tenant_id: str, work_item_ids: Sequence[str], after: date, until: date
+    ) -> list[DeveloperBlocker]:
+        """Blockers on any of ``work_item_ids`` opened or resolved after ``after`` and on
+        or before ``until``: the timeline's blocker markers, by the day each happened."""
+        ...
+
     async def has_blocker_rows(self, tenant_id: str, developer_id: str) -> bool: ...
 
     async def latest_developer_status(

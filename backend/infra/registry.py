@@ -50,6 +50,7 @@ from core.application.sync_services import (
 )
 from core.application.sync_status_service import SyncStatusService
 from core.application.task_update_service import TaskUpdateService
+from core.application.timeline_service import TimelineService
 from core.application.writeback_service import WriteBackService
 from core.domain.errors import GraphNotFound, ProviderUnavailable
 from core.domain.graph import NodeKind
@@ -594,6 +595,22 @@ class ServiceRegistry:
             commitment_repository=self.commitment_repository(),
             graph_repository=self.graph_repository(),
             time_series_repository=self.time_series_repository(),
+            status_repository=self.status_repository(),
+            today=self._tenant_today,
+            zone=self._tenant_zone(),
+        )
+
+    def timeline_service(self) -> TimelineService:
+        """The timeline per project and pod: kept forecast rows, dates and markers per row."""
+        return TimelineService(
+            forecast_service=self.forecast_service(),
+            impact_service=self.delivery_impact_service(),
+            baseline_service=self.baseline_service(),
+            delivery_scope_service=DeliveryScopeService(
+                self.graph_repository(), self.rollup_repository(), today=self._tenant_today
+            ),
+            commitment_repository=self.commitment_repository(),
+            graph_repository=self.graph_repository(),
             today=self._tenant_today,
             zone=self._tenant_zone(),
         )

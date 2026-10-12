@@ -36,6 +36,7 @@ from api.routers import (
     readiness,
     reports,
     test_support,
+    timeline,
     webhooks,
 )
 from config.settings import Settings, get_settings
@@ -152,6 +153,7 @@ def create_app(
     app.include_router(forecast.router)
     app.include_router(baselines.router)
     app.include_router(delivery_impact.router)
+    app.include_router(timeline.router)
     app.include_router(gates.router)
     app.include_router(readiness.router)
     app.include_router(hygiene.router)

@@ -978,6 +978,25 @@ class InMemoryGraphStore:
             key=lambda blocker: (blocker.developer_id, blocker.first_seen_on, blocker.blocker_id),
         )
 
+    async def blockers_on_work_items(
+        self, tenant_id: str, work_item_ids: Sequence[str], after: date, until: date
+    ) -> list[DeveloperBlocker]:
+        wanted = set(work_item_ids)
+
+        def within(day: date | None) -> bool:
+            return day is not None and after < day <= until
+
+        return sorted(
+            (
+                blocker
+                for blocker in self._developer_blockers.values()
+                if blocker.tenant_id == tenant_id
+                and blocker.work_item_id in wanted
+                and (within(blocker.first_seen_on) or within(blocker.resolved_on))
+            ),
+            key=lambda blocker: (blocker.first_seen_on, blocker.blocker_id),
+        )
+
     async def has_blocker_rows(self, tenant_id: str, developer_id: str) -> bool:
         return any(
             blocker.tenant_id == tenant_id and blocker.developer_id == developer_id

@@ -698,6 +698,26 @@ class PostgresStatusRepository:
             )
         return [_developer_blocker_from_row(row) for row in rows]
 
+    async def blockers_on_work_items(
+        self, tenant_id: str, work_item_ids: Sequence[str], after: date, until: date
+    ) -> list[DeveloperBlocker]:
+        if not work_item_ids:
+            return []
+        with _tracer.start_as_current_span("postgres.status.blockers_on_work_items"):
+            rows = await self._executor.fetch(
+                f"""
+                {_DEVELOPER_BLOCKER_SELECT_SQL}
+                WHERE tenant_id = %s AND work_item_id = ANY(%s)
+                  AND (
+                    (first_seen_on > %s AND first_seen_on <= %s)
+                    OR (resolved_on > %s AND resolved_on <= %s)
+                  )
+                ORDER BY first_seen_on, blocker_id
+                """,
+                (tenant_id, list(work_item_ids), after, until, after, until),
+            )
+        return [_developer_blocker_from_row(row) for row in rows]
+
     async def has_blocker_rows(self, tenant_id: str, developer_id: str) -> bool:
         with _tracer.start_as_current_span("postgres.status.has_blocker_rows"):
             rows = await self._executor.fetch(

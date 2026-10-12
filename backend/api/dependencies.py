@@ -37,6 +37,7 @@ from core.application.risk_service import RiskService
 from core.application.self_status_service import SelfStatusService
 from core.application.sync_status_service import SyncStatusService
 from core.application.task_update_service import TaskUpdateService
+from core.application.timeline_service import TimelineService
 from core.application.writeback_service import WriteBackService
 from core.domain.auth import Principal, Role
 from core.domain.errors import (
@@ -378,6 +379,10 @@ def get_baseline_service(request: Request) -> BaselineService:
 
 def get_delivery_impact_service(request: Request) -> DeliveryImpactService:
     return get_registry(request).delivery_impact_service()
+
+
+def get_timeline_service(request: Request) -> TimelineService:
+    return get_registry(request).timeline_service()
 
 
 def get_gate_service(request: Request) -> GateService:

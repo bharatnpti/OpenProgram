@@ -6946,6 +6946,158 @@
         }
       }
     },
+    "/projects/{project_id}/timeline": {
+      "get": {
+        "tags": ["delivery"],
+        "summary": "Project Timeline",
+        "description": "The project's (or one release's) row, its releases, then its pods worst verdict\nfirst, each from planning to its committed date with progress, the forecast band,\nthe team's date, the committed date's history and the impact markers.",
+        "operationId": "project_timeline_projects__project_id__timeline_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One release of the project.",
+              "title": "Release Id"
+            },
+            "description": "One release of the project."
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pods/{pod_id}/timeline": {
+      "get": {
+        "tags": ["delivery"],
+        "summary": "Pod Timeline",
+        "description": "The pod's row for each project it works on, with the project's committed date as a\nreference tick.",
+        "operationId": "pod_timeline_pods__pod_id__timeline_get",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/gates": {
       "get": {
         "tags": ["gates"],
@@ -27455,6 +27607,526 @@
         "type": "object",
         "required": ["enabled"],
         "title": "TenantWritebackUpdateRequest"
+      },
+      "TimelineAxisResponse": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date",
+            "title": "End"
+          },
+          "today": {
+            "type": "string",
+            "format": "date",
+            "title": "Today"
+          }
+        },
+        "type": "object",
+        "required": ["start", "end", "today"],
+        "title": "TimelineAxisResponse"
+      },
+      "TimelineBaselineResponse": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "reconstructed": {
+            "type": "boolean",
+            "title": "Reconstructed"
+          }
+        },
+        "type": "object",
+        "required": ["day", "reconstructed"],
+        "title": "TimelineBaselineResponse"
+      },
+      "TimelineCommittedResponse": {
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineTickResponse"
+            },
+            "type": "array",
+            "title": "History"
+          }
+        },
+        "type": "object",
+        "required": ["date", "history"],
+        "title": "TimelineCommittedResponse"
+      },
+      "TimelineForecastResponse": {
+        "properties": {
+          "p50": {
+            "type": "string",
+            "format": "date",
+            "title": "P50"
+          },
+          "p85": {
+            "type": "string",
+            "format": "date",
+            "title": "P85"
+          },
+          "on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On"
+          }
+        },
+        "type": "object",
+        "required": ["p50", "p85", "on"],
+        "title": "TimelineForecastResponse"
+      },
+      "TimelineMarkerItemResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScopeGroup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "change_label": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Label"
+          },
+          "added_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added By"
+          },
+          "waits_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waits On"
+          },
+          "hygiene": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hygiene"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "stage",
+          "group",
+          "change_label",
+          "added_by",
+          "waits_on",
+          "hygiene"
+        ],
+        "title": "TimelineMarkerItemResponse"
+      },
+      "TimelineMarkerResponse": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineMarkerItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "change_label": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Label"
+          }
+        },
+        "type": "object",
+        "required": ["day", "kind", "count", "items", "change_label"],
+        "title": "TimelineMarkerResponse",
+        "description": "One kind of event on one day, on a row's impact lane."
+      },
+      "TimelineProgressResponse": {
+        "properties": {
+          "done": {
+            "type": "number",
+            "title": "Done"
+          },
+          "total": {
+            "type": "number",
+            "title": "Total"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          }
+        },
+        "type": "object",
+        "required": ["done", "total", "unit"],
+        "title": "TimelineProgressResponse"
+      },
+      "TimelineResponse": {
+        "properties": {
+          "axis": {
+            "$ref": "#/components/schemas/TimelineAxisResponse"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineRowResponse"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "text": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineTextResponse"
+            },
+            "type": "array",
+            "title": "Text"
+          },
+          "change_label": {
+            "type": "string",
+            "title": "Change Label"
+          }
+        },
+        "type": "object",
+        "required": ["axis", "rows", "text", "change_label"],
+        "title": "TimelineResponse",
+        "description": "A project's or a pod's timeline: the axis, the rows, and each row in words."
+      },
+      "TimelineRowResponse": {
+        "properties": {
+          "row": {
+            "type": "string",
+            "title": "Row"
+          },
+          "scope_kind": {
+            "$ref": "#/components/schemas/CommitmentScopeKind"
+          },
+          "scope_id": {
+            "type": "string",
+            "title": "Scope Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "access": {
+            "$ref": "#/components/schemas/NodeAccess"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Verdict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimelineBaselineResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start": {
+            "type": "string",
+            "format": "date",
+            "title": "Start"
+          },
+          "committed": {
+            "$ref": "#/components/schemas/TimelineCommittedResponse"
+          },
+          "jira_release_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Release Date"
+          },
+          "forecast": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimelineForecastResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "forecast_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forecast Reason"
+          },
+          "team": {
+            "$ref": "#/components/schemas/TimelineTeamResponse"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimelineProgressResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimelineScopeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "markers": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineMarkerResponse"
+            },
+            "type": "array",
+            "title": "Markers"
+          },
+          "reference_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Date"
+          },
+          "can_set_date": {
+            "type": "boolean",
+            "title": "Can Set Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "row",
+          "scope_kind",
+          "scope_id",
+          "project_id",
+          "project_name",
+          "name",
+          "access",
+          "verdict",
+          "baseline",
+          "start",
+          "committed",
+          "jira_release_date",
+          "forecast",
+          "forecast_reason",
+          "team",
+          "progress",
+          "scope",
+          "markers",
+          "reference_date",
+          "can_set_date"
+        ],
+        "title": "TimelineRowResponse"
+      },
+      "TimelineScopeResponse": {
+        "properties": {
+          "at_baseline": {
+            "type": "integer",
+            "title": "At Baseline"
+          },
+          "now": {
+            "type": "integer",
+            "title": "Now"
+          }
+        },
+        "type": "object",
+        "required": ["at_baseline", "now"],
+        "title": "TimelineScopeResponse"
+      },
+      "TimelineTeamResponse": {
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "undated": {
+            "type": "integer",
+            "title": "Undated"
+          }
+        },
+        "type": "object",
+        "required": ["date", "key", "undated"],
+        "title": "TimelineTeamResponse"
+      },
+      "TimelineTextResponse": {
+        "properties": {
+          "row": {
+            "type": "string",
+            "title": "Row"
+          },
+          "scope_id": {
+            "type": "string",
+            "title": "Scope Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          }
+        },
+        "type": "object",
+        "required": ["row", "scope_id", "project_id", "sentence"],
+        "title": "TimelineTextResponse",
+        "description": "The spoken summary of one row, worded by the server."
+      },
+      "TimelineTickResponse": {
+        "properties": {
+          "on": {
+            "type": "string",
+            "format": "date",
+            "title": "On"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          }
+        },
+        "type": "object",
+        "required": ["on", "date"],
+        "title": "TimelineTickResponse",
+        "description": "One value the committed date took, and the day it was set."
       },
       "TrackedQuestionResponse": {
         "properties": {

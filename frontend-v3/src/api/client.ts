@@ -145,6 +145,10 @@ import type {
   SyncStatusResponse,
   BrandingResponse,
   TenantLogoUploadRequest,
+  TimelineResponse,
+  DeliveryImpactResponse,
+  PeriodKind,
+  Measure,
 } from "./schema";
 import { learnServerToday, withViewingAsOf } from "./asOf";
 import { readNdjson } from "./ndjson";
@@ -688,6 +692,39 @@ export const apiClient = {
     }),
   podDelivery: (podId: string, asOf?: string) =>
     requestJson<PodDeliveryResponse>(withAsOf(`/pods/${encodeURIComponent(podId)}/delivery`, asOf)),
+  /** The project's (or one release's) timeline: its row, its releases, then its pods. */
+  projectTimeline: (projectId: string, releaseId?: string, asOf?: string) =>
+    requestJson<TimelineResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/timeline`, {
+        as_of: asOf,
+        release_id: releaseId,
+      }),
+    ),
+  /** A pod's own timeline row, for each project it works on. */
+  podTimeline: (podId: string, asOf?: string) =>
+    requestJson<TimelineResponse>(withAsOf(`/pods/${encodeURIComponent(podId)}/timeline`, asOf)),
+  /** Why a project's, release's or pod's date moved over a period, taken apart. */
+  deliveryImpact: (
+    projectId: string,
+    options: {
+      period: PeriodKind;
+      from?: string;
+      measure?: Measure;
+      releaseId?: string;
+      podId?: string;
+      asOf?: string;
+    },
+  ) =>
+    requestJson<DeliveryImpactResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/delivery/impact`, {
+        period: options.period,
+        from: options.from,
+        measure: options.measure,
+        release_id: options.releaseId,
+        pod_id: options.podId,
+        as_of: options.asOf,
+      }),
+    ),
   setProjectDate: (projectId: string, body: DeliveryDateRequest) =>
     requestJson<CommitmentResponse>(`/projects/${encodeURIComponent(projectId)}/delivery-date`, {
       method: "PUT",

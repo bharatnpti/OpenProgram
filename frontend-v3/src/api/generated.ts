@@ -1516,6 +1516,49 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/projects/{project_id}/timeline": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Project Timeline
+     * @description The project's (or one release's) row, its releases, then its pods worst verdict
+     *     first, each from planning to its committed date with progress, the forecast band,
+     *     the team's date, the committed date's history and the impact markers.
+     */
+    get: operations["project_timeline_projects__project_id__timeline_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/pods/{pod_id}/timeline": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Pod Timeline
+     * @description The pod's row for each project it works on, with the project's committed date as a
+     *     reference tick.
+     */
+    get: operations["pod_timeline_pods__pod_id__timeline_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/gates": {
     parameters: {
       query?: never;
@@ -8742,6 +8785,197 @@ export interface components {
       /** Enabled */
       enabled: boolean;
     };
+    /** TimelineAxisResponse */
+    TimelineAxisResponse: {
+      /**
+       * Start
+       * Format: date
+       */
+      start: string;
+      /**
+       * End
+       * Format: date
+       */
+      end: string;
+      /**
+       * Today
+       * Format: date
+       */
+      today: string;
+    };
+    /** TimelineBaselineResponse */
+    TimelineBaselineResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** Reconstructed */
+      reconstructed: boolean;
+    };
+    /** TimelineCommittedResponse */
+    TimelineCommittedResponse: {
+      /** Date */
+      date: string | null;
+      /** History */
+      history: components["schemas"]["TimelineTickResponse"][];
+    };
+    /** TimelineForecastResponse */
+    TimelineForecastResponse: {
+      /**
+       * P50
+       * Format: date
+       */
+      p50: string;
+      /**
+       * P85
+       * Format: date
+       */
+      p85: string;
+      /** On */
+      on: string | null;
+    };
+    /** TimelineMarkerItemResponse */
+    TimelineMarkerItemResponse: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      stage: components["schemas"]["DeliveryStage"] | null;
+      group: components["schemas"]["ScopeGroup"] | null;
+      /** Change Label */
+      change_label: boolean | null;
+      /** Added By */
+      added_by: string | null;
+      /** Waits On */
+      waits_on: string | null;
+      /** Hygiene */
+      hygiene: boolean | null;
+    };
+    /**
+     * TimelineMarkerResponse
+     * @description One kind of event on one day, on a row's impact lane.
+     */
+    TimelineMarkerResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** Kind */
+      kind: string;
+      /** Count */
+      count: number;
+      /** Items */
+      items: components["schemas"]["TimelineMarkerItemResponse"][];
+      /** Change Label */
+      change_label: boolean | null;
+    };
+    /** TimelineProgressResponse */
+    TimelineProgressResponse: {
+      /** Done */
+      done: number;
+      /** Total */
+      total: number;
+      /** Unit */
+      unit: string;
+    };
+    /**
+     * TimelineResponse
+     * @description A project's or a pod's timeline: the axis, the rows, and each row in words.
+     */
+    TimelineResponse: {
+      axis: components["schemas"]["TimelineAxisResponse"];
+      /** Rows */
+      rows: components["schemas"]["TimelineRowResponse"][];
+      /** Text */
+      text: components["schemas"]["TimelineTextResponse"][];
+      /** Change Label */
+      change_label: string;
+    };
+    /** TimelineRowResponse */
+    TimelineRowResponse: {
+      /** Row */
+      row: string;
+      scope_kind: components["schemas"]["CommitmentScopeKind"];
+      /** Scope Id */
+      scope_id: string;
+      /** Project Id */
+      project_id: string;
+      /** Project Name */
+      project_name: string;
+      /** Name */
+      name: string;
+      access: components["schemas"]["NodeAccess"];
+      verdict: components["schemas"]["Verdict"] | null;
+      baseline: components["schemas"]["TimelineBaselineResponse"] | null;
+      /**
+       * Start
+       * Format: date
+       */
+      start: string;
+      committed: components["schemas"]["TimelineCommittedResponse"];
+      /** Jira Release Date */
+      jira_release_date: string | null;
+      forecast: components["schemas"]["TimelineForecastResponse"] | null;
+      /** Forecast Reason */
+      forecast_reason: string | null;
+      team: components["schemas"]["TimelineTeamResponse"];
+      progress: components["schemas"]["TimelineProgressResponse"] | null;
+      scope: components["schemas"]["TimelineScopeResponse"] | null;
+      /** Markers */
+      markers: components["schemas"]["TimelineMarkerResponse"][];
+      /** Reference Date */
+      reference_date: string | null;
+      /** Can Set Date */
+      can_set_date: boolean;
+    };
+    /** TimelineScopeResponse */
+    TimelineScopeResponse: {
+      /** At Baseline */
+      at_baseline: number;
+      /** Now */
+      now: number;
+    };
+    /** TimelineTeamResponse */
+    TimelineTeamResponse: {
+      /** Date */
+      date: string | null;
+      /** Key */
+      key: string | null;
+      /** Undated */
+      undated: number;
+    };
+    /**
+     * TimelineTextResponse
+     * @description The spoken summary of one row, worded by the server.
+     */
+    TimelineTextResponse: {
+      /** Row */
+      row: string;
+      /** Scope Id */
+      scope_id: string;
+      /** Project Id */
+      project_id: string;
+      /** Sentence */
+      sentence: string;
+    };
+    /**
+     * TimelineTickResponse
+     * @description One value the committed date took, and the day it was set.
+     */
+    TimelineTickResponse: {
+      /**
+       * On
+       * Format: date
+       */
+      on: string;
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+    };
     /** TrackedQuestionResponse */
     TrackedQuestionResponse: {
       /** Question Id */
@@ -13101,6 +13335,78 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["DeliveryImpactResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_timeline_projects__project_id__timeline_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        /** @description One release of the project. */
+        release_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TimelineResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  pod_timeline_pods__pod_id__timeline_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TimelineResponse"];
         };
       };
       /** @description Validation Error */

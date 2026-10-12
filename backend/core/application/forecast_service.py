@@ -629,8 +629,22 @@ class ForecastService:
         ETA stated by the end of that day and its due date that day."""
         view = await self.scope_delivery(tenant_id, scope, as_of)
         snapshot = await self.scope_snapshot(tenant_id, scope, as_of)
+        return ScopeRequirements(
+            view=view, open=await self.open_requirements(tenant_id, scope, as_of, snapshot)
+        )
+
+    async def open_requirements(
+        self,
+        tenant_id: str,
+        scope: CommitmentScope,
+        as_of: date,
+        snapshot: RequirementsSnapshot | None,
+    ) -> tuple[OpenRequirement, ...]:
+        """The open requirements of the scope's ``snapshot`` of ``as_of``, each with the ETA
+        stated by the end of that day and its due date that day. Stored reads only: no
+        forecast is run, so the timeline reads it on every request."""
         if snapshot is None:
-            return ScopeRequirements(view=view, open=())
+            return ()
         tasks = {
             _task_key(task): task
             for task in await self._delivery.scope_tasks(tenant_id, scope.project_id, as_of)
@@ -652,7 +666,45 @@ class ForecastService:
                     due=due or _due(tasks.get(key)),
                 )
             )
-        return ScopeRequirements(view=view, open=tuple(listed))
+        return tuple(listed)
+
+    async def project_pods(self, tenant_id: str, project_id: str, as_of: date) -> list[GraphNode]:
+        """The pods working on the project on ``as_of``, by name."""
+        return await self._project_pods(tenant_id, project_id, as_of)
+
+    async def pod_keys(
+        self, tenant_id: str, project_id: str, tasks: Mapping[str, GraphNode], as_of: date
+    ) -> dict[str, frozenset[str]]:
+        """Each of the project's pods' keys among ``tasks`` (by key): the ones below the pod."""
+        return await self._pod_keys(tenant_id, project_id, tasks, as_of)
+
+    async def uncounted_bugs(
+        self, tenant_id: str, scope: CommitmentScope, as_of: date
+    ) -> dict[str, GraphNode]:
+        """The scope's bugs that are not counted as requirements on ``as_of``, by issue key:
+        a pod's are the ones below it, a release's the ones it includes."""
+        release = (
+            await self.release(tenant_id, scope.id)
+            if scope.kind is CommitmentScopeKind.RELEASE
+            else None
+        )
+        bugs = {
+            _task_key(task): task
+            for task in await self._delivery.uncounted_bugs(
+                tenant_id, scope.project_id, as_of, release
+            )
+        }
+        if scope.kind is not CommitmentScopeKind.POD or not bugs:
+            return bugs
+        keys = (await self._pod_keys(tenant_id, scope.project_id, bugs, as_of)).get(
+            scope.id, frozenset()
+        )
+        return {key: task for key, task in bugs.items() if key in keys}
+
+    async def jira_release_date(self, tenant_id: str, release: Release, as_of: date) -> date | None:
+        """The release's own date in Jira (a fix version's), from its issues on ``as_of``."""
+        tasks = await self._delivery.scope_tasks(tenant_id, release.project_id, as_of)
+        return _release_date(release, tasks)
 
     async def scope_snapshot(
         self, tenant_id: str, scope: CommitmentScope, day: date

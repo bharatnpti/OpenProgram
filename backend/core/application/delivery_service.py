@@ -304,6 +304,22 @@ class DeliveryService:
             and (release is None or release.includes(task.metadata))
         )
 
+    async def uncounted_bugs(
+        self, tenant_id: str, project_id: str, day: date, release: Release | None = None
+    ) -> tuple[GraphNode, ...]:
+        """The project's (or release's) bugs that do not count as requirements: the ones a
+        forecast never sees, which the timeline marks on the day each was opened."""
+        mapping = (await self.delivery_settings(tenant_id)).settings.mapping
+        owned = await owned_project_tasks(self._graph, tenant_id, [project_id], day)
+        return tuple(
+            task
+            for task in owned.get(project_id, ())
+            if (issue_type := _text(task.metadata.get("issue_type"))) is not None
+            and issue_type.casefold() == "bug"
+            and not mapping.counts_type(issue_type)
+            and (release is None or release.includes(task.metadata))
+        )
+
     # ---- the requirements view -----------------------------------------
 
     async def requirements(
