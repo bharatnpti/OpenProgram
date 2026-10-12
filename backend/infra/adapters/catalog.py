@@ -255,6 +255,7 @@ def build_issue_tracker(
         api_token=settings.jira_api_token,
         deployment=settings.jira_deployment,
         story_points_field=settings.jira_story_points_field,
+        severity_field=settings.jira_severity_field,
         connections=connections,
     )
     if settings.issue_tracker_provider != "fake":

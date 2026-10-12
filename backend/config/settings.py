@@ -248,6 +248,7 @@ class Settings(BaseSettings):
     # Used only while the tenant has no Jira connection set up in admin.
     jira_deployment: Literal["cloud", "data_center"] = "cloud"
     jira_story_points_field: str | None = None
+    jira_severity_field: str | None = None
     github_base_url: str = "https://api.github.com"
     github_token: str | None = None
     github_owner: str | None = None

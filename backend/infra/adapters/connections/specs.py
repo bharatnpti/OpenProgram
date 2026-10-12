@@ -142,6 +142,16 @@ JIRA_SPEC = ConnectorSpec(
                 "requirements instead. Test the connection to pick from Jira's fields."
             ),
         ),
+        ConnectorField(
+            key="severity_field",
+            label="Severity field",
+            kind=FieldKind.TEXT,
+            placeholder="customfield_10050",
+            help=(
+                "The custom field that holds a bug's severity, if you use one. Leave it "
+                "empty if you don't. Test the connection to pick from Jira's fields."
+            ),
+        ),
     ),
 )
 

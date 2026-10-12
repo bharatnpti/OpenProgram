@@ -32,6 +32,7 @@ from core.domain.integrations import (
     CalendarEvent,
     Commit,
     Issue,
+    IssueChange,
     IssueState,
     Project,
     PullRequest,
@@ -115,6 +116,9 @@ async def assert_issue_tracker_contract(
     assert all(isinstance(sprint, Sprint) for sprint in sprints)
     issue = await provider.get_issue("demo", "PO-1")
     assert isinstance(issue, Issue)
+    changes = await provider.list_issue_changes("demo", "PO-1", None)
+    assert all(isinstance(change, IssueChange) for change in changes)
+    assert [change.at for change in changes] == sorted(change.at for change in changes)
     assert await provider.list_active_for(user)
     assert await provider.find_user_by_email("demo", "nobody@example.invalid") is None
     if known_email is not None:

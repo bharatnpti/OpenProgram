@@ -10,6 +10,7 @@ from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationTurn
 from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.directory import DirectoryUser
+from core.domain.errors import ProviderUnavailable
 from core.domain.graph import EntityRef, FactEvent
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
@@ -18,6 +19,7 @@ from core.domain.integrations import (
     CalendarEvent,
     Commit,
     Issue,
+    IssueChange,
     IssueText,
     NewIssue,
     Project,
@@ -77,6 +79,11 @@ class FakeIssueTracker:
     # email -> tracker account id, for find_user_by_email
     user_emails: dict[str, str] = field(default_factory=dict)
     texts: dict[str, IssueText] = field(default_factory=dict)
+    # issue key -> its history; a key in ``failing_changes`` raises instead
+    changes: dict[str, list[IssueChange]] = field(default_factory=dict)
+    failing_changes: set[str] = field(default_factory=set)
+    change_reads: list[tuple[str, datetime | None]] = field(default_factory=list)
+    searches: list[SyncCursor] = field(default_factory=list)
 
     async def list_projects(self, tenant_id: str) -> list[Project]:
         return [project for project in self.projects if project.tenant_id == tenant_id]
@@ -89,6 +96,7 @@ class FakeIssueTracker:
     async def list_issues_for_query(
         self, tenant_id: str, jql: str, cursor: SyncCursor
     ) -> list[Issue]:
+        self.searches.append(cursor)
         project_key = _project_key_from_jql(jql)
         return [
             issue
@@ -107,6 +115,16 @@ class FakeIssueTracker:
 
     async def get_issue(self, tenant_id: str, key: str) -> Issue:
         return self.issues[key]
+
+    async def list_issue_changes(
+        self, tenant_id: str, key: str, since: datetime | None
+    ) -> list[IssueChange]:
+        self.change_reads.append((key, since))
+        if key in self.failing_changes:
+            raise ProviderUnavailable("issue tracker request failed")
+        return [
+            change for change in self.changes.get(key, []) if since is None or change.at > since
+        ]
 
     async def list_active_for(self, assignee: UserRef) -> list[Issue]:
         return [issue for issue in self.issues.values() if issue.assignee == assignee]

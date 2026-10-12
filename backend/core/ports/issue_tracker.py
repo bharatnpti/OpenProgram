@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 
 from core.domain.integrations import (
     Issue,
+    IssueChange,
     IssueText,
     NewIssue,
     Project,
@@ -30,6 +32,16 @@ class IssueTracker(Protocol):
 
     async def get_issue_text(self, tenant_id: str, key: str) -> IssueText:
         """The issue's description and comments as plain text. Read-only, never stored."""
+        ...
+
+    async def list_issue_changes(
+        self, tenant_id: str, key: str, since: datetime | None
+    ) -> list[IssueChange]:
+        """The issue's kept field changes made after ``since`` (all when None), oldest first.
+
+        Read-only. Only the fields ``IssueChangeField`` names are returned, a
+        summary or description change without its text.
+        """
         ...
 
     async def list_active_for(self, assignee: UserRef) -> list[Issue]: ...
