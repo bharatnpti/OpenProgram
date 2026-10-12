@@ -5,6 +5,9 @@ backend/core/ports/forecast.py
 backend/tests/unit/test_baselines.py
   s_22b399281058a2::t_e710f7fd648c33 1-30,32-369,394-458,474-484
   s_22b399281058a2::t_fd2ea312936de6 31,370-393,459-473
+  s_22b399281058a2::t_d7f6e55f21801d 31
+  s_22b399281058a2::t_4f813a045c0c6b 370-393
+  s_22b399281058a2::t_e52cfbf030a51e 461-475
 backend/api/dtos.py
   s_22b399281058a2::t_e710f7fd648c33 4701-4706,4731-4735
 backend/infra/persistence/postgres_baselines.py
