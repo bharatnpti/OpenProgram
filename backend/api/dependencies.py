@@ -25,6 +25,7 @@ from core.application.flow_metrics_service import FlowMetricsService
 from core.application.forecast_service import ForecastService
 from core.application.gate_service import GateService
 from core.application.graph_queries import GraphQueryService
+from core.application.impact_service import DeliveryImpactService
 from core.application.jira_writes_service import JiraWritesService
 from core.application.person_names import PersonNames
 from core.application.persona_views import PersonaViewService, ProviderNames
@@ -261,6 +262,7 @@ def get_ask_service(request: Request) -> AskService:
         forecast_service=get_forecast_service(request),
         delivery_scope_service=get_delivery_scope_service(request),
         release_readiness_service=registry.release_readiness_service(),
+        impact_service=registry.delivery_impact_service(),
         model=settings.default_llm_model,
         max_tool_iterations=settings.ask_max_tool_iterations,
         profile_service=registry.profile_service(),
@@ -364,6 +366,10 @@ def get_forecast_service(request: Request) -> ForecastService:
 
 def get_baseline_service(request: Request) -> BaselineService:
     return get_registry(request).baseline_service()
+
+
+def get_delivery_impact_service(request: Request) -> DeliveryImpactService:
+    return get_registry(request).delivery_impact_service()
 
 
 def get_gate_service(request: Request) -> GateService:

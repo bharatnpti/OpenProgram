@@ -6654,6 +6654,146 @@
         }
       }
     },
+    "/projects/{project_id}/delivery/impact": {
+      "get": {
+        "tags": ["delivery"],
+        "summary": "Delivery Impact",
+        "description": "Why the project's (one release's, one pod's) 85% or 50% date moved over the period:\nthe forecast then and now, each driver in working days with its work items, the\ncommitted date's moves, the team's date, late and undated requirements, the\ntimeline's markers, and what is not known.",
+        "operationId": "delivery_impact_projects__project_id__delivery_impact_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PeriodKind",
+              "default": "since_baseline"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The period's first day, with period=from.",
+              "title": "From"
+            },
+            "description": "The period's first day, with period=from."
+          },
+          {
+            "name": "measure",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Measure",
+              "default": "p85"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One release of the project.",
+              "title": "Release Id"
+            },
+            "description": "One release of the project."
+          },
+          {
+            "name": "pod_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One pod's part of the project.",
+              "title": "Pod Id"
+            },
+            "description": "One pod's part of the project."
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryImpactResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/gates": {
       "get": {
         "tags": ["gates"],
@@ -13663,6 +13803,57 @@
         "enum": ["project", "pod", "release"],
         "title": "CommitmentScopeKind"
       },
+      "CommittedChangeResponse": {
+        "properties": {
+          "from_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Date"
+          },
+          "to_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Date"
+          },
+          "on": {
+            "type": "string",
+            "format": "date",
+            "title": "On"
+          },
+          "by": {
+            "type": "string",
+            "title": "By"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          },
+          "after_added": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "After Added"
+          }
+        },
+        "type": "object",
+        "required": ["from_date", "to_date", "on", "by", "note", "after_added"],
+        "title": "CommittedChangeResponse"
+      },
       "ConfigEdgeResponse": {
         "properties": {
           "from_node_id": {
@@ -15055,6 +15246,193 @@
         "required": ["target_date"],
         "title": "DeliveryDateRequest"
       },
+      "DeliveryImpactResponse": {
+        "properties": {
+          "scope_kind": {
+            "$ref": "#/components/schemas/CommitmentScopeKind"
+          },
+          "scope_id": {
+            "type": "string",
+            "title": "Scope Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodKind"
+          },
+          "period_words": {
+            "type": "string",
+            "title": "Period Words"
+          },
+          "measure": {
+            "$ref": "#/components/schemas/Measure"
+          },
+          "detail": {
+            "$ref": "#/components/schemas/ImpactDetail"
+          },
+          "change_label": {
+            "type": "string",
+            "title": "Change Label"
+          },
+          "baseline_day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Day"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImpactEndResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImpactEndResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "moved_working_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moved Working Days"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "drivers": {
+            "items": {
+              "$ref": "#/components/schemas/ImpactDriverResponse"
+            },
+            "type": "array",
+            "title": "Drivers"
+          },
+          "scope_changes": {
+            "$ref": "#/components/schemas/ScopeChangesResponse"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "committed_changes": {
+            "items": {
+              "$ref": "#/components/schemas/CommittedChangeResponse"
+            },
+            "type": "array",
+            "title": "Committed Changes"
+          },
+          "team_date": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeamDateResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "markers": {
+            "items": {
+              "$ref": "#/components/schemas/MarkerResponse"
+            },
+            "type": "array",
+            "title": "Markers"
+          },
+          "link": {
+            "type": "string",
+            "title": "Link"
+          },
+          "reconstructed_days": {
+            "type": "integer",
+            "title": "Reconstructed Days"
+          },
+          "not_known": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Not Known"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scope_kind",
+          "scope_id",
+          "project_id",
+          "name",
+          "project_name",
+          "period",
+          "period_words",
+          "measure",
+          "detail",
+          "change_label",
+          "baseline_day",
+          "start",
+          "end",
+          "moved_working_days",
+          "unit",
+          "summary",
+          "drivers",
+          "scope_changes",
+          "evidence",
+          "committed_changes",
+          "team_date",
+          "markers",
+          "link",
+          "reconstructed_days",
+          "not_known"
+        ],
+        "title": "DeliveryImpactResponse",
+        "description": "Why one scope's forecast moved over a period: then, now, and each driver between."
+      },
       "DeliveryOutcomeResponse": {
         "properties": {
           "kind": {
@@ -16039,6 +16417,32 @@
         "type": "object",
         "required": ["tenant", "projects"],
         "title": "EscalationOverviewResponse"
+      },
+      "EvidenceResponse": {
+        "properties": {
+          "late": {
+            "items": {
+              "$ref": "#/components/schemas/LateResponse"
+            },
+            "type": "array",
+            "title": "Late"
+          },
+          "more_late": {
+            "type": "integer",
+            "title": "More Late"
+          },
+          "undated": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Undated"
+          }
+        },
+        "type": "object",
+        "required": ["late", "more_late", "undated"],
+        "title": "EvidenceResponse",
+        "description": "What explains pace without a share of its own."
       },
       "FieldConditionDto": {
         "properties": {
@@ -17282,6 +17686,200 @@
         "type": "object",
         "title": "IdentityLinkUpdateRequest"
       },
+      "ImpactDetail": {
+        "type": "string",
+        "enum": ["full", "dates"],
+        "title": "ImpactDetail"
+      },
+      "ImpactDriverResponse": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScopeGroup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "working_days": {
+            "type": "number",
+            "title": "Working Days"
+          },
+          "p50": {
+            "type": "number",
+            "title": "P50"
+          },
+          "p85": {
+            "type": "number",
+            "title": "P85"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImpactItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "more": {
+            "type": "integer",
+            "title": "More"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "group", "working_days", "p50", "p85", "items", "more", "note"],
+        "title": "ImpactDriverResponse"
+      },
+      "ImpactEndResponse": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "p50": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50"
+          },
+          "p85": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P85"
+          },
+          "committed": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Verdict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["day", "p50", "p85", "committed", "verdict"],
+        "title": "ImpactEndResponse"
+      },
+      "ImpactItemResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "working_days": {
+            "type": "number",
+            "title": "Working Days"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScopeGroup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "change_label": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Label"
+          },
+          "added_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "type",
+          "working_days",
+          "day",
+          "group",
+          "change_label",
+          "added_by"
+        ],
+        "title": "ImpactItemResponse"
+      },
       "InvestigateAnswerEvent": {
         "properties": {
           "type": {
@@ -17861,6 +18459,37 @@
         "title": "JiraWritesUpdateRequest",
         "description": "Only what is given changes; a field left out or null keeps its value and source."
       },
+      "LateResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/DeliveryStage"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "date_kind": {
+            "type": "string",
+            "title": "Date Kind"
+          },
+          "working_days_late": {
+            "type": "integer",
+            "title": "Working Days Late"
+          }
+        },
+        "type": "object",
+        "required": ["key", "title", "stage", "date", "date_kind", "working_days_late"],
+        "title": "LateResponse"
+      },
       "LogoContentType": {
         "type": "string",
         "enum": ["image/png", "image/jpeg", "image/webp"],
@@ -17885,6 +18514,91 @@
         "required": ["success", "message", "redirect_url"],
         "title": "LogoutResponse"
       },
+      "MarkerItemResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScopeGroup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "added_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added By"
+          }
+        },
+        "type": "object",
+        "required": ["key", "title", "stage", "group", "added_by"],
+        "title": "MarkerItemResponse"
+      },
+      "MarkerResponse": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MarkerItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "change_label": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Label"
+          }
+        },
+        "type": "object",
+        "required": ["day", "kind", "count", "items", "change_label"],
+        "title": "MarkerResponse",
+        "description": "One kind of event on one day, on the timeline's impact lane."
+      },
       "MatcherKind": {
         "type": "string",
         "enum": ["label", "issue_type", "title_phrase", "title_words", "epic"],
@@ -17894,6 +18608,12 @@
         "type": "string",
         "enum": ["project", "tenant", "default"],
         "title": "MatrixSource"
+      },
+      "Measure": {
+        "type": "string",
+        "enum": ["p85", "p50"],
+        "title": "Measure",
+        "description": "Which forecast date a move is read on: the 85% date, as the verdict reads it."
       },
       "MemberFromDirectoryRequest": {
         "properties": {
@@ -18355,6 +19075,11 @@
         "type": "object",
         "required": ["status", "issues", "issue_types", "stage", "mapped"],
         "title": "ObservedStatusResponse"
+      },
+      "PeriodKind": {
+        "type": "string",
+        "enum": ["since_baseline", "last_7_days", "last_30_days", "since_date_change", "from"],
+        "title": "PeriodKind"
       },
       "PersonaTreeEdgeDto": {
         "properties": {
@@ -23427,6 +24152,58 @@
         "enum": ["schedule", "manual"],
         "title": "RunTrigger"
       },
+      "ScopeChangesResponse": {
+        "properties": {
+          "added": {
+            "items": {
+              "$ref": "#/components/schemas/ImpactItemResponse"
+            },
+            "type": "array",
+            "title": "Added"
+          },
+          "removed": {
+            "items": {
+              "$ref": "#/components/schemas/ImpactItemResponse"
+            },
+            "type": "array",
+            "title": "Removed"
+          },
+          "reopened": {
+            "items": {
+              "$ref": "#/components/schemas/ImpactItemResponse"
+            },
+            "type": "array",
+            "title": "Reopened"
+          },
+          "added_count": {
+            "type": "integer",
+            "title": "Added Count"
+          },
+          "removed_count": {
+            "type": "integer",
+            "title": "Removed Count"
+          },
+          "reopened_count": {
+            "type": "integer",
+            "title": "Reopened Count"
+          },
+          "finished_count": {
+            "type": "integer",
+            "title": "Finished Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "added",
+          "removed",
+          "reopened",
+          "added_count",
+          "removed_count",
+          "reopened_count",
+          "finished_count"
+        ],
+        "title": "ScopeChangesResponse"
+      },
       "ScopeDeliveryResponse": {
         "properties": {
           "scope_kind": {
@@ -23527,6 +24304,12 @@
         ],
         "title": "ScopeDeliveryResponse",
         "description": "One scope's committed date and forecast: a project, a pod's part, or a release."
+      },
+      "ScopeGroup": {
+        "type": "string",
+        "enum": ["change_request", "no_label", "bug", "moved_in", "planned", "before_planning"],
+        "title": "ScopeGroup",
+        "description": "What kind of addition a requirement that joined the scope was."
       },
       "ScopeKind": {
         "type": "string",
@@ -24207,6 +24990,66 @@
         "required": ["task", "status", "tracker"],
         "title": "TaskUpdateResponse"
       },
+      "TeamDateResponse": {
+        "properties": {
+          "from_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Date"
+          },
+          "from_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Key"
+          },
+          "to_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Date"
+          },
+          "to_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Key"
+          },
+          "moves": {
+            "items": {
+              "$ref": "#/components/schemas/TeamMoveResponse"
+            },
+            "type": "array",
+            "title": "Moves"
+          }
+        },
+        "type": "object",
+        "required": ["from_date", "from_key", "to_date", "to_key", "moves"],
+        "title": "TeamDateResponse"
+      },
       "TeamForecastResponse": {
         "properties": {
           "latest": {
@@ -24244,6 +25087,72 @@
         "type": "object",
         "required": ["latest", "latest_key", "dated", "undated"],
         "title": "TeamForecastResponse"
+      },
+      "TeamMoveResponse": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "from_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Date"
+          },
+          "from_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Key"
+          },
+          "to_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Date"
+          },
+          "to_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Key"
+          },
+          "cause": {
+            "type": "string",
+            "title": "Cause"
+          },
+          "words": {
+            "type": "string",
+            "title": "Words"
+          }
+        },
+        "type": "object",
+        "required": ["day", "from_date", "from_key", "to_date", "to_key", "cause", "words"],
+        "title": "TeamMoveResponse"
       },
       "TenantLogoResponse": {
         "properties": {

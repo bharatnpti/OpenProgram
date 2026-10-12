@@ -21,6 +21,7 @@ from api.routers import (
     checkin,
     config,
     delivery,
+    delivery_impact,
     escalation,
     forecast,
     gates,
@@ -149,6 +150,7 @@ def create_app(
     app.include_router(delivery.router)
     app.include_router(forecast.router)
     app.include_router(baselines.router)
+    app.include_router(delivery_impact.router)
     app.include_router(gates.router)
     app.include_router(readiness.router)
     app.include_router(reports.router)

@@ -54,6 +54,7 @@ from core.application.delivery_service import DeliveryService
 from core.application.escalation_matrix_service import EscalationMatrixService
 from core.application.forecast_service import ForecastService, ScopeDeliveryView
 from core.application.gate_service import GateBoardView, GateService, IssueGatesView
+from core.application.impact_service import DeliveryImpactService, ImpactLine
 from core.application.person_names import UNKNOWN_PERSON
 from core.application.persona_views import owned_project_tasks
 from core.application.profile_service import ProfileService
@@ -136,6 +137,8 @@ class _Facts:
     findings: tuple[RiskFinding | DriftFinding, ...]
     #: Blocking release readiness gaps close to their date; none while readiness is off.
     readiness: ReportGaps = ReportGaps()
+    #: Why the 85% date moved since the previous snapshot, when it did.
+    impact: ImpactLine | None = None
 
 
 class DayReportBuilder:
@@ -154,6 +157,7 @@ class DayReportBuilder:
         console_base_url: str | None = None,
         readiness_service: ReleaseReadinessService | None = None,
         profile_service: ProfileService | None = None,
+        impact_service: DeliveryImpactService | None = None,
     ) -> None:
         self._graph = graph_repository
         self._delivery = delivery_service
@@ -168,6 +172,7 @@ class DayReportBuilder:
         # Who brings what to each pod: names asks' owners with a chosen profile,
         # and finds the holder a readiness criterion's profile asks for.
         self._profiles = profile_service
+        self._impact = impact_service
         self._console_base_url = console_base_url.rstrip("/") if console_base_url else None
 
     async def build(
@@ -254,11 +259,12 @@ class DayReportBuilder:
     ) -> _Facts:
         release = await self._release(tenant_id, project_id, release_id)
         scope = await self._scope(tenant_id, project_id, day, release)
+        previous = await self._delivery.previous_snapshot(tenant_id, project_id, day, release)
         return _Facts(
             scope=scope,
             release=release,
             snapshot=await self._delivery.snapshot(tenant_id, project_id, day, release),
-            previous=await self._delivery.previous_snapshot(tenant_id, project_id, day, release),
+            previous=previous,
             delivery=await self._delivery_view(tenant_id, project_id, day, release),
             board=await self._gates.board(tenant_id, project_id, day, release),
             matrix=(await self._escalation.matrix_for(tenant_id, project_id)).matrix,
@@ -271,7 +277,29 @@ class DayReportBuilder:
                 if self._readiness is not None
                 else ReportGaps()
             ),
+            impact=await self._impact_line(tenant_id, project_id, release, previous, day),
         )
+
+    async def _impact_line(
+        self,
+        tenant_id: str,
+        project_id: str,
+        release: Release | None,
+        previous: RequirementsSnapshot | None,
+        day: date,
+    ) -> ImpactLine | None:
+        """Why the 85% date moved since the previous snapshot, as one line (lane E)."""
+        if self._impact is None or previous is None:
+            return None
+        scope = CommitmentScope(
+            kind=CommitmentScopeKind.RELEASE if release else CommitmentScopeKind.PROJECT,
+            id=release.release_id if release else project_id,
+            project_id=project_id,
+        )
+        try:
+            return await self._impact.report_line(tenant_id, scope, since=previous.day, day=day)
+        except GraphNotFound:
+            return None
 
     async def _release(
         self, tenant_id: str, project_id: str, release_id: str | None
@@ -511,6 +539,8 @@ def _stand(facts: _Facts, day: date) -> _Stand:
     since = previous.day if previous is not None else None
     moves, more, scope_line = _move_parts(previous, snapshot)
     date_lines = tuple(_date_lines(facts.delivery, since, day))
+    if facts.impact is not None:
+        date_lines += (facts.impact.text,)
     placeholder = None
     if not (moves or more or scope_line or date_lines):
         placeholder = (
@@ -580,6 +610,8 @@ def _most_important(facts: _Facts) -> tuple[str, ...]:
     # the cap below never folds one into "and N more". Without one, the order
     # is what it always was.
     lines: list[str] = list(facts.readiness.lines)
+    if facts.impact is not None and facts.impact.leads:
+        lines.append(facts.impact.text)
     lines.extend(_date_reasons(facts))
     lines.extend(_bypass_line(issue) for issue in facts.board.issues if issue.passed_without)
     lines.extend(_risk_lines(facts))

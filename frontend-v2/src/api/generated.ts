@@ -1449,6 +1449,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/projects/{project_id}/delivery/impact": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Delivery Impact
+     * @description Why the project's (one release's, one pod's) 85% or 50% date moved over the period:
+     *     the forecast then and now, each driver in working days with its work items, the
+     *     committed date's moves, the team's date, late and undated requirements, the
+     *     timeline's markers, and what is not known.
+     */
+    get: operations["delivery_impact_projects__project_id__delivery_impact_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/gates": {
     parameters: {
       query?: never;
@@ -3534,6 +3557,24 @@ export interface components {
      * @enum {string}
      */
     CommitmentScopeKind: "project" | "pod" | "release";
+    /** CommittedChangeResponse */
+    CommittedChangeResponse: {
+      /** From Date */
+      from_date: string | null;
+      /** To Date */
+      to_date: string | null;
+      /**
+       * On
+       * Format: date
+       */
+      on: string;
+      /** By */
+      by: string;
+      /** Note */
+      note: string;
+      /** After Added */
+      after_added: string[];
+    };
     /** ConfigEdgeResponse */
     ConfigEdgeResponse: {
       /** From Node Id */
@@ -4051,6 +4092,53 @@ export interface components {
        */
       note: string;
     };
+    /**
+     * DeliveryImpactResponse
+     * @description Why one scope's forecast moved over a period: then, now, and each driver between.
+     */
+    DeliveryImpactResponse: {
+      scope_kind: components["schemas"]["CommitmentScopeKind"];
+      /** Scope Id */
+      scope_id: string;
+      /** Project Id */
+      project_id: string;
+      /** Name */
+      name: string;
+      /** Project Name */
+      project_name: string;
+      period: components["schemas"]["PeriodKind"];
+      /** Period Words */
+      period_words: string;
+      measure: components["schemas"]["Measure"];
+      detail: components["schemas"]["ImpactDetail"];
+      /** Change Label */
+      change_label: string;
+      /** Baseline Day */
+      baseline_day: string | null;
+      start: components["schemas"]["ImpactEndResponse"] | null;
+      end: components["schemas"]["ImpactEndResponse"] | null;
+      /** Moved Working Days */
+      moved_working_days: number | null;
+      /** Unit */
+      unit: string | null;
+      /** Summary */
+      summary: string;
+      /** Drivers */
+      drivers: components["schemas"]["ImpactDriverResponse"][];
+      scope_changes: components["schemas"]["ScopeChangesResponse"];
+      evidence: components["schemas"]["EvidenceResponse"] | null;
+      /** Committed Changes */
+      committed_changes: components["schemas"]["CommittedChangeResponse"][];
+      team_date: components["schemas"]["TeamDateResponse"] | null;
+      /** Markers */
+      markers: components["schemas"]["MarkerResponse"][];
+      /** Link */
+      link: string;
+      /** Reconstructed Days */
+      reconstructed_days: number;
+      /** Not Known */
+      not_known: string[];
+    };
     /** DeliveryOutcomeResponse */
     DeliveryOutcomeResponse: {
       kind: components["schemas"]["DestinationKind"];
@@ -4391,6 +4479,18 @@ export interface components {
       tenant: components["schemas"]["EscalationMatrixResponse"];
       /** Projects */
       projects: components["schemas"]["EscalationMatrixResponse"][];
+    };
+    /**
+     * EvidenceResponse
+     * @description What explains pace without a share of its own.
+     */
+    EvidenceResponse: {
+      /** Late */
+      late: components["schemas"]["LateResponse"][];
+      /** More Late */
+      more_late: number;
+      /** Undated */
+      undated: string[];
     };
     /**
      * FieldConditionDto
@@ -4867,6 +4967,62 @@ export interface components {
       vcs_username?: string | null;
     };
     /**
+     * ImpactDetail
+     * @enum {string}
+     */
+    ImpactDetail: "full" | "dates";
+    /** ImpactDriverResponse */
+    ImpactDriverResponse: {
+      /** Kind */
+      kind: string;
+      group: components["schemas"]["ScopeGroup"] | null;
+      /** Working Days */
+      working_days: number;
+      /** P50 */
+      p50: number;
+      /** P85 */
+      p85: number;
+      /** Items */
+      items: components["schemas"]["ImpactItemResponse"][];
+      /** More */
+      more: number;
+      /** Note */
+      note: string;
+    };
+    /** ImpactEndResponse */
+    ImpactEndResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** P50 */
+      p50: string | null;
+      /** P85 */
+      p85: string | null;
+      /** Committed */
+      committed: string | null;
+      verdict: components["schemas"]["Verdict"] | null;
+    };
+    /** ImpactItemResponse */
+    ImpactItemResponse: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      /** Type */
+      type: string | null;
+      /** Working Days */
+      working_days: number;
+      /** Day */
+      day: string | null;
+      group: components["schemas"]["ScopeGroup"] | null;
+      /** Change Label */
+      change_label: boolean | null;
+      /** Added By */
+      added_by: string | null;
+    };
+    /**
      * InvestigateAnswerEvent
      * @description The last line of an answered investigation.
      */
@@ -5110,6 +5266,23 @@ export interface components {
       readiness_create?: boolean | null;
       create_projects?: components["schemas"]["JiraCreateProjectsUpdate"] | null;
     };
+    /** LateResponse */
+    LateResponse: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      stage: components["schemas"]["DeliveryStage"];
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      /** Date Kind */
+      date_kind: string;
+      /** Working Days Late */
+      working_days_late: number;
+    };
     /**
      * LogoContentType
      * @enum {string}
@@ -5124,6 +5297,36 @@ export interface components {
       /** Redirect Url */
       redirect_url: string;
     };
+    /** MarkerItemResponse */
+    MarkerItemResponse: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      stage: components["schemas"]["DeliveryStage"] | null;
+      group: components["schemas"]["ScopeGroup"] | null;
+      /** Added By */
+      added_by: string | null;
+    };
+    /**
+     * MarkerResponse
+     * @description One kind of event on one day, on the timeline's impact lane.
+     */
+    MarkerResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** Kind */
+      kind: string;
+      /** Count */
+      count: number;
+      /** Items */
+      items: components["schemas"]["MarkerItemResponse"][];
+      /** Change Label */
+      change_label: boolean | null;
+    };
     /**
      * MatcherKind
      * @enum {string}
@@ -5134,6 +5337,12 @@ export interface components {
      * @enum {string}
      */
     MatrixSource: "project" | "tenant" | "default";
+    /**
+     * Measure
+     * @description Which forecast date a move is read on: the 85% date, as the verdict reads it.
+     * @enum {string}
+     */
+    Measure: "p85" | "p50";
     /** MemberFromDirectoryRequest */
     MemberFromDirectoryRequest: {
       /** External Ids */
@@ -5317,6 +5526,11 @@ export interface components {
        */
       mapped: boolean;
     };
+    /**
+     * PeriodKind
+     * @enum {string}
+     */
+    PeriodKind: "since_baseline" | "last_7_days" | "last_30_days" | "since_date_change" | "from";
     /** PersonaTreeEdgeDto */
     PersonaTreeEdgeDto: {
       /** From Node Id */
@@ -7268,6 +7482,23 @@ export interface components {
      * @enum {string}
      */
     RunTrigger: "schedule" | "manual";
+    /** ScopeChangesResponse */
+    ScopeChangesResponse: {
+      /** Added */
+      added: components["schemas"]["ImpactItemResponse"][];
+      /** Removed */
+      removed: components["schemas"]["ImpactItemResponse"][];
+      /** Reopened */
+      reopened: components["schemas"]["ImpactItemResponse"][];
+      /** Added Count */
+      added_count: number;
+      /** Removed Count */
+      removed_count: number;
+      /** Reopened Count */
+      reopened_count: number;
+      /** Finished Count */
+      finished_count: number;
+    };
     /**
      * ScopeDeliveryResponse
      * @description One scope's committed date and forecast: a project, a pod's part, or a release.
@@ -7297,6 +7528,12 @@ export interface components {
       /** Open */
       open: number;
     };
+    /**
+     * ScopeGroup
+     * @description What kind of addition a requirement that joined the scope was.
+     * @enum {string}
+     */
+    ScopeGroup: "change_request" | "no_label" | "bug" | "moved_in" | "planned" | "before_planning";
     /**
      * ScopeKind
      * @enum {string}
@@ -7566,6 +7803,19 @@ export interface components {
       status: components["schemas"]["MyStatusResponse"];
       tracker: components["schemas"]["TaskTrackerResultDto"] | null;
     };
+    /** TeamDateResponse */
+    TeamDateResponse: {
+      /** From Date */
+      from_date: string | null;
+      /** From Key */
+      from_key: string | null;
+      /** To Date */
+      to_date: string | null;
+      /** To Key */
+      to_key: string | null;
+      /** Moves */
+      moves: components["schemas"]["TeamMoveResponse"][];
+    };
     /** TeamForecastResponse */
     TeamForecastResponse: {
       /** Latest */
@@ -7576,6 +7826,26 @@ export interface components {
       dated: number;
       /** Undated */
       undated: number;
+    };
+    /** TeamMoveResponse */
+    TeamMoveResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** From Date */
+      from_date: string | null;
+      /** From Key */
+      from_key: string | null;
+      /** To Date */
+      to_date: string | null;
+      /** To Key */
+      to_key: string | null;
+      /** Cause */
+      cause: string;
+      /** Words */
+      words: string;
     };
     /**
      * TenantLogoResponse
@@ -11848,6 +12118,49 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PlanningBaselineResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  delivery_impact_projects__project_id__delivery_impact_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        period?: components["schemas"]["PeriodKind"];
+        /** @description The period's first day, with period=from. */
+        from?: string | null;
+        measure?: components["schemas"]["Measure"];
+        /** @description One release of the project. */
+        release_id?: string | null;
+        /** @description One pod's part of the project. */
+        pod_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeliveryImpactResponse"];
         };
       };
       /** @description Validation Error */

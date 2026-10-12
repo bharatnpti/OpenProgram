@@ -22,12 +22,14 @@ from core.application.cross_person_service import CrossPersonRequestService
 from core.application.day_report_builder import DayReportBuilder
 from core.application.day_report_service import DayReportService
 from core.application.dead_letter_service import DeadLetterService
+from core.application.delivery_scope import DeliveryScopeService
 from core.application.delivery_service import DeliveryService
 from core.application.directory_sync_service import DirectorySyncService
 from core.application.escalation_matrix_service import EscalationMatrixService
 from core.application.forecast_service import ForecastService
 from core.application.gate_extraction import ModelItemFinder
 from core.application.gate_service import GateService
+from core.application.impact_service import DeliveryImpactService
 from core.application.jira_writes_service import JiraWritesService
 from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.profile_service import ProfileService
@@ -569,6 +571,21 @@ class ServiceRegistry:
             today=date.today,
         )
 
+    def delivery_impact_service(self) -> DeliveryImpactService:
+        """Why the date moved: the forecast_days breakdowns, summed and explained."""
+        return DeliveryImpactService(
+            forecast_service=self.forecast_service(),
+            baseline_service=self.baseline_service(),
+            delivery_scope_service=DeliveryScopeService(
+                self.graph_repository(), self.rollup_repository(), today=self._tenant_today
+            ),
+            commitment_repository=self.commitment_repository(),
+            graph_repository=self.graph_repository(),
+            time_series_repository=self.time_series_repository(),
+            today=self._tenant_today,
+            zone=self._tenant_zone(),
+        )
+
     def gate_repositories(
         self,
     ) -> tuple[GateTemplateRepository, GateItemRepository, QuestionRepository, IssueScanRepository]:
@@ -755,6 +772,7 @@ class ServiceRegistry:
             console_base_url=self.settings.public_console_url,
             readiness_service=self.release_readiness_service(),
             profile_service=self.profile_service(),
+            impact_service=self.delivery_impact_service(),
         )
 
     def day_report_service(self) -> DayReportService:

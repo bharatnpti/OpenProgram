@@ -644,6 +644,19 @@ Functional requirements:
   - A day the hourly run kept is never replaced.
 - The forecast's history (4.28) shall read past days from the kept rows and replay only the days nobody kept. Today is always live. Rebuilt days are marked, and the slip chart says the forecast up to a day was rebuilt afterwards.
 
+### 4.34 Why the Date Moved
+
+**Business requirement:** Product owners, managers and executives shall see what moved a project's, release's or pod's forecast, in working days, and which work items were behind it: scope added after planning (with or without the change label), work finished, requirements closing late.
+
+Functional requirements:
+
+- Each kept forecast day shall say why its forecast moved since the scope's day before: the move replayed one input at a time under the day's own seed, so the parts add up exactly to the real move. The drivers are time passed and work finished (read together as pace), scope added, scope removed, reopened, re-estimated, throughput (the history window changing) and the replay's rounding. Scope is shared among its items: equally by count, by story points when the forecast counts points. The hourly run keeps it with each project's, pod's and release's row; the reconstruction rebuilds it for earlier days.
+- A period (since planning, the last 7 or 30 days, since the committed date last changed, or from a named day) shall add up its days. A day that kept no breakdown shall be shown as not attributed, so the parts still add up.
+- Added scope shall be grouped as change requests (carrying the planning baseline's change label, tenant data), additions without the label, bugs, moved in from another release or project, planned, or added before planning was complete. Each item shall carry the day it joined and, for readers other than executives, who brought it in: the author of the change that did, else its creator or reporter. Nothing shall count or rank additions per person.
+- Beside the drivers: each move of the committed date with who, when and why (and the additions just before it); the team's latest date at both ends with what moved it; and, as evidence that never gets a share, requirements open past their due date, ETA or baseline due date, and those with no date.
+- The day report shall add one line under "What changed" when the 85% date moved since the previous report, naming the items; it shall lead "Most important" when the verdict worsened or the date moved three working days later or more.
+- Ask (Ora) shall answer "why did the date move" and "what impacted the timeline" from `delivery_impact`, read-only, with the same gate as the read: a project's readers, a scrum master for their own projects and pods (another pod's dates only), never a developer. Its answer shall carry the timeline's markers and the link to the scope's row. The same data is served by `GET /projects/{id}/delivery/impact`.
+
 ## 5. Key Business Data Flows
 
 ### 5.1 Read Sync Flow

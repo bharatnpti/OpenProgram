@@ -224,6 +224,22 @@ class BaselineService:
         listed = await self._baselines.list_for_scope(tenant_id, scope_kind, scope_id)
         return next((baseline for baseline in reversed(listed) if baseline.active), None)
 
+    async def baseline_on(
+        self, tenant_id: str, scope_kind: BaselineScopeKind, scope_id: str, day: date
+    ) -> PlanningBaseline | None:
+        """The scope's baseline in force at the end of ``day``: set by then, not yet replaced."""
+        cutoff = self._end_of(day)
+        listed = await self._baselines.list_for_scope(tenant_id, scope_kind, scope_id)
+        return next(
+            (
+                baseline
+                for baseline in reversed(listed)
+                if baseline.set_at < cutoff
+                and (baseline.superseded_at is None or baseline.superseded_at >= cutoff)
+            ),
+            None,
+        )
+
     # ---- what is frozen ----------------------------------------------------
 
     async def _items_now(

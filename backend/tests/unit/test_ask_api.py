@@ -72,6 +72,12 @@ _ANY_REST_TWIN: dict[str, tuple[tuple[str, str], ...]] = {
         ("GET", f"/projects/project-own/delivery?as_of={AS_OF}"),
         ("GET", f"/pods/pod-own/delivery?as_of={AS_OF}"),
     ),
+    # What moved a date: a project's readers, and a scrum master for their own
+    # projects and pods (DeliveryImpactService.access); never a developer.
+    "delivery_impact": (
+        ("GET", f"/projects/project-own/delivery/impact?as_of={AS_OF}"),
+        ("GET", f"/projects/project-own/delivery/impact?pod_id=pod-own&as_of={AS_OF}"),
+    ),
     # The same for a readiness board: a scrum master reads the projects their own
     # pods work on, and a pod's board is its scrum master's (readiness_access).
     "release_readiness": (
@@ -138,6 +144,7 @@ def _ask_service(store: InMemoryGraphStore, registry: ServiceRegistry) -> AskSer
         forecast_service=registry.forecast_service(),
         delivery_scope_service=DeliveryScopeService(store, store),
         release_readiness_service=registry.release_readiness_service(),
+        impact_service=registry.delivery_impact_service(),
         model="test-model",
     )
 
