@@ -308,3 +308,31 @@ def test_executives_still_read_no_pod_checkins(client: TestClient) -> None:
     response = client.get("/pods/pod-anything/checkins", headers=_as("exec"))
 
     assert response.status_code == 403
+
+
+def test_the_directory_counts_members_with_no_chat_id_and_no_jira_account(
+    client: TestClient,
+) -> None:
+    registry = client.app.state.registry  # type: ignore[attr-defined]
+    graph = registry.graph_repository()
+    links = registry.identity_link_repository()
+    asyncio.run(graph.upsert_node(Developer(tenant_id="demo", id="U1002", name="Liam Chen")))
+    asyncio.run(graph.upsert_node(Developer(tenant_id="demo", id="U1003", name="Mina Patel")))
+    asyncio.run(
+        links.upsert_identity_link(
+            IdentityLink(
+                tenant_id="demo", developer_id="U1002", chat_user_id="U1002", jira_email="l@x.test"
+            )
+        )
+    )
+    asyncio.run(
+        links.upsert_identity_link(
+            IdentityLink(tenant_id="demo", developer_id="U1003", chat_user_id="U1003")
+        )
+    )
+
+    body = client.get("/config/members/identity-counts", headers=_as("admin")).json()
+
+    # Asha has no link at all; Mina a chat id and no Jira account; Liam a Jira email.
+    assert body == {"members": 3, "without_chat_id": 1, "without_jira_account": 2}
+    assert client.get("/config/members/identity-counts", headers=_as("sm")).status_code == 403

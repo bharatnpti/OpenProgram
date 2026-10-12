@@ -209,6 +209,8 @@ test("a folded board says how many replied that day, and flags anyone not green"
   assert.deepEqual(checkinsSummary(board, "today"), {
     text: "4 of 6 replied today · 1 partly",
     attention: 2,
+    noData: "",
+    fixedInDirectory: false,
   });
   assert.equal(
     checkinsSummary(board, "on Mon 5 Oct").text,
@@ -224,10 +226,17 @@ test("a folded board says how many replied that day, and flags anyone not green"
   assert.deepEqual(checkinsSummary(allGreen, "today"), {
     text: "2 of 2 replied today",
     attention: 0,
+    noData: "",
+    fixedInDirectory: false,
   });
   assert.deepEqual(
     checkinsSummary({ confirmed: 0, partial: 0, stale: 0, missing: 0, developers: [] }, "today"),
-    { text: "Nobody in this pod is asked to check in.", attention: 0 },
+    {
+      text: "Nobody in this pod is asked to check in.",
+      attention: 0,
+      noData: "",
+      fixedInDirectory: false,
+    },
   );
   assert.equal(followUpWords(2), "2 to follow up");
 });
@@ -247,10 +256,11 @@ test("the folded board says how the day was captured: from Jira and no data, wit
     },
     developers: [],
   };
-  assert.equal(
-    checkinsSummary(board, "today").text,
-    "6 of 10 replied today · 3 from Jira · 1 no data (no Jira link)",
-  );
+  const summary = checkinsSummary(board, "today");
+  assert.equal(summary.text, "6 of 10 replied today · 3 from Jira");
+  // Said after it, linked to Admin › Directory where a Jira link is set.
+  assert.equal(summary.noData, "1 no data (no Jira link)");
+  assert.equal(summary.fixedInDirectory, true);
 });
 
 test("a day inferred from Jira reads its evidence, and a filled day its own first words", () => {
@@ -258,7 +268,7 @@ test("a day inferred from Jira reads its evidence, and a filled day its own firs
     state: "stale" as const,
     source: "inferred" as const,
     status_as_of: "2026-10-06",
-    summary: "Not asked today. Inferred from Jira: CHK-4 moved to In Review (in development).",
+    summary: "Not asked today. From Jira: CHK-4 moved to In Review (in development).",
     evidence: ["CHK-4 moved to In Review (in development)"],
   };
   assert.deepEqual(boardWord(inferred, "2026-10-06"), {
@@ -271,7 +281,7 @@ test("a day inferred from Jira reads its evidence, and a filled day its own firs
   );
   const withoutStatus = {
     ...inferred,
-    summary: "Replied without a status update. Inferred from Jira: CHK-4 moved to In Review.",
+    summary: "Replied without a status update. From Jira: CHK-4 moved to In Review.",
   };
   assert.equal(
     boardMeta(withoutStatus, "2026-10-06", { day: (iso) => iso }),

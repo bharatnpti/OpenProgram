@@ -15,6 +15,7 @@ import {
 } from "../../lib/checkinWords";
 import { formatDay } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import { CoverageNoData } from "./CoverageNoData";
 
 const LIST_ID = "sm-checkins-list";
 
@@ -76,13 +77,24 @@ export function CheckinsPanel({
           </button>
         </h2>
         <p className="mt-1 text-[13px] text-grey-body">
-          {summary
-            ? summary.text
-            : read.error
-              ? "The check-ins could not be read."
-              : read.isLoading
-                ? "Loading the check-ins…"
-                : null}
+          {summary ? (
+            <>
+              {summary.text}
+              {summary.noData ? (
+                <>
+                  {" · "}
+                  <CoverageNoData
+                    words={summary.noData}
+                    fixedInDirectory={summary.fixedInDirectory}
+                  />
+                </>
+              ) : null}
+            </>
+          ) : read.error ? (
+            "The check-ins could not be read."
+          ) : read.isLoading ? (
+            "Loading the check-ins…"
+          ) : null}
           {attention > 0 ? (
             <span className="font-bold text-rag-red"> · {followUpWords(attention)}</span>
           ) : null}

@@ -1,12 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../../api/client";
-import type { DirectoryItemResponse } from "../../api/schema";
+import type { DirectoryItemResponse, PodCheckinsResponse } from "../../api/schema";
 import { useRole } from "../../app/role";
 import { useDayWords } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { Panel, Row } from "../../components/ui/Bits";
 import { boardMeta, boardRag, boardWord, repliedCount } from "../../lib/checkinWords";
+import { coverageParts } from "../../lib/observedWords";
+import { CoverageNoData } from "../today/CoverageNoData";
 import { formatDay } from "../../lib/format";
 import { readState } from "../../lib/readState";
 import { countedElsewhere, plural } from "../../lib/words";
@@ -122,6 +124,7 @@ export function PodPanel({
                   isEmpty={(c?.developers ?? []).length === 0}
                   emptyText="Nobody in this pod is asked to check in."
                 >
+                  <CoverageLine coverage={c?.coverage} />
                   <ul>
                     {(c?.developers ?? []).map((dev) => (
                       <Row
@@ -176,5 +179,18 @@ export function PodPanel({
         </PanelState>
       ) : null}
     </>
+  );
+}
+
+/** "3 from Jira · 1 no data (no Jira link)": how the day was read beyond the replies. */
+function CoverageLine({ coverage }: { coverage: PodCheckinsResponse["coverage"] | undefined }) {
+  const { fromJira, noData, fixedInDirectory } = coverageParts(coverage);
+  if (!fromJira && !noData) return null;
+  return (
+    <p className="mb-2 text-[13px] text-grey-body">
+      {fromJira}
+      {fromJira && noData ? " · " : ""}
+      <CoverageNoData words={noData} fixedInDirectory={fixedInDirectory} />
+    </p>
   );
 }

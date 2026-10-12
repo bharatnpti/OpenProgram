@@ -2388,6 +2388,54 @@
         }
       }
     },
+    "/config/members/identity-counts": {
+      "get": {
+        "tags": ["config"],
+        "summary": "Get Config Identity Counts",
+        "description": "How many members have no chat id, and how many no Jira account.",
+        "operationId": "get_config_identity_counts_config_members_identity_counts_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityCountsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/members/unmapped": {
       "get": {
         "tags": ["config"],
@@ -17820,6 +17868,28 @@
         "type": "object",
         "required": ["updated_count", "members"],
         "title": "IdentityAutoMatchResponse"
+      },
+      "IdentityCountsResponse": {
+        "properties": {
+          "members": {
+            "type": "integer",
+            "title": "Members"
+          },
+          "without_chat_id": {
+            "type": "integer",
+            "title": "Without Chat Id",
+            "description": "No chat id: the check-in cannot reach them."
+          },
+          "without_jira_account": {
+            "type": "integer",
+            "title": "Without Jira Account",
+            "description": "Neither a Jira account nor a Jira email: their day cannot be read from Jira."
+          }
+        },
+        "type": "object",
+        "required": ["members", "without_chat_id", "without_jira_account"],
+        "title": "IdentityCountsResponse",
+        "description": "Admin \u203a Directory: members with no chat id and with no Jira account."
       },
       "IdentityLinkResponse": {
         "properties": {

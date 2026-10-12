@@ -107,6 +107,26 @@ export function gapWords(fields: readonly string[]): string {
   return listNames(fields.map((field) => GAP_WORDS[field] ?? field.replace(/_/g, " ")));
 }
 
+/**
+ * "2 members have no chat id · 1 has no Jira account": who the check-in cannot
+ * reach, and whose day cannot be read from Jira (no account and no email to find
+ * one by, the rule a pod's check-in coverage calls "no Jira link").
+ */
+export function accountCounts(counts: {
+  members: number;
+  without_chat_id: number;
+  without_jira_account: number;
+}): string {
+  if (counts.members === 0) return "No members yet.";
+  const say = (count: number, what: string) =>
+    count === 0
+      ? `every member has a ${what}`
+      : `${count} ${count === 1 ? "member has" : "members have"} no ${what}`;
+  const chat = say(counts.without_chat_id, "chat id");
+  const jira = say(counts.without_jira_account, "Jira account");
+  return `${chat.charAt(0).toUpperCase()}${chat.slice(1)} · ${jira}.`;
+}
+
 /** What is still missing for this person: the accounts the console needs to reach and match them. */
 export function identityGaps(link: LinkFields | null | undefined): string[] {
   return (["chat_user_id", "jira_account_id", "vcs_username"] as const).filter(

@@ -31,6 +31,7 @@ from api.dtos import (
     DirectoryUserResponse,
     EscalationCandidateResponse,
     IdentityAutoMatchResponse,
+    IdentityCountsResponse,
     IdentityLinkResponse,
     IdentityLinkUpdateRequest,
     MemberFromDirectoryRequest,
@@ -530,6 +531,20 @@ async def list_config_members(
         ConfigNodeResponse.from_domain(node)
         for node in await service.list_nodes(principal.tenant_id, NodeKind.DEVELOPER)
     ]
+
+
+@router.get("/config/members/identity-counts", response_model=IdentityCountsResponse)
+async def get_config_identity_counts(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> IdentityCountsResponse:
+    """How many members have no chat id, and how many no Jira account."""
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        counts = await service.identity_counts(principal.tenant_id)
+    except ConfigValidationError as exc:
+        raise _http_error(exc) from exc
+    return IdentityCountsResponse.from_domain(counts)
 
 
 @router.get("/config/members/unmapped", response_model=list[UnmappedMemberResponse])

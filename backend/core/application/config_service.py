@@ -111,6 +111,17 @@ class UnmappedMember:
 
 
 @dataclass(frozen=True, kw_only=True)
+class IdentityCounts:
+    """How many members the bot can reach and their work be found for, counted per tenant."""
+
+    members: int
+    #: No chat id on their link: the check-in cannot reach them.
+    without_chat_id: int
+    #: Neither a Jira account nor a Jira email: their silence cannot be inferred from Jira.
+    without_jira_account: int
+
+
+@dataclass(frozen=True, kw_only=True)
 class EscalationContactChoice:
     """One escalation rung as an admin set it.
 
@@ -679,6 +690,26 @@ class ConfigService:
                 )
             )
         return unmapped
+
+    async def identity_counts(self, tenant_id: str) -> IdentityCounts:
+        """Members with no chat id and members with no Jira account, for Admin › Directory.
+
+        "No Jira account" is the rule a pod's check-in coverage gives as "no Jira
+        link": neither an account id nor an email to find one by.
+        """
+        repository = self._identity_link_repository_or_raise()
+        members = await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER)
+        links = {
+            link.developer_id: link for link in await repository.list_identity_links(tenant_id)
+        }
+        found = [links.get(member.id) for member in members]
+        return IdentityCounts(
+            members=len(members),
+            without_chat_id=sum(1 for link in found if link is None or not link.chat_user_id),
+            without_jira_account=sum(
+                1 for link in found if link is None or not (link.jira_account_id or link.jira_email)
+            ),
+        )
 
     async def get_tenant_writeback(self, tenant_id: str, default: bool) -> WriteBackGate:
         """Resolve the system gate: persisted tenant override, else the fallback."""

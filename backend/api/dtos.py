@@ -31,6 +31,7 @@ from core.application.config_service import (
     EscalationCandidate,
     EscalationContactChoice,
     IdentityAutoMatchResult,
+    IdentityCounts,
     PodEscalationContactChoices,
     UnmappedMember,
 )
@@ -3062,6 +3063,26 @@ class IdentityAutoMatchResponse(BaseModel):
                 )
                 for member in result.members
             ],
+        )
+
+
+class IdentityCountsResponse(BaseModel):
+    """Admin › Directory: members with no chat id and with no Jira account."""
+
+    model_config = ConfigDict(frozen=True)
+
+    members: int
+    without_chat_id: int = Field(description="No chat id: the check-in cannot reach them.")
+    without_jira_account: int = Field(
+        description="Neither a Jira account nor a Jira email: their day cannot be read from Jira."
+    )
+
+    @classmethod
+    def from_domain(cls, counts: IdentityCounts) -> IdentityCountsResponse:
+        return cls(
+            members=counts.members,
+            without_chat_id=counts.without_chat_id,
+            without_jira_account=counts.without_jira_account,
         )
 
 

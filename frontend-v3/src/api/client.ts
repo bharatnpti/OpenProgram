@@ -81,6 +81,7 @@ import type {
   IdentityLinkUpdateRequest,
   IdentityAutoMatchResponse,
   UnmappedMemberResponse,
+  IdentityCountsResponse,
   WritebackConsentResponse,
   WritebackConsentUpdateRequest,
   TenantWritebackResponse,
@@ -881,6 +882,8 @@ export const apiClient = {
       body,
     }),
   configUnmappedMembers: () => requestJson<UnmappedMemberResponse[]>("/config/members/unmapped"),
+  configIdentityCounts: () =>
+    requestJson<IdentityCountsResponse>("/config/members/identity-counts"),
   autoMatchConfigIdentityLinks: () =>
     requestJson<IdentityAutoMatchResponse>("/config/members/identity-links/auto-match", {
       method: "POST",

@@ -65,8 +65,7 @@ const INFERRED = {
   },
   // Insights: not reached in chat, filled from Jira.
   U1010: {
-    summary:
-      "Not reached in chat. Inferred from Jira: INS-12 moved to In QA (in development → in testing).",
+    summary: "Not reached in chat. From Jira: INS-12 moved to In QA (in development → in testing).",
     evidence: ["INS-12 moved to In QA (in development → in testing)"],
   },
 };
@@ -117,6 +116,12 @@ export function withCoverage(board) {
 }
 
 export function api(req, url, roles, userId, send, deny) {
+  if (url.pathname === "/config/members/identity-counts") {
+    // Admin › Directory: who the check-in cannot reach, and whose day Jira cannot tell.
+    if (!roles.includes("admin")) deny();
+    else send(200, { members: 14, without_chat_id: 0, without_jira_account: 1 });
+    return true;
+  }
   if (url.pathname !== "/config/checkin-fill") return false;
   if (!roles.includes("admin")) {
     deny();

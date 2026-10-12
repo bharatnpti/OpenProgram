@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { coverageWords, jiraTodayLine } from "./observedWords.ts";
+import { coverageParts, coverageWords, jiraTodayLine } from "./observedWords.ts";
 
 const say = {
   today: "2026-10-06",
@@ -83,5 +83,24 @@ describe("coverageWords", () => {
       "",
     );
     assert.equal(coverageWords(undefined), "");
+  });
+});
+
+describe("coverageParts", () => {
+  test("Directory puts a Jira link or chat id right; nothing moving it does not", () => {
+    const base = { replied: 1, inferred: 2, waiting: 0 };
+    assert.deepEqual(
+      coverageParts({ ...base, no_data: 1, causes: [{ cause: "no_chat_id", count: 1 }] }),
+      { fromJira: "2 from Jira", noData: "1 no data (no chat id)", fixedInDirectory: true },
+    );
+    assert.deepEqual(
+      coverageParts({ ...base, no_data: 1, causes: [{ cause: "nothing_moved", count: 1 }] }),
+      {
+        fromJira: "2 from Jira",
+        noData: "1 no data (nothing moved in Jira)",
+        fixedInDirectory: false,
+      },
+    );
+    assert.deepEqual(coverageParts(null), { fromJira: "", noData: "", fixedInDirectory: false });
   });
 });

@@ -580,6 +580,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/config/members/identity-counts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Config Identity Counts
+     * @description How many members have no chat id, and how many no Jira account.
+     */
+    get: operations["get_config_identity_counts_config_members_identity_counts_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/members/unmapped": {
     parameters: {
       query?: never;
@@ -5049,6 +5069,24 @@ export interface components {
       updated_count: number;
       /** Members */
       members: components["schemas"]["IdentityAutoMatchMemberDto"][];
+    };
+    /**
+     * IdentityCountsResponse
+     * @description Admin › Directory: members with no chat id and with no Jira account.
+     */
+    IdentityCountsResponse: {
+      /** Members */
+      members: number;
+      /**
+       * Without Chat Id
+       * @description No chat id: the check-in cannot reach them.
+       */
+      without_chat_id: number;
+      /**
+       * Without Jira Account
+       * @description Neither a Jira account nor a Jira email: their day cannot be read from Jira.
+       */
+      without_jira_account: number;
     };
     /** IdentityLinkResponse */
     IdentityLinkResponse: {
@@ -9878,6 +9916,37 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ConfigNodeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_config_identity_counts_config_members_identity_counts_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IdentityCountsResponse"];
         };
       };
       /** @description Validation Error */

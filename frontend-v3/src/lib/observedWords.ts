@@ -68,16 +68,39 @@ export function jiraTodayLine(
  * "2 no data (1 no Jira link, 1 nothing moved in Jira)". Empty without coverage.
  */
 export function coverageWords(coverage: CheckinCoverageDto | null | undefined): string {
-  if (!coverage) return "";
-  const parts: string[] = [];
-  if (coverage.inferred > 0) parts.push(`${coverage.inferred} from Jira`);
+  const { fromJira, noData } = coverageParts(coverage);
+  return [fromJira, noData]
+    .filter(Boolean)
+    .map((part) => ` · ${part}`)
+    .join("");
+}
+
+/** Causes a member's account in Admin › Directory puts right. */
+const DIRECTORY_CAUSES: ReadonlySet<NoDataCause> = new Set(["no_jira_link", "no_chat_id"]);
+
+/**
+ * The coverage parts on their own, for a screen that links the no-data part:
+ * "3 from Jira", "1 no data (no Jira link)", and whether Admin › Directory is
+ * where its cause is put right (a missing Jira link or chat id).
+ */
+export function coverageParts(coverage: CheckinCoverageDto | null | undefined): {
+  fromJira: string;
+  noData: string;
+  fixedInDirectory: boolean;
+} {
+  if (!coverage) return { fromJira: "", noData: "", fixedInDirectory: false };
+  const causes = coverage.causes ?? [];
+  let noData = "";
   if (coverage.no_data > 0) {
-    const causes = coverage.causes ?? [];
     const why =
       causes.length === 1
         ? NO_DATA_WORDS[causes[0].cause]
         : causes.map((item) => `${item.count} ${NO_DATA_WORDS[item.cause]}`).join(", ");
-    parts.push(`${coverage.no_data} no data${why ? ` (${why})` : ""}`);
+    noData = `${coverage.no_data} no data${why ? ` (${why})` : ""}`;
   }
-  return parts.map((part) => ` · ${part}`).join("");
+  return {
+    fromJira: coverage.inferred > 0 ? `${coverage.inferred} from Jira` : "",
+    noData,
+    fixedInDirectory: noData !== "" && causes.some((item) => DIRECTORY_CAUSES.has(item.cause)),
+  };
 }

@@ -1,7 +1,7 @@
 // Pure wording for how a person's check-in stands. Type imports only, so
 // `node --test` runs it directly.
 import type { PodCheckinsResponse, StatusSource } from "../api/schema";
-import { coverageWords } from "./observedWords.ts";
+import { coverageParts } from "./observedWords.ts";
 import type { BadgeTone } from "./status";
 
 /*
@@ -47,9 +47,10 @@ export const REPLY_WORDS = {
  * because the send is off, or not reached, because the send did not go through.
  */
 const NOT_ASKED_LEAD = "Not asked today.";
-// "Inferred from Jira and GitLab: ...": the tracker and code host a day was read from.
+// "Inferred from Jira and GitLab: ..." after a nudge, "From Jira: ..." on a filled
+// day or a reply without a status: the tracker and code host a day was read from.
 const SOURCE_NAME = "(?:Jira|GitLab|GitHub|Git|the issue tracker)";
-const SOURCES = new RegExp(`Inferred from (${SOURCE_NAME}(?: and ${SOURCE_NAME})?): `);
+const SOURCES = new RegExp(`(?:Inferred from|From) (${SOURCE_NAME}(?: and ${SOURCE_NAME})?): `);
 const NOT_REACHED_LEAD = "Not reached in chat.";
 
 /** "not asked" or "not reached" for a filled day, else null. */
@@ -206,15 +207,24 @@ export function checkinsSummary(
       developers: BoardPerson[];
     },
   day: string,
-): { text: string; attention: number } {
+): { text: string; attention: number; noData: string; fixedInDirectory: boolean } {
   const total = board.confirmed + board.partial + board.stale + board.missing;
   if (board.developers.length === 0 && total === 0) {
-    return { text: "Nobody in this pod is asked to check in.", attention: 0 };
+    return {
+      text: "Nobody in this pod is asked to check in.",
+      attention: 0,
+      noData: "",
+      fixedInDirectory: false,
+    };
   }
   const partly = board.partial > 0 ? ` · ${board.partial} partly` : "";
+  const { fromJira, noData, fixedInDirectory } = coverageParts(board.coverage);
   return {
-    text: `${board.confirmed} of ${total} replied ${day}${partly}${coverageWords(board.coverage)}`,
+    text: `${board.confirmed} of ${total} replied ${day}${partly}${fromJira ? ` · ${fromJira}` : ""}`,
     attention: board.developers.filter((person) => boardRag(person) !== "green").length,
+    // Said after the text: a screen links it to Admin › Directory for an admin.
+    noData,
+    fixedInDirectory,
   };
 }
 

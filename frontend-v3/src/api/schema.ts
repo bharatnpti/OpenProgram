@@ -101,6 +101,7 @@ export type IdentityLinkUpdateRequest = components["schemas"]["IdentityLinkUpdat
 export type IdentityAutoMatchResponse = components["schemas"]["IdentityAutoMatchResponse"];
 export type IdentityAutoMatchMemberDto = components["schemas"]["IdentityAutoMatchMemberDto"];
 export type UnmappedMemberResponse = components["schemas"]["UnmappedMemberResponse"];
+export type IdentityCountsResponse = components["schemas"]["IdentityCountsResponse"];
 export type BriefKind = components["schemas"]["BriefKind"];
 export type NarrativeBriefResponse = components["schemas"]["NarrativeBriefResponse"];
 export type NarrativeBriefsResponse = components["schemas"]["NarrativeBriefsResponse"];

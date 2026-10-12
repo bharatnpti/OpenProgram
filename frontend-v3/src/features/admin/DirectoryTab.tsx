@@ -15,6 +15,7 @@ import { ConfirmChange, fieldInput, type Pending } from "./AdminDialog";
 import { IdentityDialog } from "./IdentityDialog";
 import {
   autoMatchSummary,
+  accountCounts,
   gapWords,
   identityGaps,
   importSummary,
@@ -372,6 +373,10 @@ function ImportCard() {
 function IdentityCard() {
   const changed = useStructureChanged();
   const members = useConfigList("member");
+  const counts = useQuery({
+    queryKey: ["config", "identity-counts"],
+    queryFn: () => apiClient.configIdentityCounts(),
+  });
   const unmapped = useQuery({
     queryKey: ["config", "unmapped-members"],
     queryFn: () => apiClient.configUnmappedMembers(),
@@ -433,6 +438,11 @@ function IdentityCard() {
         Which chat, Jira and Git account is each member. The chat id is how the bot reaches them;
         the Jira account is how their issues are found; the Git username is how their commits are.
       </p>
+      {counts.data ? (
+        <p id="member-accounts" className="mt-1 text-[13px] font-bold text-ink">
+          {accountCounts(counts.data)}
+        </p>
+      ) : null}
       <div className="mt-2 text-[13px]" aria-live="polite">
         {unmapped.data ? (
           stuck.length === 0 ? (
