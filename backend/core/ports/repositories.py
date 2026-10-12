@@ -24,6 +24,7 @@ from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import SyncCursor, SyncCursorRecord
 from core.domain.jira_writes import JiraWritesChange, StoredJiraWrites
+from core.domain.observed_day import FillDaySetting
 from core.domain.rollup import NodeStatus
 from core.domain.status import (
     CheckIn,
@@ -570,6 +571,14 @@ class WriteBackConfigRepository(Protocol):
     async def get_writeback_enabled(self, tenant_id: str) -> bool | None: ...
 
     async def set_writeback_enabled(self, tenant_id: str, enabled: bool) -> None: ...
+
+
+class FillDayRepository(Protocol):
+    """The tenant's "fill the day from Jira" switch; None while an admin never saved it."""
+
+    async def get_fill_day(self, tenant_id: str) -> FillDaySetting | None: ...
+
+    async def save_fill_day(self, setting: FillDaySetting) -> None: ...
 
 
 class JiraWritesRepository(Protocol):

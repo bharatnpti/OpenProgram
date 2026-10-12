@@ -31,6 +31,21 @@ UNKNOWN_SUMMARY = f"{NON_RESPONSE_LEAD} Current status is unknown."
 # A day whose check-in replies carried no status ("no updates today", "thanks"):
 # the person answered, so it does not open with the non-response wording.
 NON_STATUS_REPLY_SUMMARY = "Replied without a status update. Current status is unknown."
+# A day whose check-in replies carried no status opens with this, whatever follows.
+NON_STATUS_REPLY_LEAD = "Replied without a status update."
+# A day filled from the tracker for someone the check-in never reached: they
+# were not asked (the send is off), or the send to them did not go through.
+NOT_ASKED_LEAD = "Not asked today."
+NOT_REACHED_LEAD = "Not reached in chat."
+# Every lead a summary inferred from what moved can open with.
+_OBSERVED_LEADS = (NON_RESPONSE_LEAD, NON_STATUS_REPLY_LEAD, NOT_ASKED_LEAD, NOT_REACHED_LEAD)
+# How a reason names the tracker and the code host (catalog provider names), so
+# the evidence of a summary can be read back without them.
+_SOURCE_NAMES = ("the issue tracker", "Jira", "GitLab", "GitHub", "Git")
+_SOURCES_PREFIX = re.compile(
+    rf"^(?:{'|'.join(map(re.escape, _SOURCE_NAMES))})"
+    rf"(?: and (?:{'|'.join(map(re.escape, _SOURCE_NAMES))}))?: "
+)
 # Added to a non-response summary when the tracker lists the person's issues but
 # none is under way (all To Do): there is nothing to infer a status from.
 NO_ACTIVE_WORK_NOTE = "No active work to infer from."
@@ -155,6 +170,21 @@ def inferred_summary(basis: str) -> str:
     return f"{INFERRED_LEAD}{basis}."
 
 
+def observed_sources(*, tracker: str | None, vcs: str | None) -> str:
+    """``Jira and GitLab``: where what moved was read, as the summary names it."""
+    return " and ".join(name for name in (tracker, vcs) if name) or "delivery signals"
+
+
+def observed_summary(lead: str, sources: str, lines: Sequence[str]) -> str:
+    """``Not asked today. Inferred from Jira: CHK-4 moved to In Review; CHK-7 resolved.``
+
+    ``lead`` says why there is no reply (``NON_RESPONSE_LEAD``, ``NOT_ASKED_LEAD``,
+    ``NOT_REACHED_LEAD``, ``NON_STATUS_REPLY_LEAD``); the rest is the digest,
+    which names keys, stages, dates and numbers only (``core.domain.observed_day``).
+    """
+    return f"{lead} Inferred from {sources}: {'; '.join(lines)}."
+
+
 def with_no_active_work(summary: str, *, no_active_work: bool) -> str:
     """``summary`` ending in :data:`NO_ACTIVE_WORK_NOTE` exactly when ``no_active_work``.
 
@@ -166,11 +196,31 @@ def with_no_active_work(summary: str, *, no_active_work: bool) -> str:
 
 
 def inferred_basis(summary: str) -> str | None:
-    """What an inferred summary says it was inferred from; None for other text."""
-    if not summary.startswith(INFERRED_LEAD):
-        return None
-    basis = summary.removeprefix(INFERRED_LEAD).strip().removesuffix(".").rstrip()
-    return basis or None
+    """What an inferred summary says it was inferred from; None for other text.
+
+    Read after any lead an inferred day opens with: no reply after a nudge, a
+    reply without a status, not asked, not reached.
+    """
+    for lead in _OBSERVED_LEADS:
+        opening = f"{lead} Inferred from "
+        if summary.startswith(opening):
+            basis = summary.removeprefix(opening).strip().removesuffix(".").rstrip()
+            return basis or None
+    return None
+
+
+def observed_evidence(summary: str) -> tuple[str, ...]:
+    """The lines an inferred summary was inferred from: ``("CHK-4 moved to In Review", ...)``.
+
+    Read back from the summary itself, so it is what the day was inferred from
+    when it was recorded. The tracker and code host it names come off the first
+    line. Empty for a summary that was not inferred.
+    """
+    basis = inferred_basis(summary)
+    if basis is None:
+        return ()
+    basis = _SOURCES_PREFIX.sub("", basis, count=1)
+    return tuple(part.strip() for part in basis.split("; ") if part.strip())
 
 
 def reported_text(summary: str) -> str:
@@ -218,28 +268,23 @@ def names_one_basis(summary: str) -> bool:
     return summary.startswith(NON_RESPONSE_LEAD) and summary.count(NON_RESPONSE_LEAD) == 1
 
 
-def stale_summary(basis: DeveloperStatus | None) -> str:
+def stale_summary(basis: DeveloperStatus | None, *, lead: str = NON_RESPONSE_LEAD) -> str:
     """The summary of a stale status standing for ``basis``.
 
     ``basis`` is :func:`basis_status` of the latest status: the last one that
     said something about the developer's work. It is named once with its date,
-    however many unanswered days lie between.
+    however many unanswered days lie between. ``lead`` says why there is no
+    reply: no reply after a nudge, or not asked or not reached (a filled day).
     """
     if basis is None:
-        return (
-            f"{NON_RESPONSE_LEAD} No confirmed or inferred status in the last "
-            f"{BASIS_LOOKBACK.days} days."
-        )
+        return f"{lead} No confirmed or inferred status in the last {BASIS_LOOKBACK.days} days."
     day = day_label(basis.as_of)
     if basis.source is StatusSource.INFERRED:
         inferred_from = inferred_basis(basis.summary)
         if inferred_from is None:
-            return f"{NON_RESPONSE_LEAD} Last inferred on {day}."
-        return f"{NON_RESPONSE_LEAD} Last inferred on {day} from {inferred_from}."
-    return (
-        f"{NON_RESPONSE_LEAD} Last known {basis.source.value} status on {day}: "
-        f"{reported_text(basis.summary)}"
-    )
+            return f"{lead} Last inferred on {day}."
+        return f"{lead} Last inferred on {day} from {inferred_from}."
+    return f"{lead} Last known {basis.source.value} status on {day}: {reported_text(basis.summary)}"
 
 
 def answered_in_console(status: DeveloperStatus | None, day: date) -> bool:

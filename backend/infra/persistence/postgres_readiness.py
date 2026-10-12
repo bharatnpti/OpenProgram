@@ -95,20 +95,18 @@ class PostgresReleaseReadinessRepository:
         return _settings(rows[0])
 
     async def save_settings(self, settings: ReadinessSettings) -> None:
-        # ``jira_writes`` belongs to the Jira writes panel: a save here keeps it as it is.
+        # ``jira_writes`` belongs to the Jira writes panel and ``checkin_fill`` to
+        # Admin › Check-ins: a save here keeps every key but its own as it is.
         with _tracer.start_as_current_span("postgres.readiness.save_settings"):
             await self._executor.execute(
                 """
                 INSERT INTO readiness_settings (tenant_id, settings, updated_at, updated_by)
                 VALUES (%s, %s::jsonb, %s, %s)
                 ON CONFLICT (tenant_id) DO UPDATE SET
-                    settings = CASE
-                        WHEN readiness_settings.settings -> 'jira_writes' IS NULL
-                            THEN EXCLUDED.settings
-                        ELSE EXCLUDED.settings || jsonb_build_object(
-                            'jira_writes', readiness_settings.settings -> 'jira_writes'
-                        )
-                    END,
+                    settings = (
+                        readiness_settings.settings
+                        - ARRAY['enabled', 'auto_suggest', 'create_in_jira', 'issue_type', 'labels']
+                    ) || EXCLUDED.settings,
                     updated_at = EXCLUDED.updated_at,
                     updated_by = EXCLUDED.updated_by
                 """,

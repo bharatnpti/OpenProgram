@@ -21,6 +21,7 @@ from core.application.delivery_scope import DeliveryScopeService
 from core.application.delivery_service import DeliveryService
 from core.application.directory_sync_service import DirectorySyncService
 from core.application.escalation_matrix_service import EscalationMatrixService
+from core.application.fill_day import FillDaySettingsService
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.forecast_service import ForecastService
 from core.application.gate_service import GateService
@@ -217,6 +218,10 @@ def get_write_back_service(request: Request) -> WriteBackService:
     return registry.write_back_service()
 
 
+def get_fill_day_settings_service(request: Request) -> FillDaySettingsService:
+    return get_registry(request).fill_day_settings_service()
+
+
 def get_jira_writes_service(request: Request) -> JiraWritesService:
     registry = get_registry(request)
     return registry.jira_writes_service()
@@ -326,6 +331,8 @@ def get_persona_view_service(request: Request) -> PersonaViewService:
         # ones carry (N3), read by the Signals list's own reader.
         drift_signals=get_risk_service(request),
         identity_link_repository=registry.identity_link_repository(),
+        # The stage a task's tracker status maps to, on its "Jira today" line.
+        delivery_settings_repository=registry.delivery_settings_repository(),
     )
 
 

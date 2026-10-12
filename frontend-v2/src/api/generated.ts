@@ -952,6 +952,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/config/checkin-fill": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Config Checkin Fill
+     * @description Whether the day is filled from Jira for members the check-in never reached.
+     */
+    get: operations["get_config_checkin_fill_config_checkin_fill_get"];
+    /**
+     * Update Config Checkin Fill
+     * @description Admin › Check-ins: "Fill the day from Jira for people who were not asked".
+     */
+    put: operations["update_config_checkin_fill_config_checkin_fill_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/programs": {
     parameters: {
       query?: never;
@@ -3402,6 +3426,47 @@ export interface components {
      * @enum {string}
      */
     CheckInSendKind: "weekly" | "dates" | "other" | "off";
+    /** CheckinCoverageCauseDto */
+    CheckinCoverageCauseDto: {
+      /**
+       * Cause
+       * @enum {string}
+       */
+      cause: "no_jira_link" | "jira_not_synced" | "no_chat_id" | "nothing_moved";
+      /** Count */
+      count: number;
+    };
+    /**
+     * CheckinCoverageDto
+     * @description How a pod's day was captured: "6 replied · 3 from Jira · 1 no data (no Jira link)".
+     */
+    CheckinCoverageDto: {
+      /**
+       * Replied
+       * @description Gave the day's status themselves (confirmed or partial).
+       */
+      replied: number;
+      /**
+       * Inferred
+       * @description Inferred from what moved in the tracker and Git.
+       */
+      inferred: number;
+      /**
+       * No Data
+       * @description Closed stale or unknown: nothing said, nothing moved.
+       */
+      no_data: number;
+      /**
+       * Waiting
+       * @description No status for the day yet.
+       */
+      waiting: number;
+      /**
+       * Causes
+       * @description Why the no-data days have none, counted per cause.
+       */
+      causes?: components["schemas"]["CheckinCoverageCauseDto"][];
+    };
     /**
      * CheckinDefaultsResponse
      * @description The team defaults a member follows for any field not set for them.
@@ -3438,6 +3503,16 @@ export interface components {
       status_as_of: string | null;
       /** Summary */
       summary: string;
+      /**
+       * Evidence
+       * @description An inferred day's lines of what moved in the tracker and Git; not the person's word.
+       */
+      evidence?: string[];
+      /**
+       * No Data Cause
+       * @description Why a day closed stale or unknown has no data.
+       */
+      no_data_cause?: ("no_jira_link" | "jira_not_synced" | "no_chat_id" | "nothing_moved") | null;
     };
     /** CheckinDispatchRequest */
     CheckinDispatchRequest: {
@@ -3451,6 +3526,37 @@ export interface components {
       chat_external_id?: string | null;
       /** Checkin Date */
       checkin_date?: string | null;
+    };
+    /**
+     * CheckinFillResponse
+     * @description The tenant's switch "Fill the day from Jira for people who were not asked".
+     */
+    CheckinFillResponse: {
+      /**
+       * Enabled
+       * @description Whether the reconcile tick fills the day from Jira for members the check-in never reached (the send off, or a send that failed).
+       */
+      enabled: boolean;
+      /**
+       * Source
+       * @description 'default' while an admin never saved it (on), 'tenant' once saved.
+       * @enum {string}
+       */
+      source: "default" | "tenant";
+      /**
+       * Deployment Enabled
+       * @description The deployment's own switch (OPENPROGRAM_CHECKIN_FILL_ENABLED); off wins.
+       */
+      deployment_enabled: boolean;
+      /** Updated At */
+      updated_at?: string | null;
+      /** Updated By */
+      updated_by?: string | null;
+    };
+    /** CheckinFillUpdateRequest */
+    CheckinFillUpdateRequest: {
+      /** Enabled */
+      enabled: boolean;
     };
     /**
      * CheckinPreferenceResponse
@@ -4599,6 +4705,8 @@ export interface components {
        * @description The person is the synced tracker issue's assignee through their identity link. The tick to move the issue also needs write_back other than off.
        */
       can_move_in_tracker: boolean;
+      /** @description What the tracker says of the task today, never merged into last_update. */
+      observed?: components["schemas"]["ObservedTaskDto"] | null;
     };
     /**
      * ForecastDayResponse
@@ -5527,6 +5635,39 @@ export interface components {
       mapped: boolean;
     };
     /**
+     * ObservedTaskDto
+     * @description What the tracker says of a task today ("Jira today"), beside what its people said.
+     */
+    ObservedTaskDto: {
+      /**
+       * Status
+       * @description The tracker's status name now.
+       */
+      status: string | null;
+      /** @description The delivery stage that status maps to. */
+      stage: components["schemas"]["DeliveryStage"] | null;
+      /**
+       * Since
+       * @description When the task entered that status, by the tracker's history.
+       */
+      since: string | null;
+      /**
+       * Moved By
+       * @description Who made that move, by name, when it was not one of the task's own people.
+       */
+      moved_by?: string | null;
+      /**
+       * Changes
+       * @description The day's other changes, worded: 'due date moved Oct 10 → Oct 14'.
+       */
+      changes?: string[];
+      /**
+       * Quiet Days
+       * @description Days a task under way has not moved, from five on.
+       */
+      quiet_days?: number | null;
+    };
+    /**
      * PeriodKind
      * @enum {string}
      */
@@ -5715,6 +5856,8 @@ export interface components {
       missing: number;
       /** Developers */
       developers: components["schemas"]["CheckinDeveloperDto"][];
+      /** @description How the pod's day was captured, counted per pod. */
+      coverage?: components["schemas"]["CheckinCoverageDto"] | null;
     };
     /**
      * PodDeliveryResponse
@@ -5844,6 +5987,8 @@ export interface components {
        * @description That ETA as it was given: 'Oct 9' from the console, 'Tuesday' from chat.
        */
       eta_label?: string | null;
+      /** @description What the tracker says of the task today, never merged into last_update. */
+      observed?: components["schemas"]["ObservedTaskDto"] | null;
     };
     /** PodTaskOwnerDto */
     PodTaskOwnerDto: {
@@ -10881,6 +11026,72 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["TenantWritebackResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_config_checkin_fill_config_checkin_fill_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CheckinFillResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_config_checkin_fill_config_checkin_fill_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CheckinFillUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CheckinFillResponse"];
         };
       };
       /** @description Validation Error */

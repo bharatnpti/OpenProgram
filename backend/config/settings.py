@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     checkin_reconcile_cron: str = "*/15 * * * 1-5"
     checkin_reconcile_after_local_time: str = "09:45"
     checkin_reconcile_timezone: str | None = None
+    # On the reconcile tick, fill the day from Jira for members the check-in
+    # never reached (a send that did not go through). The deployment's own off
+    # switch; each tenant has its switch in Admin › Check-ins, on by default. It
+    # runs only on that tick, so only while the fan-out and the reconcile are on.
+    checkin_fill_enabled: bool = True
     jira_sync_projects: tuple[str, ...] = ()
     github_sync_repos: tuple[str, ...] = ()
     calendar_sync_user_ids: tuple[str, ...] = ()

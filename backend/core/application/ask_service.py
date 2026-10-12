@@ -147,6 +147,8 @@ ASK_TOOL_GUIDANCE = (
     "What blocks a project or pod is answered from pod_blockers: for each pod it names "
     "or works through, or for every pod with pod_id unset. Never say anything has no "
     "blockers, no risks or nothing missing unless a tool you called says so. "
+    "An inferred day in pod_checkins says what moved in Jira and Git (its evidence); it is "
+    "not the person's word, so never say they reported it. "
     "Never mention raw DM/reply content. "
 )
 
@@ -1186,7 +1188,10 @@ class PodCheckinsTool:
     description: str = (
         "Who in a pod has checked in today: each developer's state (confirmed, "
         "partial, stale or missing), the day their status was last given and its "
-        "parsed summary -- never the reply itself -- with counts per state. Omit "
+        "parsed summary -- never the reply itself -- with counts per state. An "
+        "inferred day carries evidence: the lines of what moved in the tracker and "
+        "Git it was inferred from, not the person's word. coverage counts how the "
+        "pod's day was captured (replied, inferred, no data and why, waiting). Omit "
         "pod_id to cover every pod."
     )
     parameters: Mapping[str, object] = field(
@@ -1215,6 +1220,13 @@ class PodCheckinsTool:
                         "partial": view.partial,
                         "stale": view.stale,
                         "missing": view.missing,
+                        "coverage": {
+                            "replied": view.coverage.replied,
+                            "inferred": view.coverage.inferred,
+                            "no_data": view.coverage.no_data,
+                            "waiting": view.coverage.waiting,
+                            "no_data_causes": dict(view.coverage.causes),
+                        },
                         "developers": [
                             {
                                 "developer_id": developer.developer_id,
@@ -1223,6 +1235,16 @@ class PodCheckinsTool:
                                 "source": developer.source.value,
                                 "status_as_of": _iso(developer.status_as_of),
                                 "summary": _clip(developer.summary),
+                                **(
+                                    {"evidence": [_clip(line) for line in developer.evidence]}
+                                    if developer.evidence
+                                    else {}
+                                ),
+                                **(
+                                    {"no_data_cause": developer.no_data_cause}
+                                    if developer.no_data_cause
+                                    else {}
+                                ),
                             }
                             for developer in view.developers[:25]
                         ],

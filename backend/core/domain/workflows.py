@@ -92,6 +92,8 @@ class CheckinReconcileResult:
     dispatched: int
     workflow_ids: list[str]
     skipped_reason: str | None = None
+    #: Members whose day this tick filled from Jira (``FillDayPass``).
+    filled: int = 0
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -1886,6 +1886,8 @@ class _FanoutSettings:
     checkin_fanout_concurrency = 10
     checkin_fanout_enabled = True
     checkin_reconcile_enabled = True
+    # The fill pass has its own tests (test_jira_observed_day.py).
+    checkin_fill_enabled = False
 
 
 class _FanoutRegistry:

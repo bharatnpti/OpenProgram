@@ -59,12 +59,15 @@ from core.application.person_names import UNKNOWN_PERSON, without_member_ids
 from core.application.persona_views import (
     BlockerDetailView,
     BlockerView,
+    CheckinCoverageView,
     CheckinDeveloperView,
     FocusItemView,
     FocusTaskView,
     FocusView,
     HeatmapCellView,
+    NoDataCause,
     NodeTrendView,
+    ObservedTaskView,
     PodBlockersView,
     PodCheckinsView,
     PodRollupView,
@@ -136,6 +139,7 @@ from core.domain.gates import (
 )
 from core.domain.graph import EdgeKind, EntityRef, GraphEdge, GraphNode, GraphTree, NodeKind
 from core.domain.identity import IdentityLink
+from core.domain.observed_day import FillDaySetting
 from core.domain.report_facts import (
     AskFacts,
     DateFacts,
@@ -884,6 +888,42 @@ class TaskStatementDto(BaseModel):
         )
 
 
+class ObservedTaskDto(BaseModel):
+    """What the tracker says of a task today ("Jira today"), beside what its people said."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: str | None = Field(description="The tracker's status name now.")
+    stage: DeliveryStage | None = Field(description="The delivery stage that status maps to.")
+    since: datetime | None = Field(
+        description="When the task entered that status, by the tracker's history."
+    )
+    moved_by: str | None = Field(
+        default=None,
+        description="Who made that move, by name, when it was not one of the task's own people.",
+    )
+    changes: list[str] = Field(
+        default_factory=list,
+        description="The day's other changes, worded: 'due date moved Oct 10 → Oct 14'.",
+    )
+    quiet_days: int | None = Field(
+        default=None, description="Days a task under way has not moved, from five on."
+    )
+
+    @classmethod
+    def from_view(cls, view: ObservedTaskView | None) -> ObservedTaskDto | None:
+        if view is None:
+            return None
+        return cls(
+            status=view.status,
+            stage=view.stage,
+            since=view.since,
+            moved_by=view.moved_by,
+            changes=list(view.changes),
+            quiet_days=view.quiet_days,
+        )
+
+
 class FocusTaskDto(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -911,6 +951,10 @@ class FocusTaskDto(BaseModel):
         description="The person is the synced tracker issue's assignee through their identity "
         "link. The tick to move the issue also needs write_back other than off."
     )
+    observed: ObservedTaskDto | None = Field(
+        default=None,
+        description="What the tracker says of the task today, never merged into last_update.",
+    )
 
     @classmethod
     def from_view(cls, task: FocusTaskView) -> FocusTaskDto:
@@ -927,6 +971,7 @@ class FocusTaskDto(BaseModel):
             last_update=TaskStatementDto.from_view(task.last_update),
             blocker_ids=list(task.blocker_ids),
             can_move_in_tracker=task.can_move_in_tracker,
+            observed=ObservedTaskDto.from_view(task.observed),
         )
 
 
@@ -1108,6 +1153,14 @@ class CheckinDeveloperDto(BaseModel):
     source: StatusSource
     status_as_of: date | None
     summary: str
+    evidence: list[str] = Field(
+        default_factory=list,
+        description="An inferred day's lines of what moved in the tracker and Git; "
+        "not the person's word.",
+    )
+    no_data_cause: NoDataCause | None = Field(
+        default=None, description="Why a day closed stale or unknown has no data."
+    )
 
     @classmethod
     def from_view(
@@ -1120,6 +1173,41 @@ class CheckinDeveloperDto(BaseModel):
             source=developer.source,
             status_as_of=developer.status_as_of,
             summary=without_member_ids(developer.summary, names or {}),
+            evidence=list(developer.evidence),
+            no_data_cause=developer.no_data_cause,
+        )
+
+
+class CheckinCoverageCauseDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    cause: NoDataCause
+    count: int
+
+
+class CheckinCoverageDto(BaseModel):
+    """How a pod's day was captured: "6 replied · 3 from Jira · 1 no data (no Jira link)"."""
+
+    model_config = ConfigDict(frozen=True)
+
+    replied: int = Field(description="Gave the day's status themselves (confirmed or partial).")
+    inferred: int = Field(description="Inferred from what moved in the tracker and Git.")
+    no_data: int = Field(description="Closed stale or unknown: nothing said, nothing moved.")
+    waiting: int = Field(description="No status for the day yet.")
+    causes: list[CheckinCoverageCauseDto] = Field(
+        default_factory=list, description="Why the no-data days have none, counted per cause."
+    )
+
+    @classmethod
+    def from_view(cls, view: CheckinCoverageView) -> CheckinCoverageDto:
+        return cls(
+            replied=view.replied,
+            inferred=view.inferred,
+            no_data=view.no_data,
+            waiting=view.waiting,
+            causes=[
+                CheckinCoverageCauseDto(cause=cause, count=count) for cause, count in view.causes
+            ],
         )
 
 
@@ -1134,6 +1222,9 @@ class PodCheckinsResponse(BaseModel):
     stale: int
     missing: int
     developers: list[CheckinDeveloperDto]
+    coverage: CheckinCoverageDto | None = Field(
+        default=None, description="How the pod's day was captured, counted per pod."
+    )
 
     @classmethod
     def from_view(
@@ -1150,6 +1241,7 @@ class PodCheckinsResponse(BaseModel):
             stale=view.stale,
             missing=view.missing,
             developers=[CheckinDeveloperDto.from_view(item, names) for item in view.developers],
+            coverage=CheckinCoverageDto.from_view(view.coverage),
         )
 
 
@@ -1239,6 +1331,10 @@ class PodTaskDto(BaseModel):
         default=None,
         description="That ETA as it was given: 'Oct 9' from the console, 'Tuesday' from chat.",
     )
+    observed: ObservedTaskDto | None = Field(
+        default=None,
+        description="What the tracker says of the task today, never merged into last_update.",
+    )
 
     @classmethod
     def from_view(cls, task: PodTaskView) -> PodTaskDto:
@@ -1257,6 +1353,7 @@ class PodTaskDto(BaseModel):
             last_update_by=task.last_update_by,
             eta=task.eta.day if task.eta is not None else None,
             eta_label=task.eta.label if task.eta is not None else None,
+            observed=ObservedTaskDto.from_view(task.observed),
         )
 
 
@@ -3086,6 +3183,45 @@ class TenantWritebackResponse(BaseModel):
 
 
 class TenantWritebackUpdateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool
+
+
+class CheckinFillResponse(BaseModel):
+    """The tenant's switch "Fill the day from Jira for people who were not asked"."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = Field(
+        description=(
+            "Whether the reconcile tick fills the day from Jira for members the check-in "
+            "never reached (the send off, or a send that failed)."
+        )
+    )
+    source: Literal["default", "tenant"] = Field(
+        description="'default' while an admin never saved it (on), 'tenant' once saved."
+    )
+    deployment_enabled: bool = Field(
+        description="The deployment's own switch (OPENPROGRAM_CHECKIN_FILL_ENABLED); off wins."
+    )
+    updated_at: datetime | None = None
+    updated_by: str | None = None
+
+    @classmethod
+    def from_domain(
+        cls, setting: FillDaySetting, *, saved: bool, deployment_enabled: bool
+    ) -> CheckinFillResponse:
+        return cls(
+            enabled=setting.enabled,
+            source="tenant" if saved else "default",
+            deployment_enabled=deployment_enabled,
+            updated_at=setting.updated_at,
+            updated_by=setting.updated_by,
+        )
+
+
+class CheckinFillUpdateRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     enabled: bool

@@ -26,11 +26,13 @@ from core.application.delivery_scope import DeliveryScopeService
 from core.application.delivery_service import DeliveryService
 from core.application.directory_sync_service import DirectorySyncService
 from core.application.escalation_matrix_service import EscalationMatrixService
+from core.application.fill_day import FillDayPass, FillDaySettingsService
 from core.application.forecast_service import ForecastService
 from core.application.gate_extraction import ModelItemFinder
 from core.application.gate_service import GateService
 from core.application.impact_service import DeliveryImpactService
 from core.application.jira_writes_service import JiraWritesService
+from core.application.observed_day_service import ObservedDayReader
 from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.profile_service import ProfileService
 from core.application.release_readiness_service import JiraData, ReleaseReadinessService
@@ -96,6 +98,7 @@ from core.ports.repositories import (
     ConversationRepository,
     CrossPersonRequestRepository,
     DeadLetterRepository,
+    FillDayRepository,
     GraphRepository,
     IdentityLinkRepository,
     InboundChatEventRepository,
@@ -144,6 +147,7 @@ from infra.persistence.in_memory_delivery import (
     InMemoryRequirementsSnapshotRepository,
 )
 from infra.persistence.in_memory_escalation import InMemoryEscalationMatrixRepository
+from infra.persistence.in_memory_fill_day import InMemoryFillDayRepository
 from infra.persistence.in_memory_forecast import (
     InMemoryCommitmentRepository,
     InMemoryForecastDayRepository,
@@ -172,6 +176,7 @@ from infra.persistence.postgres_delivery import (
 )
 from infra.persistence.postgres_directory import PostgresDirectoryUserRepository
 from infra.persistence.postgres_escalation import PostgresEscalationMatrixRepository
+from infra.persistence.postgres_fill_day import PostgresFillDayRepository
 from infra.persistence.postgres_forecast import (
     PostgresCommitmentRepository,
     PostgresForecastDayRepository,
@@ -297,6 +302,7 @@ class ServiceRegistry:
     )
     _jira_writes_repository: JiraWritesRepository | None = field(default=None, init=False)
     _profile_repository: ProfileRepository | None = field(default=None, init=False)
+    _fill_day_repository: FillDayRepository | None = field(default=None, init=False)
     _connection_resolver: CachedConnectionResolver | None = field(default=None, init=False)
     _redis_provider: RedisClientProvider | None = field(default=None, init=False)
     _issue_tracker: IssueTracker | None = field(default=None, init=False)
@@ -642,6 +648,42 @@ class ServiceRegistry:
                 else PostgresJiraWritesRepository(self._executor())
             )
         return self._jira_writes_repository
+
+    def fill_day_repository(self) -> FillDayRepository:
+        if self._fill_day_repository is None:
+            self._fill_day_repository = (
+                InMemoryFillDayRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresFillDayRepository(self._executor())
+            )
+        return self._fill_day_repository
+
+    def fill_day_settings_service(self) -> FillDaySettingsService:
+        """The tenant's switch "Fill the day from Jira for people who were not asked"."""
+        return FillDaySettingsService(self.fill_day_repository())
+
+    def observed_day_reader(self) -> ObservedDayReader:
+        """What moved on a member's work: the facts the day's digest reads."""
+        return ObservedDayReader(
+            graph_repository=self.graph_repository(),
+            time_series_repository=self.time_series_repository(),
+            status_repository=self.status_repository(),
+            delivery_settings_repository=self.delivery_settings_repository(),
+            checkin_defaults=self.settings.checkin_defaults(),
+        )
+
+    def fill_day_pass(self) -> FillDayPass:
+        """The reconcile tick's fill of the day for members the check-in never reached."""
+        return FillDayPass(
+            status_repository=self.status_repository(),
+            graph_repository=self.graph_repository(),
+            filler=self.status_collector(),
+            reader=self.observed_day_reader(),
+            settings=self.fill_day_settings_service(),
+            availability=self.availability_service(),
+            sends_on=self.settings.checkin_fanout_enabled,
+            default_timezone=self.settings.tenant_default_timezone,
+        )
 
     def jira_writes_service(self) -> JiraWritesService:
         """The tenant's Jira write switches: the master, one per kind, and the projects."""
@@ -1682,6 +1724,8 @@ class ServiceRegistry:
                 else "Jira"
             ),
             code_work_by_pod=self.profile_service().code_work_by_pod,
+            vcs_name=self.provider_names().vcs,
+            observed_day_reader=self.observed_day_reader(),
         )
 
     def provider_names(self) -> ProviderNames:

@@ -47,6 +47,7 @@ from core.application.merge_request_links import (
     merge_request_reference,
     merge_requests_by_issue_key,
 )
+from core.application.observed_day_service import ObservedDayReader
 from core.application.person_names import (
     UNKNOWN_PERSON,
     member_names,
@@ -62,6 +63,8 @@ from core.application.status_parsing import (
 )
 from core.application.status_summaries import (
     NO_REPLY_BLOCKER,
+    NON_RESPONSE_LEAD,
+    NON_STATUS_REPLY_LEAD,
     NON_STATUS_REPLY_SUMMARY,
     UNKNOWN_SUMMARY,
     TrackerUpdate,
@@ -71,6 +74,8 @@ from core.application.status_summaries import (
     inferred_summary,
     late_update_summary,
     names_one_basis,
+    observed_sources,
+    observed_summary,
     stale_summary,
     summary_with_tracker_updates,
     with_no_active_work,
@@ -114,6 +119,8 @@ from core.domain.graph import EdgeKind, EntityRef, FactEvent, GraphNode, JsonSca
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
+from core.domain.observed_day import ObservedDay
+from core.domain.observed_day import lines as observed_lines
 from core.domain.status import (
     CheckIn,
     CheckInClarification,
@@ -168,6 +175,8 @@ OUTBOUND_DM_MAX_CHARS = 320
 DEFAULT_ISSUE_TRACKER_NAME = "the issue tracker"
 #: A member's checked profiles per pod: whether each expects code work there.
 CodeWorkByPod = Callable[[str, str, date], Awaitable[Mapping[str, bool]]]
+# How a status summary names the code host when the deployment does not say.
+DEFAULT_VCS_NAME = "Git"
 # The one ack a check-in gets for replies that carry no status (N22).
 NON_STATUS_ACK_TEXT = "Thanks. I'll keep the check-in open for your status update."
 # The one ack a check-in gets for a status reply that came after it closed (G9).
@@ -300,11 +309,18 @@ class StatusCollector:
         recent_fact_lookback_days: int = RECENT_FACT_LOOKBACK_DAYS,
         issue_tracker_name: str = DEFAULT_ISSUE_TRACKER_NAME,
         code_work_by_pod: CodeWorkByPod | None = None,
+        vcs_name: str = DEFAULT_VCS_NAME,
+        observed_day_reader: ObservedDayReader | None = None,
     ) -> None:
         self._issue_tracker = issue_tracker
         # A member's checked profile per pod says whether their review is code
         # work there (ProfileService.code_work_by_pod); without one, app roles do.
         self._code_work_by_pod = code_work_by_pod
+        # What a silent day is inferred from: what moved in the tracker and Git
+        # (core.domain.observed_day). Without one, only the open issues and the
+        # newest facts are read, as before.
+        self._observed_day_reader = observed_day_reader
+        self._vcs_name = vcs_name
         # How a status summary names the tracker a check-in's update went to (N48).
         self._issue_tracker_name = issue_tracker_name
         self._chat_provider = chat_provider
@@ -2104,8 +2120,14 @@ class StatusCollector:
         the developer, their scrum master and "owner says" on Signals, and the
         context prints fact payloads, which can quote a reply.
 
-        Only work under way is evidence: an issue In Progress (the trackers read
-        In Review as that) or Blocked. When the tracker lists the person's issues
+        What moved comes first (close-out v2, ``core.domain.observed_day``): a
+        stage move, a resolution, a due date or estimate move, an assignment, a
+        release change, a merge request or a commit naming a task, since their
+        last answer. Done work counts, and no issue need be under way.
+
+        Without any of that, only work under way is evidence: an issue In
+        Progress (the trackers read In Review as that) or Blocked. When the
+        tracker lists the person's issues
         and none is under way, nothing is inferred and the second value is True,
         so the unknown or stale status says there was no active work to infer
         from (N4: Hana's only issue was To Do). An empty tracker result is not
@@ -2113,6 +2135,27 @@ class StatusCollector:
         """
         reference_at = datetime.now(tz=UTC)
         issues, facts = await self._context_inputs(tenant_id, developer_id)
+        # What moved since their last answer comes first (close-out v2): a task
+        # moved to Done or to review is evidence, and no task need be under way.
+        observed = await self._observed_day(
+            tenant_id,
+            developer_id,
+            as_of,
+            until=reference_at,
+            extra_keys=[issue.key for issue in issues],
+        )
+        if observed is not None and observed.has_events:
+            return (
+                DeveloperStatus(
+                    tenant_id=tenant_id,
+                    developer_id=developer_id,
+                    as_of=as_of,
+                    source=StatusSource.INFERRED,
+                    blockers=(NO_REPLY_BLOCKER,),
+                    summary=self._observed_summary(NON_RESPONSE_LEAD, observed),
+                ),
+                False,
+            )
         active = [issue for issue in issues if issue.state in _ACTIVE_ISSUE_STATES]
         if issues and not active:
             return None, True
@@ -2134,6 +2177,108 @@ class StatusCollector:
             ),
             False,
         )
+
+    async def fill_day(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        as_of: date,
+        lead: str,
+        until: datetime | None = None,
+    ) -> DeveloperStatus:
+        """Record the day of someone the check-in never reached, from what moved.
+
+        ``lead`` says why there is no reply: not asked (the send is off) or not
+        reached (the send did not go through). Inferred when anything moved in
+        the tracker or Git since their last answer; otherwise stale (naming the
+        last status that said something) or unknown, as a silent day is. The
+        caller decides who is filled and that it happens once a day.
+        """
+        observed = await self._observed_day(
+            tenant_id, developer_id, as_of, until=until or datetime.now(tz=UTC)
+        )
+        prior = await self._status_repository.latest_developer_status(
+            tenant_id, developer_id, as_of
+        )
+        if observed is not None and observed.has_events:
+            status = DeveloperStatus(
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                as_of=as_of,
+                source=StatusSource.INFERRED,
+                blockers=(NO_REPLY_BLOCKER,),
+                summary=self._observed_summary(lead, observed),
+            )
+        elif prior is not None and prior.source is not StatusSource.UNKNOWN:
+            open_rows = await self._blockers.open_blockers(
+                tenant_id, developer_id, as_of, legacy_status=prior
+            )
+            status = DeveloperStatus(
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                as_of=as_of,
+                source=StatusSource.STALE,
+                blockers=tuple(blocker.description for blocker in open_rows) or (NO_REPLY_BLOCKER,),
+                summary=without_member_ids(
+                    stale_summary(await basis_status(self._status_repository, prior), lead=lead),
+                    await self._member_names(tenant_id),
+                ),
+            )
+        else:
+            status = DeveloperStatus(
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                as_of=as_of,
+                source=StatusSource.UNKNOWN,
+                blockers=(NO_REPLY_BLOCKER,),
+                summary=f"{lead} Current status is unknown.",
+            )
+        await self._status_repository.record_developer_status(status)
+        _logger.info(
+            "checkin_day_filled",
+            tenant_id=tenant_id,
+            developer_id=developer_id,
+            as_of=as_of.isoformat(),
+            status_source=status.source.value,
+        )
+        return status
+
+    async def _observed_day(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        as_of: date,
+        *,
+        until: datetime,
+        extra_keys: Iterable[str] = (),
+    ) -> ObservedDay | None:
+        """What moved on the person's work for ``as_of``; None when it cannot be read.
+
+        Best effort: a day is still closed, as before, when the facts cannot be read.
+        """
+        if self._observed_day_reader is None:
+            return None
+        try:
+            return await self._observed_day_reader.digest_for(
+                tenant_id, developer_id, as_of=as_of, until=until, extra_keys=extra_keys
+            )
+        except Exception as exc:  # noqa: BLE001 - the close-out never fails on a read
+            _logger.warning(
+                "observed_day_unreadable",
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                error_type=type(exc).__name__,
+            )
+            return None
+
+    def _observed_summary(self, lead: str, observed: ObservedDay) -> str:
+        """``<lead> Inferred from Jira and GitLab: CHK-4 moved to In Review; ...``."""
+        sources = observed_sources(
+            tracker=self._issue_tracker_name if observed.from_tracker else None,
+            vcs=self._vcs_name if observed.from_vcs else None,
+        )
+        return observed_summary(lead, sources, observed_lines(observed))
 
     async def _resolve_issue_tracker_assignee_id(self, tenant_id: str, developer_id: str) -> str:
         """Resolve the external id the issue tracker indexes assignments by.
@@ -3607,12 +3752,15 @@ class StatusCollector:
         )
 
     async def _record_non_status_reply_day(self, checkin: CheckIn, as_of: date) -> DeveloperStatus:
-        """Close a check-in whose replies carried no status: unknown for the day.
+        """Close a check-in whose replies carried no status: unknown, or inferred from Jira.
 
-        The person answered, so the summary says so instead of the non-response
-        wording, and nothing is inferred over what they said. It is never green
-        and never a partial status built from a re-reading of the replies.
-        Open blocker rows stay open, as for a stale day.
+        The person answered, so the summary opens with that instead of the
+        non-response wording. What moved in the tracker and Git since their last
+        answer follows it ("Replied without a status update. Inferred from Jira:
+        CHK-4 moved to In Review"), and the day is inferred; when nothing moved
+        it stays unknown. It is never green and never a partial status built
+        from a re-reading of the replies. Open blocker rows stay open, as for a
+        stale day.
         """
         prior = await self._status_repository.latest_developer_status(
             checkin.tenant_id, checkin.developer_id, as_of
@@ -3625,13 +3773,23 @@ class StatusCollector:
                 prior if prior is not None and prior.source is not StatusSource.UNKNOWN else None
             ),
         )
+        # What moved stands beside what they said (nothing): inferred when
+        # anything moved, still unknown when nothing did.
+        observed = await self._observed_day(
+            checkin.tenant_id, checkin.developer_id, as_of, until=datetime.now(tz=UTC)
+        )
+        moved = observed is not None and observed.has_events
         status = DeveloperStatus(
             tenant_id=checkin.tenant_id,
             developer_id=checkin.developer_id,
             as_of=as_of,
-            source=StatusSource.UNKNOWN,
+            source=StatusSource.INFERRED if moved else StatusSource.UNKNOWN,
             blockers=tuple(blocker.description for blocker in open_rows) or (NO_REPLY_BLOCKER,),
-            summary=NON_STATUS_REPLY_SUMMARY,
+            summary=(
+                self._observed_summary(NON_STATUS_REPLY_LEAD, observed)
+                if moved and observed is not None
+                else NON_STATUS_REPLY_SUMMARY
+            ),
         )
         await self._status_repository.record_developer_status(status)
         _logger.info(

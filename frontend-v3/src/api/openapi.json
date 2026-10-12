@@ -4404,6 +4404,110 @@
         }
       }
     },
+    "/config/checkin-fill": {
+      "get": {
+        "tags": ["config"],
+        "summary": "Get Config Checkin Fill",
+        "description": "Whether the day is filled from Jira for members the check-in never reached.",
+        "operationId": "get_config_checkin_fill_config_checkin_fill_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckinFillResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["config"],
+        "summary": "Update Config Checkin Fill",
+        "description": "Admin \u203a Check-ins: \"Fill the day from Jira for people who were not asked\".",
+        "operationId": "update_config_checkin_fill_config_checkin_fill_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckinFillUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckinFillResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/programs": {
       "get": {
         "tags": ["config"],
@@ -13392,6 +13496,58 @@
         "title": "CheckInSendKind",
         "description": "What the check-in schedule is, so a screen says only what is true of it.\n\n``WEEKLY``: one time of day on days of the week, in every month (all seven\ndays is every day). ``DATES``: one time of day on listed days of the month\nand/or in listed months, such as 1 January only. ``OTHER``: anything else,\nsuch as a step or a range in the time; only the cron says when. ``OFF``:\nthe scheduled send is switched off (``OPENPROGRAM_CHECKIN_FANOUT_ENABLED``),\nso nobody is asked on a schedule, whatever the cron says."
       },
+      "CheckinCoverageCauseDto": {
+        "properties": {
+          "cause": {
+            "type": "string",
+            "enum": ["no_jira_link", "jira_not_synced", "no_chat_id", "nothing_moved"],
+            "title": "Cause"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": ["cause", "count"],
+        "title": "CheckinCoverageCauseDto"
+      },
+      "CheckinCoverageDto": {
+        "properties": {
+          "replied": {
+            "type": "integer",
+            "title": "Replied",
+            "description": "Gave the day's status themselves (confirmed or partial)."
+          },
+          "inferred": {
+            "type": "integer",
+            "title": "Inferred",
+            "description": "Inferred from what moved in the tracker and Git."
+          },
+          "no_data": {
+            "type": "integer",
+            "title": "No Data",
+            "description": "Closed stale or unknown: nothing said, nothing moved."
+          },
+          "waiting": {
+            "type": "integer",
+            "title": "Waiting",
+            "description": "No status for the day yet."
+          },
+          "causes": {
+            "items": {
+              "$ref": "#/components/schemas/CheckinCoverageCauseDto"
+            },
+            "type": "array",
+            "title": "Causes",
+            "description": "Why the no-data days have none, counted per cause."
+          }
+        },
+        "type": "object",
+        "required": ["replied", "inferred", "no_data", "waiting"],
+        "title": "CheckinCoverageDto",
+        "description": "How a pod's day was captured: \"6 replied \u00b7 3 from Jira \u00b7 1 no data (no Jira link)\"."
+      },
       "CheckinDefaultsResponse": {
         "properties": {
           "local_time": {
@@ -13464,6 +13620,27 @@
           "summary": {
             "type": "string",
             "title": "Summary"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence",
+            "description": "An inferred day's lines of what moved in the tracker and Git; not the person's word."
+          },
+          "no_data_cause": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["no_jira_link", "jira_not_synced", "no_chat_id", "nothing_moved"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Data Cause",
+            "description": "Why a day closed stale or unknown has no data."
           }
         },
         "type": "object",
@@ -13525,6 +13702,64 @@
         "type": "object",
         "required": ["tenant_id", "developer_id"],
         "title": "CheckinDispatchRequest"
+      },
+      "CheckinFillResponse": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Whether the reconcile tick fills the day from Jira for members the check-in never reached (the send off, or a send that failed)."
+          },
+          "source": {
+            "type": "string",
+            "enum": ["default", "tenant"],
+            "title": "Source",
+            "description": "'default' while an admin never saved it (on), 'tenant' once saved."
+          },
+          "deployment_enabled": {
+            "type": "boolean",
+            "title": "Deployment Enabled",
+            "description": "The deployment's own switch (OPENPROGRAM_CHECKIN_FILL_ENABLED); off wins."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "required": ["enabled", "source", "deployment_enabled"],
+        "title": "CheckinFillResponse",
+        "description": "The tenant's switch \"Fill the day from Jira for people who were not asked\"."
+      },
+      "CheckinFillUpdateRequest": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": ["enabled"],
+        "title": "CheckinFillUpdateRequest"
       },
       "CheckinPreferenceResponse": {
         "properties": {
@@ -16706,6 +16941,17 @@
             "type": "boolean",
             "title": "Can Move In Tracker",
             "description": "The person is the synced tracker issue's assignee through their identity link. The tick to move the issue also needs write_back other than off."
+          },
+          "observed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservedTaskDto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the tracker says of the task today, never merged into last_update."
           }
         },
         "type": "object",
@@ -19076,6 +19322,82 @@
         "required": ["status", "issues", "issue_types", "stage", "mapped"],
         "title": "ObservedStatusResponse"
       },
+      "ObservedTaskDto": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "description": "The tracker's status name now."
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The delivery stage that status maps to."
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since",
+            "description": "When the task entered that status, by the tracker's history."
+          },
+          "moved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moved By",
+            "description": "Who made that move, by name, when it was not one of the task's own people."
+          },
+          "changes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Changes",
+            "description": "The day's other changes, worded: 'due date moved Oct 10 \u2192 Oct 14'."
+          },
+          "quiet_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet Days",
+            "description": "Days a task under way has not moved, from five on."
+          }
+        },
+        "type": "object",
+        "required": ["status", "stage", "since"],
+        "title": "ObservedTaskDto",
+        "description": "What the tracker says of a task today (\"Jira today\"), beside what its people said."
+      },
       "PeriodKind": {
         "type": "string",
         "enum": ["since_baseline", "last_7_days", "last_30_days", "since_date_change", "from"],
@@ -19497,6 +19819,17 @@
             },
             "type": "array",
             "title": "Developers"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckinCoverageDto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How the pod's day was captured, counted per pod."
           }
         },
         "type": "object",
@@ -19857,6 +20190,17 @@
             ],
             "title": "Eta Label",
             "description": "That ETA as it was given: 'Oct 9' from the console, 'Tuesday' from chat."
+          },
+          "observed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObservedTaskDto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the tracker says of the task today, never merged into last_update."
           }
         },
         "type": "object",

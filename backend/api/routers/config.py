@@ -11,11 +11,14 @@ from api.dependencies import (
     get_current_principal,
     get_directory_service,
     get_directory_sync_service,
+    get_fill_day_settings_service,
     get_jira_writes_service,
     get_profile_service,
     get_settings_from_request,
 )
 from api.dtos import (
+    CheckinFillResponse,
+    CheckinFillUpdateRequest,
     CheckinPreferenceResponse,
     CheckinPreferenceUpdateRequest,
     ConfigEdgeResponse,
@@ -55,6 +58,7 @@ from core.application.config_service import (
     DirectoryService,
 )
 from core.application.directory_sync_service import DirectorySyncService
+from core.application.fill_day import FillDaySettingsService
 from core.application.jira_writes_service import JiraWritesService
 from core.application.profile_service import ProfileService
 from core.domain.auth import Principal
@@ -1194,6 +1198,35 @@ async def update_config_tenant_writeback(
     await jira_writes.set_master(principal.tenant_id, request.enabled, actor=principal.subject)
     return TenantWritebackResponse.from_domain(
         WriteBackGate(enabled=request.enabled, source=WriteBackGateSource.TENANT)
+    )
+
+
+@router.get("/config/checkin-fill", response_model=CheckinFillResponse)
+async def get_config_checkin_fill(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[FillDaySettingsService, Depends(get_fill_day_settings_service)],
+    settings: Annotated[Settings, Depends(get_settings_from_request)],
+) -> CheckinFillResponse:
+    """Whether the day is filled from Jira for members the check-in never reached."""
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    setting, saved = await service.read(principal.tenant_id)
+    return CheckinFillResponse.from_domain(
+        setting, saved=saved, deployment_enabled=settings.checkin_fill_enabled
+    )
+
+
+@router.put("/config/checkin-fill", response_model=CheckinFillResponse)
+async def update_config_checkin_fill(
+    request: CheckinFillUpdateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[FillDaySettingsService, Depends(get_fill_day_settings_service)],
+    settings: Annotated[Settings, Depends(get_settings_from_request)],
+) -> CheckinFillResponse:
+    """Admin › Check-ins: "Fill the day from Jira for people who were not asked"."""
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    setting = await service.set(principal.tenant_id, request.enabled, actor=principal.subject)
+    return CheckinFillResponse.from_domain(
+        setting, saved=True, deployment_enabled=settings.checkin_fill_enabled
     )
 
 
