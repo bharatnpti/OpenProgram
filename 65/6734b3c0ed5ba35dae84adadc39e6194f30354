@@ -1,0 +1,73 @@
+frontend-v3/src/app/access.test.ts
+  s_22b399281058a2::t_58d75459f17ffd 500-513
+  s_22b399281058a2::t_9abe7932622fa1 9
+  s_22b399281058a2::t_152a997adf39be 514
+frontend-v3/src/features/admin/JiraHygieneTab.tsx
+  s_22b399281058a2::t_309ff54ed5e5ab 96-97,156-158,519-521,528-529
+  s_22b399281058a2::t_3ca0d08bb563ba 1-45,47-95,98-155,159-278,281-333,335-432,434-518,522-527,530-889
+  s_22b399281058a2::t_a02d687a2a57b8 279-280
+  s_22b399281058a2::t_d0eaf368bc8951 46,433
+  s_22b399281058a2::t_c00ac7cf15e275 334
+frontend-v3/src/app/access.ts
+  s_22b399281058a2::t_3c97ffcf6b0447 117-128,200-204,227-236
+  s_22b399281058a2::t_736d5a961f84ac 237-238
+frontend-v3/src/features/overall/queries.ts
+  s_22b399281058a2::t_aa3d435d4663b1 172-185
+  s_22b399281058a2::t_a14bed281c019a 4
+  s_22b399281058a2::t_19f4f366b319f5 186-191
+frontend-v3/src/features/overall/HygieneSection.tsx
+  s_22b399281058a2::t_a6843c10dab0de 1-167,169-461
+  s_22b399281058a2::t_309ff54ed5e5ab 168
+frontend-v3/scripts/mock/hygiene.mjs
+  s_22b399281058a2::t_f932a269590583 120,176-185,338-340,343-349,356-357,376-378,411-412,423-432,438-443
+  s_22b399281058a2::t_e6d3ae7f77e2b3 1-119,121-175,186-337,341-342,350-355,358-375,379-410,413-422,433-437,444-477
+frontend-v3/src/features/admin/hygieneForm.test.ts
+  s_22b399281058a2::t_309ff54ed5e5ab 147
+  s_22b399281058a2::t_62efec425ef1cb 1-9,11-146,148
+  s_22b399281058a2::t_8015af4b5b41a2 10
+  s_22b399281058a2::t_c9aa563d2fc1d1 149-157
+frontend-v3/src/pages/AdminPage.tsx
+  s_22b399281058a2::t_a63201a1addd5a 14
+  s_22b399281058a2::t_0de754a9ac0b19 85
+  s_22b399281058a2::t_7b4aab590b7f94 32
+frontend-v3/src/api/client.ts
+  s_22b399281058a2::t_3c97ffcf6b0447 26-33,834-887
+frontend-v3/src/pages/OverallPage.tsx
+  s_22b399281058a2::t_5a7a9c2aedf733 9,24-25,32-33,36-37,112
+frontend-v3/src/api/schema.ts
+  s_22b399281058a2::t_3c97ffcf6b0447 354-376
+frontend-v3/scripts/mock-api.mjs
+  s_22b399281058a2::t_6ab8f3f1b2d4fc 264
+  s_22b399281058a2::t_0d9ddc1b9be5a4 37
+frontend-v3/src/features/admin/hygieneForm.ts
+  s_22b399281058a2::t_309ff54ed5e5ab 206-207
+  s_22b399281058a2::t_15d0529fc60547 1-168,170-205,208-326,340-349
+  s_22b399281058a2::t_f7accc265dceed 169
+  s_22b399281058a2::t_8dca14cd24ea8a 327-339
+frontend-v3/src/features/overall/hygieneWords.ts
+  s_22b399281058a2::t_f28536153edd23 15
+  s_22b399281058a2::t_a14bed281c019a 128
+  s_22b399281058a2::t_656ee35d3bf4a2 21-22,26
+  s_22b399281058a2::t_5cdcf9b22cc5a8 1-14,16-20,23,27-29,33-36,43-127,129-145
+  s_22b399281058a2::t_309ff54ed5e5ab 24-25,30-32,37-42
+frontend-v3/src/features/overall/hygieneWords.test.ts
+  s_22b399281058a2::t_309ff54ed5e5ab 61-64,143-149,157-163,182-188
+  s_22b399281058a2::t_c8e527cc82a8f8 58,65,69
+  s_22b399281058a2::t_b731ddf28ccf40 1-57,59-60,66-68,70-142,150-156,164-181,189-191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "656734b3c0ed5ba35dae84adadc39e6194f30354",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
