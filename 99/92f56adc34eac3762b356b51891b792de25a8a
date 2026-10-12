@@ -1,0 +1,37 @@
+backend/tests/unit/test_observed_day.py
+  s_22b399281058a2::t_10ff719ead2acc 369-398
+frontend-v3/src/lib/checkinWords.test.ts
+  s_22b399281058a2::t_3af604eb60ab93 306-312
+  s_22b399281058a2::t_5c9d3e4ce0b2c5 292-303
+  s_22b399281058a2::t_f0250187677568 304-305,313-314
+frontend-v3/src/lib/checkinWords.ts
+  s_22b399281058a2::t_6448c0a5f2db8b 150-151,155
+  s_22b399281058a2::t_450d2537b23a51 156-158
+  s_22b399281058a2::t_73c76965491a12 50-52
+frontend-v3/scripts/mock/observed-day.mjs
+  s_22b399281058a2::t_2aa20effc92cda 27
+  s_22b399281058a2::t_024c19eec7ab42 57-58,60,66-70
+  s_22b399281058a2::t_56288ab2f628e9 54-55
+  s_22b399281058a2::t_abcf08b77ae2d6 71
+backend/core/domain/observed_day.py
+  s_22b399281058a2::t_1b4ed3967226d8 279,288-291
+  s_22b399281058a2::t_97607215999440 43,45-47,325-328,330-331,333-335
+backend/core/application/status_collector.py
+  s_22b399281058a2::t_0d42d585a93556 2031,2037-2042
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9992f56adc34eac3762b356b51891b792de25a8a",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
