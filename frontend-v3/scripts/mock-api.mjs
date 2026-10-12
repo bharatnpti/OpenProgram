@@ -34,6 +34,7 @@ import * as releaseReadiness from "./mock/release-readiness.mjs";
 import * as jiraWrites from "./mock/jira-writes.mjs";
 import * as profilesMock from "./mock/profiles.mjs";
 import * as baselines from "./mock/baselines.mjs";
+import * as observedDay from "./mock/observed-day.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
@@ -228,6 +229,7 @@ function api(req, res, url) {
   if (forecastSettings.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny))
     return;
   if (jiraWrites.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
+  if (observedDay.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
   if (releaseReadiness.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny))
     return;
   if (adminConfig.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;

@@ -84,6 +84,8 @@ import type {
   WritebackConsentResponse,
   WritebackConsentUpdateRequest,
   TenantWritebackResponse,
+  CheckinFillResponse,
+  CheckinFillUpdateRequest,
   JiraWritesResponse,
   JiraWritesUpdateRequest,
   DeliveryTreeResponse,
@@ -602,6 +604,9 @@ export const apiClient = {
       body,
     }),
   configTenantWriteback: () => requestJson<TenantWritebackResponse>("/config/tenant/writeback"),
+  configCheckinFill: () => requestJson<CheckinFillResponse>("/config/checkin-fill"),
+  saveConfigCheckinFill: (body: CheckinFillUpdateRequest) =>
+    requestJson<CheckinFillResponse>("/config/checkin-fill", { method: "PUT", body }),
   jiraWrites: () => requestJson<JiraWritesResponse>("/config/tenant/jira-writes"),
   saveJiraWrites: (body: JiraWritesUpdateRequest) =>
     requestJson<JiraWritesResponse>("/config/tenant/jira-writes", { method: "PUT", body }),

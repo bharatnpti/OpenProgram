@@ -231,3 +231,62 @@ test("a folded board says how many replied that day, and flags anyone not green"
   );
   assert.equal(followUpWords(2), "2 to follow up");
 });
+
+test("the folded board says how the day was captured: from Jira and no data, with why", () => {
+  const board = {
+    confirmed: 6,
+    partial: 0,
+    stale: 1,
+    missing: 3,
+    coverage: {
+      replied: 6,
+      inferred: 3,
+      no_data: 1,
+      waiting: 0,
+      causes: [{ cause: "no_jira_link" as const, count: 1 }],
+    },
+    developers: [],
+  };
+  assert.equal(
+    checkinsSummary(board, "today").text,
+    "6 of 10 replied today · 3 from Jira · 1 no data (no Jira link)",
+  );
+});
+
+test("a day inferred from Jira reads its evidence, and a filled day its own first words", () => {
+  const inferred = {
+    state: "stale" as const,
+    source: "inferred" as const,
+    status_as_of: "2026-10-06",
+    summary: "Not asked today. Inferred from Jira: CHK-4 moved to In Review (in development).",
+    evidence: ["CHK-4 moved to In Review (in development)"],
+  };
+  assert.deepEqual(boardWord(inferred, "2026-10-06"), {
+    word: REPLY_WORDS.inferred,
+    tone: "warning",
+  });
+  assert.equal(
+    boardMeta(inferred, "2026-10-06", { day: (iso) => iso }),
+    "not asked · inferred from Jira · CHK-4 moved to In Review (in development)",
+  );
+  const withoutStatus = {
+    ...inferred,
+    summary: "Replied without a status update. Inferred from Jira: CHK-4 moved to In Review.",
+  };
+  assert.equal(
+    boardMeta(withoutStatus, "2026-10-06", { day: (iso) => iso }),
+    "replied without a status · inferred from Jira · CHK-4 moved to In Review (in development)",
+  );
+  const notReached = {
+    state: "missing" as const,
+    source: "unknown" as const,
+    status_as_of: "2026-10-06",
+    summary: "Not reached in chat. Current status is unknown.",
+  };
+  assert.deepEqual(boardWord(notReached, "2026-10-06"), {
+    word: REPLY_WORDS.notReached,
+    tone: "neutral",
+  });
+  assert.equal(boardMeta(notReached, "2026-10-06", { day: (iso) => iso }), "not reached · no data");
+  assert.equal(boardRag(inferred), "amber");
+});

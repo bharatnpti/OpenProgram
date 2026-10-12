@@ -6,6 +6,7 @@ import { PanelState, TableBox, td, th } from "../../components/PanelState";
 import { BlockerChip, DueDate, Panel, RagBadge } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
+import { jiraTodayLine } from "../../lib/observedWords";
 import { ragSeverity } from "../../lib/status";
 import { plural } from "../../lib/words";
 import { etaAfterDue, startState, statementWords, viaWords } from "../today/taskUpdate";
@@ -98,7 +99,7 @@ export function PodTasksPanel({ podId }: { podId: string }) {
                     )}
                   </td>
                   <td className={td}>
-                    <LastSaid task={task} />
+                    <LastSaid task={task} today={tasks.data?.as_of ?? ""} />
                   </td>
                   <td className={`${td} whitespace-nowrap`}>
                     <DueDate deadline={task.deadline} trackerStatus={task.tracker_status} />
@@ -136,18 +137,29 @@ export function PodTasksPanel({ podId }: { podId: string }) {
   );
 }
 
-/** "In review · MR !3 open", and under it who said it, when and where; "—" when nobody has. */
-function LastSaid({ task }: { task: PodTaskDto }) {
+/**
+ * "In review · MR !3 open", and under it who said it, when and where; "—" when
+ * nobody has. Under that, what Jira says of the task today ("Jira today: In
+ * Review since 14:02 · moved by Liam"), which is never anyone's word.
+ */
+function LastSaid({ task, today }: { task: PodTaskDto; today: string }) {
   const words = statementWords(task.last_update);
-  if (!task.last_update || !words) return <>—</>;
-  const who = task.last_update_by ? `${task.last_update_by} · ` : "";
+  const jira = jiraTodayLine(task.observed, { today });
+  const said =
+    task.last_update && words ? (
+      <>
+        <span className="text-ink">{words.charAt(0).toUpperCase() + words.slice(1)}</span>
+        <span className="block text-[12px] text-grey-secondary">
+          {task.last_update_by ? `${task.last_update_by} · ` : ""}
+          {formatDay(task.last_update.at)} {viaWords(task.last_update.via)}
+        </span>
+      </>
+    ) : null;
+  if (!said && !jira) return <>—</>;
   return (
     <div className="max-w-[16rem]">
-      <span className="text-ink">{words.charAt(0).toUpperCase() + words.slice(1)}</span>
-      <span className="block text-[12px] text-grey-secondary">
-        {who}
-        {formatDay(task.last_update.at)} {viaWords(task.last_update.via)}
-      </span>
+      {said ?? <span className="text-grey-secondary">Nothing said</span>}
+      {jira ? <span className="mt-1 block text-[12px] text-grey-secondary">{jira}</span> : null}
     </div>
   );
 }

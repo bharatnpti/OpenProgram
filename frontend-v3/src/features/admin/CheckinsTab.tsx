@@ -17,6 +17,7 @@ import { currentZoneName, deviceTimezone } from "../../lib/zones";
 import { adminSendWords, daysLabel } from "../checkin/schedule";
 import { AdminDialog, Problems, hintClass, inputClass, labelClass } from "./AdminBits";
 import { errorText, minutesLabel } from "./adminWords";
+import { FillDayCard } from "./FillDayCard";
 import {
   type PrefDraft,
   type PrefField,
@@ -228,6 +229,7 @@ export function CheckinsTab() {
           </Link>{" "}
           has the switches.
         </p>
+        <FillDayCard />
       </div>
     </PanelState>
   );

@@ -11,6 +11,7 @@ import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { actionError } from "../../lib/errors";
 import { formatDay } from "../../lib/format";
+import { jiraTodayLine } from "../../lib/observedWords";
 import { cn } from "../../lib/utils";
 import { plural } from "../../lib/words";
 import {
@@ -134,6 +135,8 @@ function TaskItem({
   const key = issueKey(task);
   const meta = [key, task.tracker_status].filter(Boolean).join(" · ");
   const said = lastSaidLine(task.last_update, formatDay);
+  // What Jira says of it today, under what the person said: never merged into it.
+  const jira = jiraTodayLine(task.observed, { today });
 
   return (
     <Row
@@ -187,6 +190,7 @@ function TaskItem({
         </div>
       ) : null}
       {said ? <p className="mt-1 text-[12px] text-grey-secondary">{said}</p> : null}
+      {jira ? <p className="mt-0.5 text-[12px] text-grey-secondary">{jira}</p> : null}
       {outcome ? (
         <p
           role="status"

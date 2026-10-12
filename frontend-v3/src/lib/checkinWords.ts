@@ -1,6 +1,7 @@
 // Pure wording for how a person's check-in stands. Type imports only, so
 // `node --test` runs it directly.
 import type { PodCheckinsResponse, StatusSource } from "../api/schema";
+import { coverageWords } from "./observedWords.ts";
 import type { BadgeTone } from "./status";
 
 /*
@@ -36,7 +37,25 @@ export const REPLY_WORDS = {
   none: "no reply",
   inferred: "inferred",
   carried: "carried forward",
+  notAsked: "not asked",
+  notReached: "not reached",
 } as const;
+
+/*
+ * The first words of a day the backend filled from Jira for someone the check-in
+ * never reached (status_summaries NOT_ASKED_LEAD and NOT_REACHED_LEAD): not asked,
+ * because the send is off, or not reached, because the send did not go through.
+ */
+const NOT_ASKED_LEAD = "Not asked today.";
+const NOT_REACHED_LEAD = "Not reached in chat.";
+
+/** "not asked" or "not reached" for a filled day, else null. */
+export function filledWord(summary: string | null | undefined): string | null {
+  const text = (summary ?? "").trim();
+  if (text.startsWith(NOT_ASKED_LEAD)) return REPLY_WORDS.notAsked;
+  if (text.startsWith(NOT_REACHED_LEAD)) return REPLY_WORDS.notReached;
+  return null;
+}
 
 /**
  * The summary the backend writes when someone answered the day's check-in
@@ -74,7 +93,8 @@ export function answeredByTaskUpdates(
 type BoardPerson = Pick<
   PodCheckinsResponse["developers"][number],
   "state" | "source" | "status_as_of" | "summary"
->;
+> &
+  Partial<Pick<PodCheckinsResponse["developers"][number], "evidence">>;
 
 /** What a pod's board knows of a person: its server state, source, day and summary. */
 export type BoardRead = BoardPerson;
@@ -88,6 +108,10 @@ export function boardWord(person: BoardPerson, asOf: string): { word: string; to
   if (person.state === "partial") return { word: REPLY_WORDS.partly, tone: "warning" };
   if (repliedWithoutStatus(person.summary, person.source)) {
     return { word: REPLY_WORDS.withoutStatus, tone: "warning" };
+  }
+  const filled = person.source !== "inferred" ? filledWord(person.summary) : null;
+  if (filled && person.status_as_of === asOf) {
+    return { word: filled, tone: person.state === "missing" ? "neutral" : "warning" };
   }
   if (person.state === "missing") return { word: REPLY_WORDS.none, tone: "neutral" };
   if (person.source === "inferred") return { word: REPLY_WORDS.inferred, tone: "warning" };
@@ -118,7 +142,19 @@ export function boardMeta(
   // "today", or "on Mon 5 Oct" while a past day is shown.
   const today = say.today ?? "today";
   if (repliedWithoutStatus(summary, source)) return "replied without a status";
-  if (state === "missing") return "no status yet";
+  const evidence = person.evidence ?? [];
+  if (source === "inferred" && from === asOf && evidence.length > 0) {
+    // One line of what moved: the day's own words come first ("not asked").
+    const why = (summary ?? "").trim().startsWith(NON_STATUS_LEAD)
+      ? REPLY_WORDS.withoutStatus
+      : (filledWord(summary) ?? REPLY_WORDS.none);
+    return `${why} · inferred from Jira · ${evidence.join("; ")}`;
+  }
+  if (state === "missing") {
+    return from === asOf && filledWord(summary)
+      ? `${filledWord(summary)} · no data`
+      : "no status yet";
+  }
   let lead: string;
   if (from && from !== asOf) {
     const day = say.day(from);
@@ -134,6 +170,9 @@ export function boardMeta(
     lead = `replied ${today}`;
   } else if (state === "partial") {
     lead = `partly replied ${today}`;
+  } else if (filledWord(summary)) {
+    // A filled day's summary opens with its own words: "Not asked today. …".
+    return summary ?? "";
   } else {
     lead =
       source === "inferred" ? "no reply · inferred from delivery signals" : `no reply ${today}`;
@@ -155,9 +194,10 @@ export function repliedCount(counts: { confirmed: number; partial: number; total
  * status. A board says "replied", never "confirmed" (see REPLY_WORDS).
  */
 export function checkinsSummary(
-  board: Pick<PodCheckinsResponse, "confirmed" | "partial" | "stale" | "missing"> & {
-    developers: BoardPerson[];
-  },
+  board: Pick<PodCheckinsResponse, "confirmed" | "partial" | "stale" | "missing"> &
+    Partial<Pick<PodCheckinsResponse, "coverage">> & {
+      developers: BoardPerson[];
+    },
   day: string,
 ): { text: string; attention: number } {
   const total = board.confirmed + board.partial + board.stale + board.missing;
@@ -166,7 +206,7 @@ export function checkinsSummary(
   }
   const partly = board.partial > 0 ? ` · ${board.partial} partly` : "";
   return {
-    text: `${board.confirmed} of ${total} replied ${day}${partly}`,
+    text: `${board.confirmed} of ${total} replied ${day}${partly}${coverageWords(board.coverage)}`,
     attention: board.developers.filter((person) => boardRag(person) !== "green").length,
   };
 }
