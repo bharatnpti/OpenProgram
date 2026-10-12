@@ -13,6 +13,7 @@ import { GatesTab } from "../features/admin/GatesTab";
 import { IntegrationsTab } from "../features/admin/IntegrationsTab";
 import { JiraWritesTab } from "../features/admin/JiraWritesTab";
 import { LinksTab } from "../features/admin/LinksTab";
+import { ProfilesTab } from "../features/admin/ProfilesTab";
 import { ReleaseReadinessTab } from "../features/admin/ReleaseReadinessTab";
 import { cn } from "../lib/utils";
 
@@ -33,6 +34,7 @@ const TABS = [
   { key: "entities", label: "Entities" },
   { key: "links", label: "Links" },
   { key: "directory", label: "Directory" },
+  { key: "profiles", label: "Profiles" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 
@@ -84,6 +86,7 @@ export function AdminPage() {
         {tab === "entities" ? <EntitiesTab /> : null}
         {tab === "links" ? <LinksTab /> : null}
         {tab === "directory" ? <DirectoryTab /> : null}
+        {tab === "profiles" ? <ProfilesTab /> : null}
       </>
     </>
   );
