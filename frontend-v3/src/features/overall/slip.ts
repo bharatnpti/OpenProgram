@@ -113,6 +113,17 @@ export function slipRecord(
   return { line, note };
 }
 
+/**
+ * Which days of the drawn forecast were rebuilt afterwards from the daily
+ * snapshots rather than kept on the day, in words; null when none were.
+ */
+export function rebuiltNote(days: { day: string; reconstructed?: boolean }[]): string | null {
+  const rebuilt = days.filter((item) => item.reconstructed);
+  if (rebuilt.length === 0) return null;
+  const last = rebuilt[rebuilt.length - 1].day;
+  return `The forecast up to ${formatDay(last)} was rebuilt afterwards from the daily snapshots kept then.`;
+}
+
 /** "2 to 21 Dec", or "28 Nov to 21 Dec" across a month. */
 export function rangeWords(from: string, to: string): string {
   const [a, b] = [formatDay(from).split(" "), formatDay(to).split(" ")];

@@ -4686,6 +4686,12 @@ class ForecastDayResponse(BaseModel):
     p50: date | None
     p85: date | None
     sample_days: int
+    reconstructed: bool = Field(
+        default=False,
+        description=(
+            "True when the day was rebuilt later from the stored snapshots, not kept on the day."
+        ),
+    )
 
 
 class ForecastHistoryResponse(BaseModel):
@@ -4710,7 +4716,11 @@ class ForecastHistoryResponse(BaseModel):
             needed_days=view.needed_days,
             days=[
                 ForecastDayResponse(
-                    day=item.day, p50=item.p50, p85=item.p85, sample_days=item.sample_days
+                    day=item.day,
+                    p50=item.p50,
+                    p85=item.p85,
+                    sample_days=item.sample_days,
+                    reconstructed=item.reconstructed,
                 )
                 for item in view.days
             ],
