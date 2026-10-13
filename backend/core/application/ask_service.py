@@ -37,6 +37,7 @@ from core.application.portfolio_feed_service import (
     PortfolioFeedService,
     state_label,
 )
+from core.application.portfolio_privacy import reads_people
 from core.application.profile_service import ProfileService
 from core.application.readiness_access import pod_viewer, project_viewer, reads_some_board
 from core.application.release_readiness_service import (
@@ -1083,6 +1084,9 @@ class PortfolioHeatmapTool:
     service: PersonaViewService
     repository: GraphRepository
     as_of: date
+    #: The asker sees no person (an executive): the route's own projection (D87).
+    counts_only: bool = False
+    asker_id: str | None = None
 
     name: str = "portfolio_heatmap"
     description: str = (
@@ -1121,7 +1125,13 @@ class PortfolioHeatmapTool:
         program_root_id = _string_argument(arguments.get("program_root_id"))
         kinds = set(_kinds_argument(arguments.get("kinds")))
         limit = _bounded_int(arguments.get("limit"), default=60, maximum=100)
-        view = await self.service.portfolio_heatmap(self.tenant_id, as_of, program_root_id)
+        view = await self.service.portfolio_heatmap(
+            self.tenant_id,
+            as_of,
+            program_root_id,
+            counts_only=self.counts_only,
+            reader_id=self.asker_id,
+        )
         names = await _node_names(self.repository, self.tenant_id, as_of)
         return json.dumps(
             _portfolio_heatmap_payload(view, names, kinds=kinds, limit=limit),
@@ -2272,7 +2282,12 @@ class AskService:
             # /portfolio/heatmap
             (
                 PortfolioHeatmapTool(
-                    tenant_id=tenant_id, service=personas, repository=graph, as_of=as_of
+                    tenant_id=tenant_id,
+                    service=personas,
+                    repository=graph,
+                    as_of=as_of,
+                    counts_only=not reads_people(principal),
+                    asker_id=principal.subject,
                 ),
                 _has(Capability.READ_PORTFOLIO_HEATMAP),
             ),

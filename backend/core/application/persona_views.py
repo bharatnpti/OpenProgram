@@ -16,6 +16,7 @@ from core.application.attention import (
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
 from core.application.checkin_drift import CHECKIN_DRIFT_FACT_SOURCE
 from core.application.person_names import UNKNOWN_PERSON, member_names
+from core.application.portfolio_privacy import counted_day, counted_statuses, own_cells_only
 from core.application.rollup_service import (
     CONFIRMED_NO_BLOCKERS_REASON,
     NO_WORK_REASON,
@@ -1085,8 +1086,15 @@ class PersonaViewService:
         *,
         today: date | None = None,
         names: ProviderNames | None = None,
+        counts_only: bool = False,
+        reader_id: str | None = None,
     ) -> PortfolioHeatmapView:
         """Heat for one day, computed on the fly when nothing is stored yet.
+
+        ``counts_only`` is the reader who sees no person (an executive, D87):
+        no one's cell but ``reader_id``'s own, and reasons that count people and
+        name work items, never a person or a blocker's own words
+        (``portfolio_privacy``).
 
         Reads never record. They used to: a missing rollup was computed *and
         persisted*, which meant any caller could write a row of derived history
@@ -1113,12 +1121,18 @@ class PersonaViewService:
         if loaded is None:
             return PortfolioHeatmapView(as_of=as_of, rows=(), columns=(), cells=())
         statuses, tree = loaded
+        if counts_only:
+            statuses = counted_statuses(statuses)
         day = await self._attention_day(
             tenant_id, statuses, as_of, today or datetime.now(tz=UTC).date(), names
         )
+        if counts_only:
+            day = counted_day(day)
         # An empty workstream is optional, not unreported: it gets no cell.
         shown = [status for status in statuses if day.graph.shows(status.entity_ref)]
-        cells = await self._heatmap_cells(tenant_id, shown, tree, day)
+        if counts_only:
+            shown = own_cells_only(shown, reader_id)
+        cells = await self._heatmap_cells(tenant_id, shown, tree, day, people_named=not counts_only)
         rows = tuple(dict.fromkeys(cell.row for cell in cells))
         columns = tuple(dict.fromkeys(cell.column for cell in cells))
         return PortfolioHeatmapView(as_of=as_of, rows=rows, columns=columns, cells=cells)
@@ -1134,6 +1148,7 @@ class PersonaViewService:
         zone: tzinfo = UTC,
         names: ProviderNames | None = None,
         clock: bool = True,
+        counts_only: bool = False,
     ) -> AttentionView:
         """What a director should know about the program on ``as_of``, in one read.
 
@@ -1141,12 +1156,17 @@ class PersonaViewService:
         for the people in the teams, and up to five signals worth acting on:
         from the same statuses the heat map shows, the open risk and drift
         findings (``findings``; none read without it), and how long each open
-        blocker has stood.
+        blocker has stood. ``counts_only`` words it for a reader who sees no
+        person (D87), as the heat map does.
         """
         program_id = program_root_id or await self._first_program_id(tenant_id, as_of)
         loaded = await self._heatmap_statuses(tenant_id, as_of, program_id)
         statuses = loaded[0] if loaded is not None else []
+        if counts_only:
+            statuses = counted_statuses(statuses)
         day = await self._attention_day(tenant_id, statuses, as_of, today, names)
+        if counts_only:
+            day = counted_day(day)
         risks = await findings.portfolio_risks(tenant_id, as_of) if findings else []
         drift = await findings.portfolio_drift(tenant_id, as_of) if findings else []
         people = sorted(node_id for (kind, node_id) in day.statuses if kind is NodeKind.DEVELOPER)
@@ -1232,6 +1252,8 @@ class PersonaViewService:
         statuses: Sequence[NodeStatus],
         tree: GraphTree | None,
         day: AttentionDay,
+        *,
+        people_named: bool = True,
     ) -> tuple[HeatmapCellView, ...]:
         """One cell per status, each amber or red one naming what drives it.
 
@@ -1239,7 +1261,8 @@ class PersonaViewService:
         amber or red cell's reason names are looked up -- the people behind its
         blockers, drift and updates, and the work items and tasks those cite --
         from the tree when one was read, else one by one; a node not found is
-        left unnamed.
+        left unnamed. Without ``people_named`` no person is named: they are
+        counted, and the work items still named.
         """
         context = _ReasonContext.from_statuses(statuses)
         wanted = {
@@ -1256,7 +1279,12 @@ class PersonaViewService:
             if node is not None:
                 nodes[node_id] = node
         context = context.with_labels(
-            {node_id: _reason_label(nodes[node_id]) for node_id in wanted if node_id in nodes}
+            {
+                node_id: _reason_label(nodes[node_id])
+                for node_id in wanted
+                if node_id in nodes
+                and (people_named or nodes[node_id].kind is not NodeKind.DEVELOPER)
+            }
         )
         cells: list[HeatmapCellView] = []
         for status in statuses:

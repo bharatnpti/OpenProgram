@@ -59,6 +59,7 @@ from core.application.flow_metrics_service import FlowMetricsService
 from core.application.person_names import PersonNames, person_name
 from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
+from core.application.portfolio_privacy import reads_people
 from core.application.pull_request_flow_service import FlowScopeInvalid, PullRequestFlowService
 from core.application.risk_service import RiskService
 from core.application.writeback_service import WriteBackService
@@ -238,9 +239,20 @@ async def portfolio_heatmap(
     names: Annotated[ProviderNames, Depends(get_provider_names)],
     program_root_id: Annotated[str | None, Query()] = None,
 ) -> PortfolioHeatmapResponse:
+    """The day's heat, each cell with why it has its colour.
+
+    An executive reads it with nobody in it (D87): no person's cell but their
+    own, and reasons that count people and name work items, never a name or a
+    blocker's own words. Decided here by role, never by the console hiding it.
+    """
     _ensure(principal, Capability.READ_PORTFOLIO_HEATMAP)
     view = await persona_service.portfolio_heatmap(
-        principal.tenant_id, as_of, program_root_id, names=names
+        principal.tenant_id,
+        as_of,
+        program_root_id,
+        names=names,
+        counts_only=not reads_people(principal),
+        reader_id=principal.subject,
     )
     return PortfolioHeatmapResponse.from_view(view)
 
@@ -262,6 +274,7 @@ async def portfolio_attention(
 
     The heat map's read (the same colours and reasons) with the portfolio's
     risk and drift findings, so it needs both: manager, exec and admin hold them.
+    An executive's names nobody, as their heat map does (D87).
     """
     _ensure(principal, Capability.READ_PORTFOLIO_HEATMAP)
     _ensure_aggregate(principal)
@@ -274,6 +287,7 @@ async def portfolio_attention(
         today=datetime.now(tz=zone).date(),
         zone=zone,
         names=names,
+        counts_only=not reads_people(principal),
     )
     return PortfolioAttentionResponse.from_view(view)
 
