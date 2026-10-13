@@ -88,6 +88,8 @@ class ProjectAskView:
     level: int
     escalated_to: str | None
     escalation_label: str | None
+    #: The request between people it is, when it is one (see ``Ask.request_id``).
+    request_id: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -300,11 +302,12 @@ def _ask_view(ask: Ask, scope: AskScope, *, hide: bool) -> ProjectAskView:
             who=ask.owner,
             team=ask.team.node.name if ask.team is not None else None,
             waited_days=ask.waited_days,
-            detail=ask.detail or None,
+            detail=_detail(ask),
             issue_key=ask.issue_key,
             level=ask.level,
             escalated_to=ask.escalated_to,
             escalation_label=ask.escalation_label,
+            request_id=ask.request_id,
         )
     return ProjectAskView(
         need=ask.need,
@@ -318,7 +321,15 @@ def _ask_view(ask: Ask, scope: AskScope, *, hide: bool) -> ProjectAskView:
         level=ask.level,
         escalated_to=None,
         escalation_label=ask.escalation_label,
+        request_id=ask.request_id,
     )
+
+
+def _detail(ask: Ask) -> str | None:
+    """The ask's fact, unless it only says again who acts ("reported by" its own owner)."""
+    if not ask.detail or (ask.owner and ask.detail == f"reported by {ask.owner}"):
+        return None
+    return ask.detail
 
 
 def _team_label(team: Team | None, scope: AskScope) -> str:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from core.application.today_service import (
     ConversationDayView,
@@ -78,6 +78,13 @@ class ProjectAskDto(BaseModel):
     level: int
     escalated_to: str | None = None
     escalation_label: str | None = None
+    request_id: str | None = Field(
+        default=None,
+        description=(
+            "The request between people this ask is, when it is one: the console lists "
+            "it under the caller's own asks and leaves it out of this table then."
+        ),
+    )
 
     @classmethod
     def from_view(cls, view: ProjectAskView) -> ProjectAskDto:
@@ -93,6 +100,7 @@ class ProjectAskDto(BaseModel):
             level=view.level,
             escalated_to=view.escalated_to,
             escalation_label=view.escalation_label,
+            request_id=view.request_id,
         )
 
 

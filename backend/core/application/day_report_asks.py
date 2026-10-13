@@ -190,6 +190,9 @@ class Ask:
     #: It waited long enough to go up, but nobody stands above this person
     #: (its owner, or its asker when that is higher).
     nobody_above: str | None = None
+    #: The request between people it is, when it is one: the console lists that
+    #: request under the person's own asks, so its table does not say it again.
+    request_id: str | None = None
 
     def line(self) -> str:
         """'Fix: CHK-3: Test environment is down (waiting 1 day; reported by Asha).'
@@ -568,6 +571,7 @@ def request_ask(request: CrossPersonRequest, scope: AskScope, day: date) -> Ask 
         or scope.team_of_task(issue),
         issue_key=issue_label(issue, scope) if issue else None,
         asked_by=scope.names.get(request.requester_id),
+        request_id=request.id,
     )
 
 

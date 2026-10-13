@@ -18,6 +18,12 @@ from api.main import create_app
 from config.settings import Settings
 from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
 from core.domain.conversation import ConversationRole, ConversationTurn
+from core.domain.cross_person import (
+    CrossPersonRequest,
+    CrossPersonRequestKind,
+    CrossPersonRequestStatus,
+)
+from core.domain.graph import EntityRef, NodeKind
 from core.domain.identity import IdentityLink
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.status import (
@@ -314,7 +320,8 @@ def test_who_must_act_names_people_for_a_manager_and_teams_for_an_executive(
     assert manager.status_code == 200, manager.text
     [ask] = [row for row in manager.json()["asks"] if row["issue_key"] == "CHK-4"]
     assert ask["what"] == "CHK-4: Waiting on Liam Chen's review of the refund flow"
-    assert ask["detail"] == "reported by Kai Thompson"
+    # Kai reported it and Kai acts on it: the row says him once, as who.
+    assert (ask["who"], ask["detail"]) == ("Kai Thompson", None)
     assert (ask["need"], ask["need_label"], ask["waited_days"]) == ("fix", "Fix", 3)
     assert manager.json()["names_hidden"] is False
 
@@ -366,3 +373,38 @@ def test_replies_today_count_the_callers_part_and_a_developer_reads_none(
     assert manager.json()["scope"] == "portfolio"
     assert manager.json()["replies"]["people"] == 2
     assert isinstance(manager.json()["open_warnings"], int)
+
+
+def test_a_request_ask_carries_its_request_so_the_console_says_it_once(
+    settings: Settings,
+) -> None:
+    """Today lists a request under Your asks; its row in Who must act names the request."""
+    app, registry = _app(settings, "mgr", subject="U-mgr")
+    with TestClient(app) as client:
+        store = _seeded(app, registry)
+        created = _NOW - timedelta(days=2)
+        asyncio.run(
+            store.create(
+                CrossPersonRequest(
+                    tenant_id=_TENANT,
+                    id="req-review",
+                    requester_id=_DEV,
+                    requester_chat_ref=_DEV,
+                    counterpart_id=_OTHER,
+                    kind=CrossPersonRequestKind.REVIEW,
+                    note="Review the refund flow",
+                    source_correlation_id=_CORRELATION,
+                    status=CrossPersonRequestStatus.OPEN,
+                    created_at=created,
+                    updated_at=created,
+                    task_ref=EntityRef(tenant_id=_TENANT, kind=NodeKind.TASK, id="CHK-4"),
+                )
+            )
+        )
+        response = client.get(f"/projects/checkout/asks?as_of={_TODAY.isoformat()}")
+
+    assert response.status_code == 200, response.text
+    rows = response.json()["asks"]
+    [request] = [row for row in rows if row["request_id"] == "req-review"]
+    assert request["what"] == "CHK-4: Kai Thompson asked for a review"
+    assert all(row["request_id"] is None for row in rows if row is not request)
