@@ -115,9 +115,9 @@ test("each closed gate says what stands in the way, in plain words", () => {
   );
   assert.match(gateWords(gate("off"), item) ?? "", /only a no can be given/);
   assert.match(gateWords(gate("no_change"), item) ?? "", /^Already Done in Jira/);
-  assert.match(
-    gateWords(gate("unreadable"), item, "the issue tracker") ?? "",
-    /^the issue tracker/,
+  assert.equal(
+    gateWords(gate("unreadable"), item, "the issue tracker"),
+    "The issue tracker could not be read just now. Try again in a minute.",
   );
   assert.equal(dueDateWords(), "Change it in Jira: OpenProgram never writes a due date.");
 });

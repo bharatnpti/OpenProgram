@@ -8,7 +8,7 @@ import type {
   RepliesCountDto,
 } from "../../api/schema";
 import { formatDay } from "../../lib/format.ts";
-import { daysLabel, plural } from "../../lib/words.ts";
+import { daysLabel, plural, sentenceCase } from "../../lib/words.ts";
 
 /** How many rows Who must act shows before "Show all". */
 export const WHO_MUST_ACT_SHOWN = 8;
@@ -83,7 +83,8 @@ export function gateWords(
       return `${named} ${many ? "are" : "is"} still open, so it can't move to Done yet.`;
     }
     case "unreadable":
-      return `${tracker} could not be read just now. Try again in a minute.`;
+      // The tracker's name opens the sentence: "The issue tracker could not be read…".
+      return `${sentenceCase(tracker)} could not be read just now. Try again in a minute.`;
     default:
       return null;
   }
