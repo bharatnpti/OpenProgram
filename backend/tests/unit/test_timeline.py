@@ -22,7 +22,7 @@ from core.domain.blockers import BlockerResolutionReason, BlockerSource, Develop
 from core.domain.delivery import DEFAULT_STAGE_MAPPING
 from core.domain.errors import AuthorizationDenied
 from core.domain.forecast import DateChange, ReleaseMatch, ReleaseMatchKind, Verdict
-from core.domain.graph import Task
+from core.domain.graph import EdgeKind, GraphEdge, Pod, Task
 from core.domain.hygiene import HygieneFinding, HygieneState
 from core.domain.impact import Measure
 from core.domain.release_readiness import ScopeKind, ScopeRef
@@ -290,6 +290,33 @@ async def test_a_scrum_master_reads_their_pod_whole_and_the_others_dates_only() 
     assert other.level.value == "dates" and other.can_set_date is False
     assert other.markers == () and other.done is None and other.at_baseline is None
     assert "planning" not in other.sentence
+
+
+async def test_a_dates_only_row_with_nothing_in_scope_says_so_never_done() -> None:
+    """A scrum master read another pod's empty row as "Done", likely today: its
+    "done" verdict (nothing remains) with no progress to say nothing was in it."""
+    registry, store = await _reconstructed()
+    await store.upsert_node(Pod(tenant_id="demo", id="pod-empty", name="Empty Pod"))
+    await store.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id="checkout",
+            to_node_id="pod-empty",
+            kind=EdgeKind.CONTAINS,
+        )
+    )
+
+    view = await registry.timeline_service().project_timeline(
+        _principal(Role.SM, "dev-dana"), "checkout", as_of=TODAY
+    )
+    rows = {row.row_id: row for row in view.rows}
+
+    empty, other = rows["pod:pod-empty"], rows["pod:pod-store"]
+    assert empty.level.value == "dates"
+    assert (empty.done, empty.total) == (0, 0)
+    assert "nothing in scope yet" in empty.sentence
+    # A dates row with work in it still says nothing of how far it is.
+    assert other.done is None and other.total is None
 
 
 async def test_a_developer_reads_only_their_own_pods_row_and_no_project() -> None:

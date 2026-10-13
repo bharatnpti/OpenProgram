@@ -424,7 +424,10 @@ class TimelineService:
                 remaining=latest.remaining if latest is not None else None,
             )
         )
-        done, total, unit = _progress(snapshot) if whole else (None, None, None)
+        counted = _progress(snapshot)
+        # A dates-only row says how far it is only when nothing is in scope: "0 of 0"
+        # tells every reader so, where its "done" verdict alone would read as finished.
+        done, total, unit = counted if whole or counted[1] == 0 else (None, None, None)
         at_baseline = (
             await self._at_baseline(tenant_id, scope, baseline, snapshot)
             if whole and baseline is not None
