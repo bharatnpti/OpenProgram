@@ -1,0 +1,107 @@
+frontend-v3/src/features/scope/scopeWords.test.ts
+  s_5f08a60d42019a::t_b7ffce76db32c4 1-53,58-62
+  s_5f08a60d42019a::t_53c9e2da2f5b27 54-57
+frontend-v3/src/features/scope/ScopeTables.tsx
+  s_5f08a60d42019a::t_04fd7c739b1e7c 1-2,5,11-12,24,26,28-30,32,50,66-97,101-138,142,152-170,184,186,192,204,208,210,220,222-239,241-278,280-315
+  s_5f08a60d42019a::t_f88639b4e35bc9 27
+  s_5f08a60d42019a::t_26cdb84016e3c3 31,221
+  s_5f08a60d42019a::t_a9b85e83830371 4,7-10,13-23,25,33-49,51-65,98-100,139-141,143-151,171-183,185,187-191,193-203,205-207,209,211-219,240,279,316-317
+  s_5f08a60d42019a::t_5d78fa37ca0123 3,6
+frontend-v3/src/features/warnings/warningWords.test.ts
+  s_5f08a60d42019a::t_586109a0ca927c 5
+  s_5f08a60d42019a::t_6c28bb85fd2dba 60
+  s_5f08a60d42019a::t_f2040750decf7d 1-4,6-30,35-43,48-55,61
+  s_5f08a60d42019a::t_53c9e2da2f5b27 31-34,44-47,56-59
+frontend-v3/src/pages/ScopePage.tsx
+  s_5f08a60d42019a::t_53c9e2da2f5b27 68
+  s_5f08a60d42019a::t_1e5c7b54dd09a7 1,4,10-11,14-17,22-25,27-29,31-43,45,51-54,57-67,69-74,78
+  s_5f08a60d42019a::t_964f401cbe8830 48
+frontend-v3/src/features/portfolio/PortfolioTiles.tsx
+  s_5f08a60d42019a::t_b148c63809d551 1-73
+frontend-v3/src/api/schema.ts
+  s_5f08a60d42019a::t_8780e52b36d35a 405-424
+frontend-v3/src/features/portfolio/portfolioWords.ts
+  s_5f08a60d42019a::t_f22929e5196b2b 99-101
+  s_5f08a60d42019a::t_e7ce601dc6443b 69-71,105-108,113,117-118,123,125,128,132-137
+  s_5f08a60d42019a::t_53c9e2da2f5b27 91-93,96-97
+  s_5f08a60d42019a::t_1f61b2c5d8a4f1 1-68,72-90,94-95,98,102-104,109-112,114-116,119-122,124,126-127,129-131,138-314
+frontend-v3/src/features/portfolio/ProjectBar.tsx
+  s_5f08a60d42019a::t_3d4823f55c8089 1-90,93-94,96-97,100-106
+  s_5f08a60d42019a::t_53c9e2da2f5b27 91-92,95,98-99
+frontend-v3/src/features/warnings/warningWords.ts
+  s_5f08a60d42019a::t_fd6e8e4723fe8a 1-14,21-70,73-77
+  s_5f08a60d42019a::t_6c28bb85fd2dba 72
+  s_5f08a60d42019a::t_eac456dcc5c683 71
+  s_5f08a60d42019a::t_53c9e2da2f5b27 15-20
+frontend-v3/src/pages/FlowPage.tsx
+  s_5f08a60d42019a::t_8c8fc07393f1e5 1-9,11-12,15-20,34-60
+  s_5f08a60d42019a::t_387f2672dbdca4 61
+frontend-v3/scripts/mock/portfolio.mjs
+  s_5f08a60d42019a::t_d8ef57c51871cc 1-48,67,77,110,121-138,141-144,156-181,193-202,211-213,218-219,223-232,240-262,271-273,304-334,348-350,364,376-390,394-398,402-404
+  s_5f08a60d42019a::t_3e7a205cf973a3 49-66,68-76,78-109,111-120,139-140,145-155,182-192,203-210,214-217,220-222,233-239,263-270,274-303,335-347,351-363,365-375,391-393,399-401
+frontend-v3/src/pages/RisksPage.tsx
+  s_5f08a60d42019a::t_c659b028ce4824 2,5-9,13-15,18-23,25-26,28,32-38,41-84
+frontend-v3/src/api/asOf.ts
+  s_5f08a60d42019a::t_8780e52b36d35a 43,48-49
+frontend-v3/src/features/portfolio/WindowedList.tsx
+  s_5f08a60d42019a::t_53c9e2da2f5b27 1-9
+  s_5f08a60d42019a::t_4f2d6b3cd53ac5 10-129
+frontend-v3/scripts/mock-api.mjs
+  s_5f08a60d42019a::t_55b15e8932eef8 267
+  s_5f08a60d42019a::t_4e38789f09879a 40
+frontend-v3/src/features/portfolio/ProjectCard.tsx
+  s_5f08a60d42019a::t_53c9e2da2f5b27 56
+  s_5f08a60d42019a::t_e7ce601dc6443b 60
+  s_5f08a60d42019a::t_34f2b65a808cea 1-55,57-59,61-149
+frontend-v3/src/pages/PortfolioPage.tsx
+  s_5f08a60d42019a::t_741b6d8f16a890 62-64
+  s_5f08a60d42019a::t_e9124e29f36871 1-2,4-5,7,9-26,29-34,38-61,65-91,93-136,138-140,142-159,161-206,209
+  s_5f08a60d42019a::t_74b3e0c9f6fb9a 160
+frontend-v3/src/pages/ReportsHomePage.tsx
+  s_5f08a60d42019a::t_f7c5b046ba6415 18-20,25
+frontend-v3/src/api/client.ts
+  s_5f08a60d42019a::t_8780e52b36d35a 130-134,391-419
+frontend-v3/src/features/portfolio/windowing.test.ts
+  s_5f08a60d42019a::t_9bfaaedfba3e6b 10
+  s_5f08a60d42019a::t_8825b658dc010d 1-9,11-31
+frontend-v3/src/features/warnings/WarningGroups.tsx
+  s_5f08a60d42019a::t_e4105791a9242d 27-29
+  s_5f08a60d42019a::t_4f937ace6eac49 1-5,9-26,30-32,37-47,49-62,64-105
+  s_5f08a60d42019a::t_586109a0ca927c 6-7,63
+  s_5f08a60d42019a::t_69008cb05c0981 48
+  s_5f08a60d42019a::t_0748d5ba328014 8
+  s_5f08a60d42019a::t_1dad614e7550d9 33-36
+frontend-v3/src/features/portfolio/VizPanel.tsx
+  s_5f08a60d42019a::t_ee739d3760aa1d 1-40
+frontend-v3/src/features/portfolio/portfolioWords.test.ts
+  s_5f08a60d42019a::t_475dc8ccce015a 1-102,107-108,113-117,119-120,122-124,138,150-190,197,202-215,219-224
+  s_5f08a60d42019a::t_586109a0ca927c 129-132
+  s_5f08a60d42019a::t_c096c54166494f 134-137
+  s_5f08a60d42019a::t_e7ce601dc6443b 118,121,126,139-149
+  s_5f08a60d42019a::t_53c9e2da2f5b27 103-106,109-112,125,127-128,191-196,198-201,216-218
+  s_5f08a60d42019a::t_f22929e5196b2b 133
+frontend-v3/src/features/scope/scopeWords.ts
+  s_5f08a60d42019a::t_750a4c9218ea36 1-16,20-32,36-55
+  s_5f08a60d42019a::t_53c9e2da2f5b27 17-19,33-35
+frontend-v3/src/features/portfolio/usePortfolio.ts
+  s_5f08a60d42019a::t_71990fa5305db4 1,21-22
+  s_5f08a60d42019a::t_521876ae0794a0 2-20,23-36
+frontend-v3/src/features/portfolio/windowing.ts
+  s_5f08a60d42019a::t_0d1434c0339676 1-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8f1874556ea457cc39b019a4fc24158d46d51937",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
