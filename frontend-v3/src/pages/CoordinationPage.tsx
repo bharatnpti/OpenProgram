@@ -3,146 +3,19 @@ import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { apiClient } from "../api/client";
-import type { BriefKind, CrossPersonRequestStatus } from "../api/schema";
-import type { Scope } from "../app/access";
-import {
-  podsOfPerson,
-  projectsOfPerson,
-  useMemberId,
-  usePods,
-  useProjects,
-} from "../app/directory";
+import type { BriefKind } from "../api/schema";
 import { PanelState } from "../components/PanelState";
 import { ChipPicker, Panel } from "../components/ui/Bits";
 import { Pill } from "../components/ui/Pill";
 import { formatDate } from "../lib/format";
 import { plural, spaced } from "../lib/words";
-import { RequestCard } from "../features/coordination/RequestCard";
-import { requestsAmong, scopePeople } from "../features/coordination/raised";
 
 /*
  * What was the Coordination tab, in two parts the sidebar now places apart
- * (D85): the requests board (Requests, /requests, pages/RequestsPage.tsx) and
- * the briefs (Reports › Briefs, /reports/briefs, pages/BriefsPage.tsx). What
- * waits on the viewer, and what they raised, is on their Today (Your asks). The
- * board is for those who may act on some of its cards: not an executive, whom
- * the waits reach through the exec brief and the Daily report.
+ * (D85): the requests board, which lives on Requests (/requests,
+ * pages/RequestsPage.tsx) and only there, and the briefs here (Reports ›
+ * Briefs, /reports/briefs, pages/BriefsPage.tsx).
  */
-
-const COLUMNS: { status: CrossPersonRequestStatus; label: string }[] = [
-  { status: "open", label: "Open" },
-  { status: "acknowledged", label: "Acknowledged" },
-  { status: "needs_resolution", label: "Needs resolution" },
-];
-
-const SCOPE_WORDS: Record<Exclude<Scope, "all">, string> = {
-  pods: "Your pods",
-  projects: "Your projects",
-};
-
-/**
- * The board opens on the viewer's own part of it: a scrum master's pods, a
- * product owner's projects (the people of every pod on them), and everything
- * for a manager or admin, who can narrow it to the pods they run. Someone with
- * no pod of their own sees everything, with no choice to make.
- */
-function useBoardScope(defaultScope: Scope) {
-  const memberId = useMemberId();
-  const pods = usePods();
-  const projects = useProjects();
-  const own = podsOfPerson(pods.data ?? [], memberId);
-  const ownProjects = projectsOfPerson(projects.data ?? [], own.pods, own.own);
-  const narrow: Exclude<Scope, "all"> | null =
-    defaultScope === "projects" ? (ownProjects.own ? "projects" : null) : own.own ? "pods" : null;
-  const people =
-    narrow === "projects"
-      ? scopePeople(pods.data ?? [], { projectIds: ownProjects.projects.map((p) => p.id) })
-      : narrow === "pods"
-        ? scopePeople(pods.data ?? [], { podIds: own.pods.map((p) => p.id) })
-        : null;
-  return {
-    narrow,
-    people,
-    opensOn: (narrow && defaultScope !== "all" ? narrow : "all") as Scope,
-    loading: pods.isLoading || projects.isLoading,
-  };
-}
-
-export function Requests({ defaultScope }: { defaultScope: Scope }) {
-  const [search, setSearch] = useSearchParams();
-  const scope = useBoardScope(defaultScope);
-  const board = useQuery({
-    queryKey: ["requests", "portfolio"],
-    queryFn: () => apiClient.portfolioCrossPersonRequests(null),
-  });
-  const asked = search.get("requests");
-  const chosen: Scope =
-    asked === "all" ? "all" : asked === "own" && scope.narrow ? scope.narrow : scope.opensOn;
-  const all = board.data?.requests ?? [];
-  const shown = chosen !== "all" && scope.people ? requestsAmong(all, scope.people) : all;
-  const pick = (next: Scope) =>
-    setSearch(
-      (current) => {
-        // Other parameters (the day being viewed, the brief kind) are not the board's.
-        const params = new URLSearchParams(current);
-        if (next === scope.opensOn) params.delete("requests");
-        else params.set("requests", next === "all" ? "all" : "own");
-        return params;
-      },
-      { replace: true },
-    );
-
-  return (
-    <Panel
-      title="Requests board"
-      note={
-        chosen === "all"
-          ? "every open ask across the teams"
-          : `asks made or received by the people of ${chosen === "pods" ? "your pods" : "your projects"}`
-      }
-    >
-      {scope.narrow ? (
-        <ChipPicker
-          label="Requests of"
-          value={chosen}
-          onChange={pick}
-          options={[
-            ...(scope.opensOn === "all" ? [{ value: "all" as Scope, label: "Everything" }] : []),
-            { value: scope.narrow as Scope, label: SCOPE_WORDS[scope.narrow] },
-            ...(scope.opensOn === "all" ? [] : [{ value: "all" as Scope, label: "Everything" }]),
-          ]}
-        />
-      ) : null}
-      <PanelState
-        isLoading={board.isLoading || scope.loading}
-        error={board.error}
-        onRetry={() => void board.refetch()}
-      >
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-3">
-          {COLUMNS.map((col) => {
-            const items = shown.filter((r) => r.status === col.status);
-            return (
-              <div key={col.status} className="min-w-0 rounded-2xl bg-grey-fill p-3">
-                <p className="mb-2 text-[12px] font-bold uppercase tracking-wider text-grey-secondary">
-                  {col.label} · {items.length}
-                </p>
-                {items.length === 0 ? (
-                  <p className="text-[13px] text-grey-secondary">None.</p>
-                ) : (
-                  <ul className="grid gap-2">
-                    {items.map((r) => (
-                      <RequestCard key={r.id} request={r} />
-                    ))}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </PanelState>
-    </Panel>
-  );
-}
 
 const BRIEF_FILTERS: { value: "all" | BriefKind; label: string }[] = [
   { value: "all", label: "All" },

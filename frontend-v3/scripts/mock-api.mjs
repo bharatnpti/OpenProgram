@@ -33,6 +33,7 @@ import * as scopedDelivery from "./mock/scoped-delivery.mjs";
 import * as releaseReadiness from "./mock/release-readiness.mjs";
 import * as jiraWrites from "./mock/jira-writes.mjs";
 import * as profilesMock from "./mock/profiles.mjs";
+import * as requestsPods from "./mock/requests-pods.mjs";
 import * as baselines from "./mock/baselines.mjs";
 import * as observedDay from "./mock/observed-day.mjs";
 import * as hygieneMock from "./mock/hygiene.mjs";
@@ -264,6 +265,7 @@ function api(req, res, url) {
     return can.aggregate(roles) ? send(200, risks) : deny();
   const userId = req.headers["x-openprogram-dev-user"] ?? "U1001";
   // Before the lane mocks: it answers scoped reads they refuse (a person's own part of the tree).
+  if (requestsPods.api(req, url, roles, userId, send, deny)) return;
   if (scopedDelivery.api(req, url, roles, userId, send, deny)) return;
   if (portfolioMock.api(req, url, roles, userId, send, deny)) return;
   if (baselines.api(req, url, roles, userId, send, deny)) return;
