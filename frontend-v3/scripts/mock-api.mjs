@@ -37,6 +37,7 @@ import * as baselines from "./mock/baselines.mjs";
 import * as observedDay from "./mock/observed-day.mjs";
 import * as hygieneMock from "./mock/hygiene.mjs";
 import * as timelineMock from "./mock/timeline.mjs";
+import * as consoleToday from "./mock/console-today.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
@@ -266,6 +267,7 @@ function api(req, res, url) {
   if (baselines.api(req, url, roles, userId, send, deny)) return;
   if (hygieneMock.api(req, url, roles, userId, send, deny)) return;
   if (timelineMock.api(req, url, roles, userId, send, deny)) return;
+  if (consoleToday.api(req, url, roles, userId, send, deny)) return;
   // The shell mock goes first: of the reads the lane mocks share, it answers
   // only past-day ones (as_of), which the today mock would answer as today.
   if (vizOverall.api(req, url, roles, userId, send, deny)) return;

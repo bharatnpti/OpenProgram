@@ -149,6 +149,12 @@ import type {
   DeliveryImpactResponse,
   PeriodKind,
   Measure,
+  ConversationResponse,
+  JiraChangeAnswerRequest,
+  JiraChangeAnswerResponse,
+  JiraChangesResponse,
+  ProjectAsksResponse,
+  TodayCountsResponse,
 } from "./schema";
 import { learnServerToday, withViewingAsOf } from "./asOf";
 import { readNdjson } from "./ndjson";
@@ -998,6 +1004,24 @@ export const apiClient = {
         limit: String(limit),
       }),
     ),
+  /** The caller's own Jira changes waiting for their yes, each with the gate a yes would meet. */
+  myJiraChanges: () => requestJson<JiraChangesResponse>("/me/jira-changes"),
+  answerMyJiraChange: (itemId: string, answer: JiraChangeAnswerRequest["answer"]) =>
+    requestJson<JiraChangeAnswerResponse>(`/me/jira-changes/${encodeURIComponent(itemId)}/answer`, {
+      method: "POST",
+      body: { answer },
+    }),
+  /** The caller's own chat conversation of one day, read-only and never refreshing retention. */
+  myConversation: (day: string) =>
+    requestJson<ConversationResponse>(withQuery("/me/conversation", { day })),
+  /** Who must act on a project: the day report's asks, one row per item. */
+  projectAsks: (projectId: string, asOf?: string) =>
+    requestJson<ProjectAsksResponse>(
+      withAsOf(`/projects/${encodeURIComponent(projectId)}/asks`, asOf),
+    ),
+  /** Replies of the day and open warnings over the caller's part (none for a developer). */
+  myTodayCounts: (asOf?: string) =>
+    requestJson<TodayCountsResponse>(withAsOf("/me/today-counts", asOf)),
 };
 
 function withAsOf(path: string, asOf?: string): string {

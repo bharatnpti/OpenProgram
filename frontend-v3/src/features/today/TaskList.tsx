@@ -77,6 +77,8 @@ export function TaskList() {
   return (
     <Panel
       title="Your tasks"
+      // The viz surface: white in light, and dark on a page that turns with the theme.
+      className="bg-(--op-viz-surface)"
       note={
         focus.data && rows.length > 0
           ? `${rows.length - done} open${done > 0 ? ` · ${done} done` : ""}`
@@ -297,7 +299,7 @@ function TaskEditor({
         <div
           role="radiogroup"
           aria-label="Status"
-          className="inline-flex flex-wrap gap-1 rounded-2xl border border-grey-border bg-white p-1 sm:rounded-full"
+          className="inline-flex flex-wrap gap-1 rounded-2xl border border-grey-border bg-(--op-viz-surface) p-1 sm:rounded-full"
         >
           {TASK_STATES.map((state) => (
             <label
@@ -334,7 +336,7 @@ function TaskEditor({
               min={today || undefined}
               placeholder="No ETA"
               onChange={(eta) => set({ eta })}
-              className="h-10 rounded-xl border border-grey-border bg-white px-3 text-[14px]"
+              className="h-10 rounded-xl border border-grey-border bg-(--op-viz-surface) px-3 text-[14px]"
             />
           </div>
           {draft.eta ? (
@@ -378,7 +380,7 @@ function TaskEditor({
         ))}
         <input
           aria-label="Add a blocker"
-          className="h-10 w-full rounded-xl border border-grey-border bg-white px-3 text-[14px]"
+          className="h-10 w-full rounded-xl border border-grey-border bg-(--op-viz-surface) px-3 text-[14px]"
           value={draft.added}
           maxLength={MAX_TASK_TEXT + 100}
           placeholder="Add a blocker, such as: waiting on sandbox credentials"
@@ -392,7 +394,7 @@ function TaskEditor({
         </label>
         <textarea
           id={`${id}-note`}
-          className="min-h-16 w-full rounded-2xl border border-grey-border bg-white p-3 text-[14px]"
+          className="min-h-16 w-full rounded-2xl border border-grey-border bg-(--op-viz-surface) p-3 text-[14px]"
           value={draft.note}
           maxLength={MAX_TASK_TEXT + 100}
           placeholder="MR !3 is open, waiting on a review"

@@ -402,3 +402,17 @@ export type ProfileReviewItemResponse = components["schemas"]["ProfileReviewItem
 export type ProfileReviewResponse = components["schemas"]["ProfileReviewResponse"];
 export type AcceptProfilesRequest = components["schemas"]["AcceptProfilesRequest"];
 export type AcceptProfilesResponse = components["schemas"]["AcceptProfilesResponse"];
+
+// Today and Check-in (console IA lane T): Jira changes waiting for the person's yes,
+// their own conversation, who must act on a project, and the day's counts.
+export type JiraChangesResponse = components["schemas"]["JiraChangesResponse"];
+export type JiraChangeDto = components["schemas"]["JiraChangeDto"];
+export type JiraChangeGateDto = components["schemas"]["JiraChangeGateDto"];
+export type JiraChangeAnswerRequest = components["schemas"]["JiraChangeAnswerRequest"];
+export type JiraChangeAnswerResponse = components["schemas"]["JiraChangeAnswerResponse"];
+export type ConversationResponse = components["schemas"]["ConversationResponse"];
+export type ConversationTurnDto = components["schemas"]["ConversationTurnDto"];
+export type ProjectAsksResponse = components["schemas"]["ProjectAsksResponse"];
+export type ProjectAskDto = components["schemas"]["ProjectAskDto"];
+export type TodayCountsResponse = components["schemas"]["TodayCountsResponse"];
+export type RepliesCountDto = components["schemas"]["RepliesCountDto"];
