@@ -199,6 +199,13 @@ def test_an_executive_reads_no_people_counts_on_a_project_under_five(settings: S
     # A manager keeps the small project's counts.
     managers = _cells(settings, store, "mgr")
     assert "1 of 3" in _said(managers["project-2"])
+    # Its check-in coverage too: none for an executive, the counts for a manager.
+    coverage = f"/projects/project-2/checkin-coverage?as_of={DAY.isoformat()}"
+    assert _get(settings, store, "exec", coverage)["coverage"] is None
+    assert _get(settings, store, "exec", coverage)["people"] is None
+    assert _get(settings, store, "mgr", coverage)["people"] == 3
+    big = f"/projects/project-1/checkin-coverage?as_of={DAY.isoformat()}"
+    assert _get(settings, store, "exec", big)["people"] == 7
 
 
 def test_a_program_under_five_counts_nobody_for_an_executive(settings: Settings) -> None:

@@ -78,8 +78,15 @@ class ProjectCheckinCoverageResponse(BaseModel):
 
     project_id: str
     as_of: date
-    people: int = Field(description="Everyone on the project's pods, each once.")
-    coverage: ProjectCheckinCoverageDto
+    people: int | None = Field(
+        description=(
+            "Everyone on the project's pods, each once; null for an executive when they "
+            "are fewer than five (D104)."
+        )
+    )
+    coverage: ProjectCheckinCoverageDto | None = Field(
+        description="The day's check-ins, counted; null when ``people`` is."
+    )
 
     @classmethod
     def from_view(cls, view: ProjectCheckinCoverageView) -> ProjectCheckinCoverageResponse:

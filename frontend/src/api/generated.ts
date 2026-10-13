@@ -3290,6 +3290,9 @@ export interface paths {
     /**
      * Project Checkin Coverage
      * @description Counts only, no one named: every reader of the project's progress gets them.
+     *
+     *     A reader who counts people only (an executive) gets none for a project of
+     *     fewer than five people (D104): its dates and verdict are on its page.
      */
     get: operations["project_checkin_coverage_projects__project_id__checkin_coverage_get"];
     put?: never;
@@ -7826,10 +7829,11 @@ export interface components {
       as_of: string;
       /**
        * People
-       * @description Everyone on the project's pods, each once.
+       * @description Everyone on the project's pods, each once; null for an executive when they are fewer than five (D104).
        */
-      people: number;
-      coverage: components["schemas"]["ProjectCheckinCoverageDto"];
+      people: number | null;
+      /** @description The day's check-ins, counted; null when ``people`` is. */
+      coverage: components["schemas"]["ProjectCheckinCoverageDto"] | null;
     };
     /** ProjectDeliveryResponse */
     ProjectDeliveryResponse: {

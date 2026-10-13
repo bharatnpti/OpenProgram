@@ -30,7 +30,9 @@ from api.dtos import CrossPersonRequestResponse, CrossPersonRequestsResponse
 from api.pod_checkin_dtos import ProjectCheckinCoverageResponse
 from api.request_trail_dtos import RequestCountsResponse, RequestTrailResponse
 from core.application.delivery_scope import DeliveryScopeService
+from core.application.people_words import is_small
 from core.application.persona_views import PersonaViewService
+from core.application.portfolio_privacy import reads_people
 from core.application.request_trail_service import (
     RESOLVED_WINDOW_DAYS,
     RequestNotFound,
@@ -111,7 +113,11 @@ async def project_checkin_coverage(
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
     as_of: Annotated[date, Query(default_factory=date.today)],
 ) -> ProjectCheckinCoverageResponse:
-    """Counts only, no one named: every reader of the project's progress gets them."""
+    """Counts only, no one named: every reader of the project's progress gets them.
+
+    A reader who counts people only (an executive) gets none for a project of
+    fewer than five people (D104): its dates and verdict are on its page.
+    """
     try:
         await scope.ensure_project_read(principal, project_id)
     except AuthorizationDenied as exc:
@@ -122,4 +128,7 @@ async def project_checkin_coverage(
         )
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return ProjectCheckinCoverageResponse.from_view(view)
+    response = ProjectCheckinCoverageResponse.from_view(view)
+    if not reads_people(principal) and is_small(view.people):
+        return response.model_copy(update={"people": None, "coverage": None})
+    return response
