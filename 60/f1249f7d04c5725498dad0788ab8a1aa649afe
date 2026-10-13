@@ -1,0 +1,22 @@
+backend/core/application/timeline_service.py
+  s_ed47025cfc8469::t_8cf2cc8e49ffed 62,65,70-71,416-421,452,608-633
+  s_ed47025cfc8469::t_43408254eb3841 69
+backend/tests/unit/test_timeline.py
+  s_ed47025cfc8469::t_7f80196e48a56c 24,272-305
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "60f1249f7d04c5725498dad0788ab8a1aa649afe",
+  "prompts": {},
+  "sessions": {
+    "s_ed47025cfc8469": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c3dacc8-00da-46b1-a2f5-ce44e164bb12",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
