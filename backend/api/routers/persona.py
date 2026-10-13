@@ -65,6 +65,7 @@ from core.application.portfolio_privacy import counted_progress, reads_people
 from core.application.pull_request_flow_service import FlowScopeInvalid, PullRequestFlowService
 from core.application.request_trail_service import REQUEST_COUNTS_ONLY, reads_request_names
 from core.application.risk_service import RiskService
+from core.application.teammate_reasons import teammates_counted
 from core.application.writeback_service import WriteBackService
 from core.domain.auth import Principal
 from core.domain.brief import BriefKind
@@ -152,6 +153,10 @@ async def pod_rollup(
         view = await persona_service.pod_rollup(principal.tenant_id, pod_id, as_of)
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not reads_people(principal):
+        # A developer on their own pod reads counts and work items, never a
+        # teammate's check-in (D102); their own reasons stay theirs.
+        view = teammates_counted(view, principal.subject)
     return PodRollupResponse.from_view(view)
 
 

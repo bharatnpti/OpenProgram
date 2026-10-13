@@ -124,6 +124,11 @@ def own_cells_only(statuses: Sequence[NodeStatus], subject: str | None) -> list[
     ]
 
 
+def counted_factor(factor: RollupFactor) -> RollupFactor:
+    """One factor worded so it names nobody: a blocker without its words, a dependency a team's."""
+    return _counted(factor)
+
+
 def _counted(factor: RollupFactor) -> RollupFactor:
     if factor.kind is FactorKind.BLOCKER:
         return replace(
@@ -152,6 +157,7 @@ def _anonymous_id(description: str) -> str:
 __all__ = [
     "OPEN_BLOCKER",
     "counted_day",
+    "counted_factor",
     "counted_progress",
     "counted_statuses",
     "own_cells_only",
