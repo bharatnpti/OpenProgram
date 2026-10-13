@@ -1,0 +1,40 @@
+backend/tests/unit/test_delivery_loop_rules.py
+  s_c2fca91494c4a6::t_0e0e02e414d66a 250
+backend/core/domain/delivery_loop.py
+  s_c2fca91494c4a6::t_80d2d96a50ba58 174,177
+  s_c2fca91494c4a6::t_9d0e567c45a3cb 794,797
+  s_c2fca91494c4a6::t_860a437551a204 732-751
+backend/core/application/delivery_documents.py
+  s_c2fca91494c4a6::t_d1e9dc0e6c60c9 27
+  s_c2fca91494c4a6::t_4d1f6824f782fd 1-26,28-31,35-49
+  s_c2fca91494c4a6::t_10678bf14fd6cf 32-34
+backend/core/application/delivery_loop_service.py
+  s_c2fca91494c4a6::t_d1e9dc0e6c60c9 1,449-451
+  s_c2fca91494c4a6::t_ca7b72bb5f8578 28
+  s_c2fca91494c4a6::t_a777400576ea4e 2-27,29-448,452-459,463-464,471-649,652-655,657-756
+  s_c2fca91494c4a6::t_1a9c9ec606732b 460-462,465-470
+  s_c2fca91494c4a6::t_edfbe09fc69553 650-651,656
+backend/tests/unit/test_delivery_loop_service.py
+  s_c2fca91494c4a6::t_9ca7ec2f9af989 1-535,537-611
+  s_c2fca91494c4a6::t_6f272688ad831b 536
+pyproject.toml
+  s_c2fca91494c4a6::t_b5f0a103200c6b 31-32,114
+uv.lock
+  s_c2fca91494c4a6::t_fe7c0bd17046f4 1699,1748
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e21b612c7e675b7ed4c37e9c67e36bc60625e038",
+  "prompts": {},
+  "sessions": {
+    "s_c2fca91494c4a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cfbcb2ee-3fad-4c25-a40c-44e94f462848",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
