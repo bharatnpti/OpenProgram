@@ -1,0 +1,27 @@
+frontend-v3/src/app/viewingDate.ts
+  s_5f08a60d42019a::t_7275bb8f2df632 50-66
+frontend-v3/src/features/overall/HygieneSection.tsx
+  s_5f08a60d42019a::t_4a23076841fe1c 12,65-66,104-105
+frontend-v3/src/features/overall/ReadinessSection.tsx
+  s_5f08a60d42019a::t_a38d1250b0c42d 13,75-76,110-111
+frontend-v3/src/features/reports/useReportAccess.ts
+  s_5f08a60d42019a::t_30c374c4550fb6 1,4,17,33-34,44,46
+frontend-v3/src/pages/ProjectPage.tsx
+  s_5f08a60d42019a::t_3f055e9fafab4b 9,243-305,307,309
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4eb31de7bbb200578ba2fff06fe5075bc161ba11",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
