@@ -144,7 +144,12 @@ class TodayCountsResponse(BaseModel):
 
     as_of: date
     scope: CountsScope
-    replies: RepliesCountDto
+    replies: RepliesCountDto | None = Field(
+        description=(
+            "The day's replies over the people counted; null for an executive when they "
+            "are fewer than five (D104)."
+        )
+    )
     open_warnings: int
     project_count: int
 
@@ -153,11 +158,15 @@ class TodayCountsResponse(BaseModel):
         return cls(
             as_of=view.as_of,
             scope=view.scope,
-            replies=RepliesCountDto(
-                people=view.replies.people,
-                replied=view.replies.replied,
-                inferred=view.replies.inferred,
-                waiting=view.replies.waiting,
+            replies=(
+                RepliesCountDto(
+                    people=view.replies.people,
+                    replied=view.replies.replied,
+                    inferred=view.replies.inferred,
+                    waiting=view.replies.waiting,
+                )
+                if view.replies is not None
+                else None
             ),
             open_warnings=view.open_warnings,
             project_count=len(view.project_ids),

@@ -6,11 +6,13 @@ from datetime import date
 
 from core.application.people_words import (
     SMALL_GROUP,
+    SMALL_GROUP_LINE,
     PeopleWords,
     hides_names,
+    is_small,
     people_words,
     role_word,
-    small_pods,
+    small_group_line,
 )
 from core.domain.auth import Principal, Role
 from core.domain.graph import Developer, EdgeKind, GraphEdge, Pod
@@ -111,6 +113,10 @@ def test_text_says_each_name_as_the_role_or_team() -> None:
     assert words.say("Verdict.\n- Asha Rao must act.") == "Verdict.\n- The manager must act."
 
 
-def test_a_pod_of_fewer_than_five_is_small() -> None:
+def test_a_group_of_fewer_than_five_is_small_and_says_where_it_is_counted() -> None:
     assert SMALL_GROUP == 5
-    assert small_pods({"a": 4, "b": 5, "c": 1, "d": 9}) == frozenset({"a", "c"})
+    assert [is_small(people) for people in (0, 1, 4, 5, 9)] == [True, True, True, False, False]
+    assert small_group_line("project") == SMALL_GROUP_LINE
+    assert small_group_line("project").endswith("counted with the project's.")
+    assert small_group_line("program").endswith("counted with the program's.")
+    assert small_group_line(None) == "Fewer than 5 people, so no check-in counts are shown for it."

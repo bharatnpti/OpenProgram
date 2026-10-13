@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from config.settings import Settings
+from core.application.people_words import SMALL_GROUP_ALONE_LINE
 from core.application.portfolio_privacy import (
     OPEN_BLOCKER,
     counted_statuses,
@@ -208,10 +209,11 @@ def test_a_manager_reads_who_and_an_executive_reads_counts(settings: Settings) -
     # No one's cell but the reader's own, which is on the "no pod" row (N5).
     people = [cell for cell in heatmap["cells"] if cell["entity_ref"]["kind"] == "developer"]
     assert [cell["entity_ref"]["id"] for cell in people] == ["dev-elle"]
-    # The reasons still say how many, and on which work.
+    # The reasons still say on which work; a project of two counts nobody (D104).
     project = next(cell for cell in heatmap["cells"] if cell["entity_ref"]["id"] == "project-1")
     assert any("KEY-1" in line for line in project["reasons"])
-    assert any("1 of 2" in line for line in project["reasons"]), project["reasons"]
+    assert not any("1 of 2" in line for line in project["reasons"]), project["reasons"]
+    assert SMALL_GROUP_ALONE_LINE in project["reasons"]
     assert "another team" in text
 
 

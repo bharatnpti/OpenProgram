@@ -16,7 +16,7 @@ from core.application.brief_facts import (
     project_status,
 )
 from core.application.brief_grounding import compose_brief, fallback_brief
-from core.application.people_words import PeopleWords, people_words
+from core.application.people_words import PeopleWords, is_small, people_words
 from core.application.persona_views import NO_POD_ROW, PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.domain.brief import BriefKind, NarrativeBrief
@@ -198,6 +198,8 @@ class NarrativeBriefService:
                 scope_ref=_scope_ref(kind, scope_id),
                 checkins_today=await self._checkins_today(tenant_id, team_ids, as_of.date()),
                 headline=await self._headline(tenant_id, kind, as_of),
+                # An executive counts no one in a portfolio of fewer than five (D104).
+                people_counted=kind is not BriefKind.EXEC or not is_small(len(team_ids)),
             )
         )
 
@@ -253,8 +255,14 @@ class NarrativeBriefService:
                 for cell in heatmap.cells
                 if cell.entity_ref.kind is NodeKind.DEVELOPER and cell.row != NO_POD_ROW
             )
+            # The status it states is the heat map as an executive reads it: the
+            # teams' cells, no person's, and no people counted on a group of
+            # fewer than five (D87, D99, D104).
+            counted = await self._persona_view_service.portfolio_heatmap(
+                tenant_id, as_of, counts_only=True
+            )
             return _ScopedStatus(
-                scope=BriefScope(), status=heatmap_status(heatmap.cells), team_ids=team
+                scope=BriefScope(), status=heatmap_status(counted.cells), team_ids=team
             )
         except GraphNotFound:
             return _ScopedStatus(scope=BriefScope.empty(), status=no_status())
@@ -324,7 +332,9 @@ class NarrativeBriefService:
         )
 
     async def _headline(self, tenant_id: str, kind: BriefKind, as_of: datetime) -> str | None:
-        """The exec brief's day as Exec Today's hero says it: the same cause, the same counts."""
+        """The exec brief's day as Exec Today's hero says it: the same cause, the same
+        counts, read as an executive reads them (no people counted on a program of
+        fewer than five, D104)."""
         if kind is not BriefKind.EXEC:
             return None
         try:
@@ -337,6 +347,7 @@ class NarrativeBriefService:
                 zone=UTC,
                 names=self._provider_names,
                 clock=False,
+                counts_only=True,
             )
         except GraphNotFound:
             return None

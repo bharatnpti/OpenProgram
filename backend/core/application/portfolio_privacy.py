@@ -22,19 +22,28 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from core.application.attention import AttentionDay
+from core.application.attention import AttentionDay, TeamGraph
 from core.application.authorization import AuthorizationPolicy, Capability
-from core.application.people_words import small_pods
+from core.application.people_words import is_small, small_group_line
 from core.domain.auth import Principal
 from core.domain.graph import NodeKind
 from core.domain.rollup import FactorKind, NodeStatus, RollupFactor
 
 if TYPE_CHECKING:
     from core.application.persona_views import ProjectProgressView
+
+#: The groups people are counted in, smallest first: a pod, a project, a program.
+_GROUP_KINDS = (NodeKind.POD, NodeKind.PROJECT, NodeKind.PROGRAM)
+#: What holds each group, where its people are counted when it is too small.
+_HOLDERS: dict[NodeKind, tuple[NodeKind, ...]] = {
+    NodeKind.POD: (NodeKind.PROJECT, NodeKind.PROGRAM),
+    NodeKind.PROJECT: (NodeKind.PROGRAM,),
+    NodeKind.PROGRAM: (),
+}
 
 #: A blocker as a counts-only reader reads it: never in its owner's words.
 OPEN_BLOCKER = "Open blocker."
@@ -65,8 +74,9 @@ def counted_statuses(statuses: Iterable[NodeStatus]) -> list[NodeStatus]:
 def counted_day(day: AttentionDay) -> AttentionDay:
     """The day with no person's name to print: reasons count people, never list them.
 
-    A pod of fewer than ``SMALL_GROUP`` people gets no people counted on it at
-    all (D99): its people are counted in the project's line.
+    A pod, project or program of fewer than ``SMALL_GROUP`` people gets no
+    people counted on it at all (D99, D104): its people are counted in the
+    smallest group above it that is large enough, else in none.
     """
     graph = day.graph
     labels = {
@@ -74,25 +84,55 @@ def counted_day(day: AttentionDay) -> AttentionDay:
         for node_id, label in graph.labels.items()
         if graph.kinds.get(node_id) is not NodeKind.DEVELOPER
     }
+    return replace(day, graph=replace(graph, labels=labels), small_groups=small_groups(graph))
+
+
+def small_groups(graph: TeamGraph) -> dict[str, str]:
+    """Each pod, project and program under ``SMALL_GROUP`` people, with the line said
+    in place of its counts: where its people are counted instead (D99, D104)."""
     sizes = {
         node_id: len(graph.under(node_id, NodeKind.DEVELOPER))
         for node_id, kind in graph.kinds.items()
-        if kind is NodeKind.POD
+        if kind in _GROUP_KINDS
     }
-    return replace(day, graph=replace(graph, labels=labels), small_pods=small_pods(sizes))
+    small = {node_id for node_id, people in sizes.items() if is_small(people)}
+    if not small:
+        return {}
+    # What each project and program holds, read once: the groups it counts.
+    held = {
+        node_id: graph.under(node_id, NodeKind.POD) | graph.under(node_id, NodeKind.PROJECT)
+        for node_id, kind in graph.kinds.items()
+        if kind in (NodeKind.PROJECT, NodeKind.PROGRAM) and node_id not in small
+    }
+    lines: dict[str, str] = {}
+    for node_id in small:
+        counted_in = next(
+            (
+                holder_kind.value
+                for holder_kind in _HOLDERS[graph.kinds[node_id]]
+                if any(
+                    node_id in groups and graph.kinds.get(holder) is holder_kind
+                    for holder, groups in held.items()
+                )
+            ),
+            None,
+        )
+        lines[node_id] = small_group_line(counted_in)
+    return lines
 
 
-def without_small_pod_people(
-    statuses: Iterable[NodeStatus], small: frozenset[str]
+def without_small_group_people(
+    statuses: Iterable[NodeStatus], small: Collection[str]
 ) -> list[NodeStatus]:
-    """Each small pod's status without its people's own updates among its factors (D99).
+    """Each small group's status without its people's own updates among its factors
+    (D99, D104).
 
     So no line made from its factors ("1 missing update") counts its people;
-    its colour stays, and the project above still counts them.
+    its colour stays, and the group above that is large enough still counts them.
     """
     return [
         replace(status, factors=tuple(f for f in status.factors if not _own_update(f)))
-        if status.entity_ref.kind is NodeKind.POD and status.entity_ref.id in small
+        if status.entity_ref.kind in _GROUP_KINDS and status.entity_ref.id in small
         else status
         for status in statuses
     ]
@@ -162,5 +202,6 @@ __all__ = [
     "counted_statuses",
     "own_cells_only",
     "reads_people",
-    "without_small_pod_people",
+    "small_groups",
+    "without_small_group_people",
 ]

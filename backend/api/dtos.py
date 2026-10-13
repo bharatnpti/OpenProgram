@@ -1734,7 +1734,12 @@ class PortfolioAttentionResponse(BaseModel):
     rag: Rag
     headline: str
     detail: str | None
-    checkins: AttentionCheckinsDto
+    checkins: AttentionCheckinsDto | None = Field(
+        description=(
+            "The day's check-in counts for the people in the program's teams; null for a "
+            "reader who counts people only, when the program has fewer than five (D104)."
+        )
+    )
     signals: list[AttentionSignalDto]
 
     @classmethod
@@ -1745,7 +1750,9 @@ class PortfolioAttentionResponse(BaseModel):
             rag=view.rag,
             headline=view.headline,
             detail=view.detail,
-            checkins=AttentionCheckinsDto.from_view(view.checkins),
+            checkins=(
+                AttentionCheckinsDto.from_view(view.checkins) if view.checkins is not None else None
+            ),
             signals=[AttentionSignalDto.from_view(signal) for signal in view.signals],
         )
 

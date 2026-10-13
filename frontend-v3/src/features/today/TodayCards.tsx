@@ -123,7 +123,7 @@ export function RepliesCard({
   error: unknown;
   tracker?: string;
 }) {
-  const words = counts ? repliesWords(counts.replies, tracker) : null;
+  const words = counts?.replies ? repliesWords(counts.replies, tracker) : null;
   return (
     <CountCard
       title="Replies today"

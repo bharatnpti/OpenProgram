@@ -16,13 +16,12 @@ from core.application.attention import (
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
 from core.application.checkin_drift import CHECKIN_DRIFT_FACT_SOURCE
 from core.application.checkin_ladder import PodCheckinReads
-from core.application.people_words import SMALL_GROUP_LINE
 from core.application.person_names import UNKNOWN_PERSON, member_names
 from core.application.portfolio_privacy import (
     counted_day,
     counted_statuses,
     own_cells_only,
-    without_small_pod_people,
+    without_small_group_people,
 )
 from core.application.rollup_service import (
     CONFIRMED_NO_BLOCKERS_REASON,
@@ -1276,7 +1275,7 @@ class PersonaViewService:
         shown = [status for status in statuses if day.graph.shows(status.entity_ref)]
         if counts_only:
             shown = own_cells_only(shown, reader_id)
-            shown = without_small_pod_people(shown, day.small_pods)
+            shown = without_small_group_people(shown, day.small_groups)
         cells = await self._heatmap_cells(tenant_id, shown, tree, day, people_named=not counts_only)
         rows = tuple(dict.fromkeys(cell.row for cell in cells))
         columns = tuple(dict.fromkeys(cell.column for cell in cells))
@@ -1445,9 +1444,10 @@ class PersonaViewService:
                 reason=reasons.reason,
                 reasons=reasons.reasons,
             )
-            if _small_pod_silent(status, day, context):
-                # Its people's updates were all it had to say: they count in the project (D99).
-                cell = replace(cell, why=SMALL_GROUP_LINE)
+            if _small_group_silent(status, day, context):
+                # Its people's updates were all it had to say: they count in the group above
+                # that is large enough, or nowhere (D99, D104).
+                cell = replace(cell, why=day.small_groups[status.entity_ref.id])
             cells.append(cell)
         return tuple(cells)
 
@@ -2466,10 +2466,10 @@ def _without_no_pod(status: NodeStatus) -> NodeStatus:
     )
 
 
-def _small_pod_silent(status: NodeStatus, day: AttentionDay, context: _ReasonContext) -> bool:
-    """A small pod (D99) not green whose factors, without its people, name no driver."""
-    ref = status.entity_ref
-    if ref.kind is not NodeKind.POD or ref.id not in day.small_pods or status.rag is Rag.GREEN:
+def _small_group_silent(status: NodeStatus, day: AttentionDay, context: _ReasonContext) -> bool:
+    """A small pod, project or program (D99, D104), not green, whose factors without
+    its people name no driver."""
+    if status.entity_ref.id not in day.small_groups or status.rag is Rag.GREEN:
         return False
     return _drivers_line(status, context) is None
 

@@ -12135,7 +12135,7 @@
       "get": {
         "tags": ["personas"],
         "summary": "Narrative Briefs",
-        "description": "The latest briefs, newest first.\n\nAn executive reads every brief with each person said as their role or team,\nand no person among its sources (D87): a pod's brief names its people to the\npeople who run pods, never to an executive. A brief written before the\nexecutive brief stopped naming people reads the same way.",
+        "description": "The latest briefs, newest first.\n\nAn executive reads every brief with each person said as their role or team,\nand no person among its sources (D87): a pod's brief names its people to the\npeople who run pods, never to an executive. A brief written before the\nexecutive brief stopped naming people reads the same way. Nor do they read\nthe brief of a pod or project of fewer than five people (D99, D104): its\ntext counts its people (\"two of three confirmed\"); its dates and verdict\nare on the project's page.",
         "operationId": "narrative_briefs_persona_briefs_get",
         "parameters": [
           {
@@ -23705,7 +23705,15 @@
             "title": "Detail"
           },
           "checkins": {
-            "$ref": "#/components/schemas/AttentionCheckinsDto"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttentionCheckinsDto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The day's check-in counts for the people in the program's teams; null for a reader who counts people only, when the program has fewer than five (D104)."
           },
           "signals": {
             "items": {
@@ -30873,7 +30881,15 @@
             "title": "Scope"
           },
           "replies": {
-            "$ref": "#/components/schemas/RepliesCountDto"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepliesCountDto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The day's replies over the people counted; null for an executive when they are fewer than five (D104)."
           },
           "open_warnings": {
             "type": "integer",

@@ -67,12 +67,15 @@ export function TodayPage() {
             <TodayAnswer subject={subject} />
             <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-3">
               <CheckinAction />
-              <RepliesCard
-                counts={counts.data}
-                isLoading={counts.isLoading}
-                error={counts.error}
-                tracker={changes.data?.tracker}
-              />
+              {counts.data?.replies === null ? null : (
+                // No replies over fewer than five people for an executive (D104).
+                <RepliesCard
+                  counts={counts.data}
+                  isLoading={counts.isLoading}
+                  error={counts.error}
+                  tracker={changes.data?.tracker}
+                />
+              )}
               <WarningsCard
                 counts={counts.data}
                 isLoading={counts.isLoading}

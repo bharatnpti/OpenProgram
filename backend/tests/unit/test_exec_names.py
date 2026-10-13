@@ -112,19 +112,26 @@ def _seed(client: TestClient) -> None:
                 confirmed=True,
             )
         )
-        await registry.narrative_brief_repository().record_brief(
-            NarrativeBrief(
-                tenant_id=T,
-                kind=BriefKind.DAILY_POD,
-                scope_id="pod-pay",
-                title="Daily pod summary: Payments Pod",
-                body=(
-                    "Liam Chen is blocked on CHK-1.\n- Ira Novak asks Asha Rao to decide by Friday."
-                ),
-                generated_at=datetime(2026, 10, 7, 8, 0, tzinfo=UTC),
-                sources=("pod:pod-pay", "developer:U1002", "work_item:CHK-1"),
+        # The portfolio's brief, and a pod's: Payments Pod is two people, so an
+        # executive gets no brief of it (D99), only the portfolio's.
+        for kind, scope, at in (
+            (BriefKind.DAILY_POD, "pod-pay", datetime(2026, 10, 7, 7, 0, tzinfo=UTC)),
+            (BriefKind.EXEC, "", datetime(2026, 10, 7, 8, 0, tzinfo=UTC)),
+        ):
+            await registry.narrative_brief_repository().record_brief(
+                NarrativeBrief(
+                    tenant_id=T,
+                    kind=kind,
+                    scope_id=scope,
+                    title="Brief",
+                    body=(
+                        "Liam Chen is blocked on CHK-1.\n- Ira Novak asks Asha Rao to decide "
+                        "by Friday."
+                    ),
+                    generated_at=at,
+                    sources=("pod:pod-pay", "developer:U1002", "work_item:CHK-1"),
+                )
             )
-        )
 
     client.portal.call(add)  # type: ignore[union-attr]
     committed = client.put(
@@ -210,8 +217,11 @@ def test_the_executive_reads_the_role_or_the_team_and_no_name(client: TestClient
     impact = reads["/projects/checkout/delivery/impact"].json()
     assert [change["by"] for change in impact["committed_changes"]] == ["the product owner"]
 
-    # A pod's brief reads with roles and teams, and lists no person among its sources.
-    brief = reads["/persona/briefs"].json()["briefs"][0]
+    # A brief reads with roles and teams, and lists no person among its sources. A pod
+    # of fewer than five people has no brief for an executive (D99, D104).
+    briefs = reads["/persona/briefs"].json()["briefs"]
+    assert [item["kind"] for item in briefs] == ["exec"]
+    brief = briefs[0]
     assert brief["body"] == (
         "Payments Pod is blocked on CHK-1.\n- The scrum master asks the manager to decide "
         "by Friday."

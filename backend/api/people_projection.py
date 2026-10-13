@@ -22,6 +22,7 @@ principal, never the console.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from enum import Enum
 from typing import Annotated
@@ -30,7 +31,9 @@ from fastapi import Depends, Request
 from pydantic import BaseModel
 
 from api.dependencies import get_current_principal, get_registry
+from core.application.attention import TeamGraph
 from core.application.people_words import PeopleWords, hides_names, people_words
+from core.application.portfolio_privacy import small_groups
 from core.domain.auth import Principal
 from core.domain.graph import EdgeKind
 
@@ -86,7 +89,9 @@ async def get_people_words(
     day = _as_of(request.query_params.get("as_of"))
     nodes = await graph.list_nodes(principal.tenant_id, as_of=day)
     edges = await graph.list_edges(principal.tenant_id, kind=EdgeKind.CONTAINS)
-    return people_words(nodes, edges, as_of=day)
+    words = people_words(nodes, edges, as_of=day)
+    team = TeamGraph.from_graph(nodes, edges, day or date.today())
+    return replace(words, small_groups=frozenset(small_groups(team)))
 
 
 PeopleWordsDep = Annotated[PeopleWords | None, Depends(get_people_words)]

@@ -155,6 +155,9 @@ class BriefInputs:
     #: The day's headline as Exec Today shows it (``attention``), for the
     #: exec brief: the same cause and the same team counts as the hero.
     headline: str | None = None
+    #: False for the exec brief of a portfolio of fewer than five people (D104):
+    #: no line counts or lists whose check-in came in, today's or the window's.
+    people_counted: bool = True
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -457,15 +460,19 @@ def _context_lines(
         ),
         inputs.status.sentence,
         *inputs.status.detail_lines,
-        *_checkin_day_lines(inputs),
+        *(_checkin_day_lines(inputs) if inputs.people_counted else []),
     ]
     if inputs.scope.member_names:
         lines.append(f"Members: {', '.join(inputs.scope.member_names)}.")
     activity = [
         *_issue_lines(issues),
         *_merge_request_lines(collected.merge_requests, merges, inputs.as_of),
-        *_checkin_lines(
-            collected.checkins, collected.checkin_names, inputs.as_of, _people_in_scope(inputs)
+        *(
+            _checkin_lines(
+                collected.checkins, collected.checkin_names, inputs.as_of, _people_in_scope(inputs)
+            )
+            if inputs.people_counted
+            else []
         ),
         *_request_lines(collected.requests, inputs.as_of, merges),
         *_risk_lines(collected.risks),

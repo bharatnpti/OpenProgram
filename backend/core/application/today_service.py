@@ -23,6 +23,7 @@ from typing import Literal
 from core.application.day_report_asks import Ask, AskScope, Team
 from core.application.day_report_builder import DayReportBuilder
 from core.application.delivery_scope import DeliveryScopeService, MemberScope
+from core.application.people_words import is_small
 from core.application.risk_service import RiskService
 from core.domain.auth import Principal, Role
 from core.domain.conversation import ConversationRole
@@ -118,7 +119,8 @@ class RepliesCount:
 class TodayCountsView:
     as_of: date
     scope: CountsScope
-    replies: RepliesCount
+    #: None for an executive whose part holds fewer than five people (D104).
+    replies: RepliesCount | None
     open_warnings: int
     project_ids: tuple[str, ...]
 
@@ -199,7 +201,8 @@ class TodayService:
         Managers, executives and admins count every pod's people and every
         project; a scrum master their own pods' people and those pods'
         projects; a product owner their own projects and the people in them.
-        A developer reads no aggregate.
+        A developer reads no aggregate. An executive reads no replies over fewer
+        than five people (D104): those would count someone.
         """
         tenant_id = principal.tenant_id
         portfolio = reads_portfolio(principal)
@@ -227,7 +230,8 @@ class TodayService:
                 and node.kind is NodeKind.DEVELOPER
             }
         )
-        replies = await self._replies(tenant_id, people, day)
+        counted = reads_names(principal) or not is_small(len(people))
+        replies = await self._replies(tenant_id, people, day) if counted else None
         warnings = await self._open_warnings(tenant_id, projects, day, portfolio=portfolio)
         return TodayCountsView(
             as_of=day,

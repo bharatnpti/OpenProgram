@@ -2925,7 +2925,10 @@ export interface paths {
      *     An executive reads every brief with each person said as their role or team,
      *     and no person among its sources (D87): a pod's brief names its people to the
      *     people who run pods, never to an executive. A brief written before the
-     *     executive brief stopped naming people reads the same way.
+     *     executive brief stopped naming people reads the same way. Nor do they read
+     *     the brief of a pod or project of fewer than five people (D99, D104): its
+     *     text counts its people ("two of three confirmed"); its dates and verdict
+     *     are on the project's page.
      */
     get: operations["narrative_briefs_persona_briefs_get"];
     put?: never;
@@ -7289,7 +7292,8 @@ export interface components {
       headline: string;
       /** Detail */
       detail: string | null;
-      checkins: components["schemas"]["AttentionCheckinsDto"];
+      /** @description The day's check-in counts for the people in the program's teams; null for a reader who counts people only, when the program has fewer than five (D104). */
+      checkins: components["schemas"]["AttentionCheckinsDto"] | null;
       /** Signals */
       signals: components["schemas"]["AttentionSignalDto"][];
     };
@@ -10112,7 +10116,8 @@ export interface components {
        * @enum {string}
        */
       scope: "portfolio" | "own";
-      replies: components["schemas"]["RepliesCountDto"];
+      /** @description The day's replies over the people counted; null for an executive when they are fewer than five (D104). */
+      replies: components["schemas"]["RepliesCountDto"] | null;
       /** Open Warnings */
       open_warnings: number;
       /** Project Count */

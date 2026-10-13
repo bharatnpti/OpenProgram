@@ -424,10 +424,15 @@ async def narrative_briefs(
     An executive reads every brief with each person said as their role or team,
     and no person among its sources (D87): a pod's brief names its people to the
     people who run pods, never to an executive. A brief written before the
-    executive brief stopped naming people reads the same way.
+    executive brief stopped naming people reads the same way. Nor do they read
+    the brief of a pod or project of fewer than five people (D99, D104): its
+    text counts its people ("two of three confirmed"); its dates and verdict
+    are on the project's page.
     """
     _ensure_aggregate(principal)
     briefs = await repository.latest_briefs(principal.tenant_id, kind, limit)
+    if words is not None:
+        briefs = [brief for brief in briefs if brief.scope_id not in words.small_groups]
     responses = [NarrativeBriefResponse.from_domain(brief) for brief in briefs]
     if words is not None:
         responses = [
