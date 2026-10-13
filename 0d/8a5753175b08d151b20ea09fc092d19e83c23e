@@ -1,0 +1,27 @@
+backend/core/application/today_service.py
+  s_5f08a60d42019a::t_22888e91275b51 91-92,305,310,324,328-332
+  s_5f08a60d42019a::t_485ff0149b658f 333-334
+backend/tests/unit/test_today_api.py
+  s_5f08a60d42019a::t_f93f29e5cd8098 21-26,323-324,376-410
+backend/api/today_dtos.py
+  s_5f08a60d42019a::t_765321da38db1f 8
+  s_5f08a60d42019a::t_22888e91275b51 81-87,103
+backend/core/application/day_report_asks.py
+  s_5f08a60d42019a::t_22888e91275b51 193-195,574
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0d8a5753175b08d151b20ea09fc092d19e83c23e",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
