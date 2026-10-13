@@ -1,0 +1,28 @@
+backend/tests/unit/test_forecast_days_shared_pod.py
+  s_ed47025cfc8469::t_a5a892d3172717 1-12,25-26,35-36,42,57-59,66-74,91-94,96-97,100,112-122,138-139,167-176,182,189-196,198-199,202,206-209,213-217,219-221,224,226-239,242,244-247,249-251,257,262-272,274-280,283-298,307-391,393-397,403,414
+backend/tests/integration/test_baselines_repository.py
+  s_ed47025cfc8469::t_9ac90eb9bd7bde 268-271
+  s_ed47025cfc8469::t_4e29c9d409809f 266-267,272-273
+backend/core/application/forecast_service.py
+  s_ed47025cfc8469::t_ccbad453e02264 18-21,31,595-600,604-612,614-616,620-622,624-629,776,779,903-907,909,928,945,980,984-985,1024,1128-1164,1445-1450
+  s_ed47025cfc8469::t_6382e7dd72fe08 623
+  s_ed47025cfc8469::t_63e52164b92dfc 889
+  s_ed47025cfc8469::t_91f239257a9c93 890-893
+  s_ed47025cfc8469::t_cf1c394f2498f9 1451-1452
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0b61e36e3754eb100ea004edd6b554e1a2e2ac20",
+  "prompts": {},
+  "sessions": {
+    "s_ed47025cfc8469": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c3dacc8-00da-46b1-a2f5-ce44e164bb12",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
