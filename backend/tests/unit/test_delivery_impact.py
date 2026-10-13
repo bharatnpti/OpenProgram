@@ -579,8 +579,9 @@ async def test_a_scrum_master_reads_their_pod_whole_and_another_pods_dates_only(
         access=other,
     )
 
-    # Their own pod's blockers too: the scrum master reads the pod blocker read.
-    assert own == ImpactAccess(detail=ImpactDetail.FULL, added_by=True, blockers=True)
+    # Their own pod's blockers too: the scrum master reads the pod blocker read, and
+    # hygiene's issues there, so an addition Jira hygiene has open is ringed.
+    assert own == ImpactAccess(detail=ImpactDetail.FULL, added_by=True, blockers=True, hygiene=True)
     assert other == ImpactAccess(detail=ImpactDetail.DATES, added_by=False)
     assert view.markers == () and view.evidence is None
     assert all(driver.items == () for driver in view.drivers)

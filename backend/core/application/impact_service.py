@@ -142,11 +142,16 @@ class ImpactAccess:
     added_by: bool
     #: Whether blockers opened and closed are marked: the pod blocker read's readers only.
     blockers: bool = False
+    #: Whether an addition without the change label is ringed while Jira hygiene has a
+    #: finding open on it: the readers of hygiene's issues (product owner, manager,
+    #: admin, a scrum master on their own pods), never an executive (counts only) or a
+    #: developer (no hygiene read).
+    hygiene: bool = False
 
 
 class OpenFindings(Protocol):
-    """The issues of a scope with an open Jira hygiene finding (lane F), for the ring on an
-    addition without the change label. Until one is wired, no marker is ringed."""
+    """The issues of a scope with an open Jira hygiene finding, for the ring on an
+    addition without the change label (core/application/hygiene_open_findings.py)."""
 
     async def open_keys(self, tenant_id: str, scope: CommitmentScope) -> frozenset[str]: ...
 
@@ -396,9 +401,13 @@ class DeliveryImpactService:
         blockers = policy.can(principal, Capability.READ_POD_BLOCKERS)
         if scope.kind is not CommitmentScopeKind.POD:
             await self._scope.ensure_project_read(principal, scope.project_id)
-            return ImpactAccess(detail=ImpactDetail.FULL, added_by=names, blockers=blockers)
+            return ImpactAccess(
+                detail=ImpactDetail.FULL, added_by=names, blockers=blockers, hygiene=names
+            )
         if reads_project(policy, principal, own=False):
-            return ImpactAccess(detail=ImpactDetail.FULL, added_by=names, blockers=blockers)
+            return ImpactAccess(
+                detail=ImpactDetail.FULL, added_by=names, blockers=blockers, hygiene=names
+            )
         if principal.has_role(Role.SM):
             runs = await self._forecasts.runs_pod(
                 principal.tenant_id, scope.id, principal.subject, self._today()
@@ -407,6 +416,7 @@ class DeliveryImpactService:
                 detail=ImpactDetail.FULL if runs else ImpactDetail.DATES,
                 added_by=runs,
                 blockers=runs and blockers,
+                hygiene=runs,
             )
         raise AuthorizationDenied("Not allowed.")
 
@@ -849,7 +859,9 @@ class DeliveryImpactService:
                 grouped.setdefault((day, kind, label), []).append(item)
 
         flagged = (
-            await self._findings.open_keys(tenant_id, scope) if self._findings is not None else None
+            await self._findings.open_keys(tenant_id, scope)
+            if self._findings is not None and access.hygiene
+            else None
         )
         if data.period is not None:
             _attribution_markers(data.period, data, stages, flagged, add)

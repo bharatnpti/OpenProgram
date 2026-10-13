@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -23,7 +23,9 @@ from core.domain.delivery import DEFAULT_STAGE_MAPPING
 from core.domain.errors import AuthorizationDenied
 from core.domain.forecast import ReleaseMatch, ReleaseMatchKind, Verdict
 from core.domain.graph import Task
+from core.domain.hygiene import HygieneFinding, HygieneState
 from core.domain.impact import Measure
+from core.domain.release_readiness import ScopeKind, ScopeRef
 from core.domain.timeline import SentenceParts, axis, no_forecast_reason, row_sentence, worst_first
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from tests.unit.test_delivery_impact import (
@@ -116,8 +118,10 @@ async def test_the_project_row_marks_what_happened_on_the_day_it_happened() -> N
     assert unlabelled.change_label is False and [i.key for i in unlabelled.items] == ["CHK-21"]
     assert unlabelled.items[0].added_by == "Asha Rao"
     assert unlabelled.items[0].change_label is False
-    # No hygiene findings are wired yet: no ring, rather than a ring saying "none".
-    assert unlabelled.items[0].hygiene is None
+    # Jira hygiene has nothing open on it: read, and not ringed.
+    assert unlabelled.items[0].hygiene is False
+    # A requirement that carries the label is never ringed.
+    assert labelled.items[0].hygiene is None
     assert markers[(date(2026, 10, 7), "committed_date_changed")].count == 1
     assert [i.key for i in markers[(date(2026, 10, 3), "late")].items] == ["CHK-4"]
     # A product owner does not read the pods' blockers.
@@ -216,6 +220,53 @@ async def test_a_developer_reads_only_their_own_pods_row_and_no_project() -> Non
     assert any(marker.kind == "blocker_closed" for marker in row.markers)
     assert all(item.added_by is None for marker in row.markers for item in marker.items)
     assert row.can_set_date is False
+
+
+async def test_an_addition_without_the_label_is_ringed_while_jira_hygiene_has_it_open() -> None:
+    registry, store = await _reconstructed()
+    await _blockers(store)
+    findings = registry.hygiene_repository()
+    seen = datetime(2026, 10, 9, 8, 0, tzinfo=UTC)
+    for finding_id, key, project, state in (
+        ("hf-1", "CHK-21", "checkout", HygieneState.OPEN),
+        # Resolved, or about another project's issue: no ring.
+        ("hf-2", "CHK-20", "checkout", HygieneState.RESOLVED),
+        ("hf-3", "WEB-9", "web", HygieneState.OPEN),
+    ):
+        await findings.save_finding(
+            HygieneFinding(
+                tenant_id=TENANT,
+                finding_id=finding_id,
+                rule_id="rule-label",
+                rule_version=1,
+                issue_key=key,
+                scope=ScopeRef(kind=ScopeKind.PROJECT, id=project),
+                project_id=project,
+                state=state,
+                owner_member_id="dev-mina",
+                detail={"what": "Added after planning without the change label"},
+                fingerprint=finding_id,
+                held=False,
+                first_seen_at=seen,
+                last_seen_at=seen,
+            )
+        )
+    service = registry.timeline_service()
+
+    def unlabelled(view: object) -> object:
+        return _markers(view.rows[0])[(date(2026, 10, 8), "scope_added")].items[0]  # type: ignore[attr-defined]
+
+    for role, subject in ((Role.PO, "dev-mina"), (Role.MGR, "someone")):
+        view = await service.project_timeline(_principal(role, subject), "checkout", as_of=TODAY)
+        assert unlabelled(view).hygiene is True  # type: ignore[attr-defined]
+    # An executive reads hygiene's counts, never its issues: no ring.
+    view = await service.project_timeline(_principal(Role.EXEC), "checkout", as_of=TODAY)
+    assert unlabelled(view).hygiene is None  # type: ignore[attr-defined]
+    # A developer reads no hygiene: their pod's row rings nothing.
+    (row,) = (
+        await service.pod_timeline(_principal(Role.DEV, "dev-asha"), "pod-pay", as_of=TODAY)
+    ).rows
+    assert all(item.hygiene is None for marker in row.markers for item in marker.items)
 
 
 async def test_a_past_day_is_read_as_it_stood_that_day() -> None:

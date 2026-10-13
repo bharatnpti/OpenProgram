@@ -93,6 +93,9 @@ class RowAccess:
     blockers: bool = False
     #: Who brought an added item in (D14).
     added_by: bool = False
+    #: The Jira hygiene ring on an addition without the change label: hygiene's issue
+    #: readers only (never an executive, who reads counts, or a developer).
+    hygiene: bool = False
     #: Set date or Change date, as the date routes allow it.
     can_set_date: bool = False
 
@@ -297,7 +300,11 @@ class TimelineService:
             manages = principal.has_role(Role.MGR) or principal.has_role(Role.ADMIN)
             can_set = self._policy.can(principal, Capability.SET_POD_DATES) and (manages or runs)
         return RowAccess(
-            level=NodeAccess.PANEL, blockers=blockers, added_by=names, can_set_date=can_set
+            level=NodeAccess.PANEL,
+            blockers=blockers,
+            added_by=names,
+            hygiene=names,
+            can_set_date=can_set,
         )
 
     async def _pod_access(self, principal: Principal, pod_id: str) -> RowAccess:
@@ -472,7 +479,10 @@ class TimelineService:
             start=start,
             as_of=as_of,
             access=ImpactAccess(
-                detail=ImpactDetail.FULL, added_by=access.added_by, blockers=access.blockers
+                detail=ImpactDetail.FULL,
+                added_by=access.added_by,
+                blockers=access.blockers,
+                hygiene=access.hygiene,
             ),
             open_requirements=requirements,
             baseline=baseline,

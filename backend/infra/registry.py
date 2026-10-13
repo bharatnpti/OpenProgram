@@ -30,6 +30,7 @@ from core.application.fill_day import FillDayPass, FillDaySettingsService
 from core.application.forecast_service import ForecastService
 from core.application.gate_extraction import ModelItemFinder
 from core.application.gate_service import GateService
+from core.application.hygiene_open_findings import OpenFindingKeys
 from core.application.hygiene_service import HygieneService
 from core.application.impact_service import DeliveryImpactService
 from core.application.jira_writes_service import JiraWritesService
@@ -596,6 +597,8 @@ class ServiceRegistry:
             graph_repository=self.graph_repository(),
             time_series_repository=self.time_series_repository(),
             status_repository=self.status_repository(),
+            # The ring on an addition without the change label while hygiene has it open.
+            open_findings=OpenFindingKeys(self.hygiene_repository()),
             today=self._tenant_today,
             zone=self._tenant_zone(),
         )
