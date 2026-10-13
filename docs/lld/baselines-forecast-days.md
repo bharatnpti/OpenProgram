@@ -159,8 +159,8 @@ the AGE mirror. Memory mode and the tests use in-memory repositories.
 
 ## Console (frontend-v3)
 
-Overall › Planning baseline sits under How the date moved, for the forecast's
-readers:
+Overall › Planning baseline sits under the Timeline (`docs/lld/timeline.md`),
+for the forecast's readers:
 
 - the active baseline with who set it and when;
 - what was added since (and how many without the change label) and what is
@@ -169,8 +169,9 @@ readers:
 
 Mark planning complete (New baseline once one exists) shows only to roles with
 `setProjectDates`, and not while a past day is shown. Its dialog offers now or
-an earlier day, the label, the grace and a note. The slip chart notes rebuilt
-days ("The forecast up to … was rebuilt afterwards").
+an earlier day, the label, the grace and a note. The slip chart (the project
+row's Band over time) notes rebuilt days ("The forecast up to … was rebuilt
+afterwards").
 
 ## Later
 

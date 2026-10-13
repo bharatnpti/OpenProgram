@@ -632,7 +632,7 @@ Functional requirements:
   - the tenant's change label, one tracker label ("CR" by default) for changes agreed after planning;
   - a grace period of 0 to 20 working days (2 by default);
   - an optional note.
-- Everyone who reads the forecast (product owner, manager, executive, admin) shall see Planning baseline under How the date moved. It shows:
+- Everyone who reads the forecast (product owner, manager, executive, admin) shall see Planning baseline under the Timeline (4.37). It shows:
   - the active baseline and who set it, by name;
   - the requirements added since, and how many of them lack the change label;
   - the requirements gone since, by key only, never who added or removed them;
@@ -642,7 +642,7 @@ Functional requirements:
 - An admin shall rebuild earlier days from the stored snapshots, 90 days by default and at most 365 (`POST /admin/workflows/forecast-days/reconstruct`).
   - Each past day with a snapshot is forecast against the committed date and the team's dates as they stood at the end of that day, and marked rebuilt.
   - A day the hourly run kept is never replaced.
-- The forecast's history (4.28) shall read past days from the kept rows and replay only the days nobody kept. Today is always live. Rebuilt days are marked, and the slip chart says the forecast up to a day was rebuilt afterwards.
+- The forecast's history (4.28) shall read past days from the kept rows and replay only the days nobody kept. Today is always live. Rebuilt days are marked, and the slip chart (the project row's Band over time, 4.37) says the forecast up to a day was rebuilt afterwards.
 
 ### 4.34 Why the Date Moved
 
@@ -690,6 +690,21 @@ Functional requirements:
 - The day report shall add one count line under Where we stand ("Jira hygiene: 7 open (2 new today).") while the scan is on, and for each asking rule one ask per owner per scope naming up to five keys ("Checkout Revamp: label 2 additions after planning as changes or take them out: CHK-20, CHK-21"). It waits from the earliest finding's day (the change-label rule's from when the addition passed planning's grace) and climbs the project's escalation matrix (4.30). An ask the gates already raise for the same issue is not repeated.
 - The assistant shall answer "is Jira clean", "which stories have no estimate" and "what was added after planning without a change label" from a read-only `jira_hygiene` tool, behind the readiness board's own read rule: counts only for an executive, no tool for a developer.
 - Nothing shall count or rank people: findings are about issues, aggregates stop at rules and scopes.
+
+### 4.37 Timeline per Project and Pod
+
+**Business requirement:** Leaders shall see, per project, release and pod, how far the work is against the time used, when its date is likely, and which events moved the date, on the day each happened, in one picture. Low-level design: `docs/lld/timeline.md`.
+
+Functional requirements:
+
+- Overall shall show a Timeline second, after the answer line, to the forecast's readers and to scrum masters. It replaces "Dates by pod" and "How the date moved". Each row runs from its planning baseline (4.33) to its committed date: the project's (or the release picked), the project's releases folded under it, then each pod, worst verdict first. A row without a baseline starts at its first kept forecast day and says so; one without a committed date runs open.
+- Each row shall draw its progress (done of total, by story points when every requirement has them), the 50% to 85% forecast band in its verdict's colour (overhanging a committed date it misses), the team's latest date (hollow when some work has none), the committed date with each earlier value and the day it was set, a release's Jira date when it differs, and today's line.
+- Under each bar a lane shall mark, on the day each happened: scope added after planning with and without the change label (ringed while Jira hygiene (4.36) has a finding open on it), scope removed, reopened, requirements passing their date while open, bugs opened, and blockers opened and cleared. Each kind has its own shape, never colour alone; one kind on one day is one marker with a count, per week on an axis longer than twelve weeks. A marker opens its work items with their stage and, by kind, the change label, who brought it in and what a blocker waits on. Markers are events on work items, counted per day and kind, never per person.
+- Picking a row shall point Why the date moved (4.34) under the Timeline at it, over a period (since planning, or Mark planning complete before a baseline; the last 7 or 30 days; since the date last changed) that is also shaded on the axis, as a waterfall in working days, worst driver first, with a 50% date toggle, a table, and the committed date, the team's date and the late and undated requirements. The project row's Band over time shall show the daily band, folded.
+- The picture shall be a text alternative of one server sentence per row, and a Table toggle shall list per row the start, the committed date and its moves, 50% and 85%, the team's date, done, and the events by date. Rows and markers shall be reachable by keyboard. At phone width the page never scrolls sideways: the axis scrolls in its own box, opening on today and the nearest committed date ahead. A past day shall be drawn as it stood that day.
+- Who sees what, set by the server per row: product owners, managers, admins and executives every row, whole; a scrum master their own pods whole and the project's other pods dates only, with no project row; a developer no Timeline on Overall and only their own pod's row on its Delivery panel. Blocker markers only for the pod blocker read's readers (never a product owner or an executive); who brought an item in and the hygiene ring never for executives or developers.
+- Delivery's project panel shall show a compact timeline (the project's and its pods' rows, markers, no waterfall) in place of its date history, and a pod's panel the pod's own row with its project's date as a reference; Why it moved opens Overall's Timeline with the row picked.
+- The same data shall be served by `GET /projects/{id}/timeline` and `GET /pods/{id}/timeline`, from stored rows only, and the assistant's `delivery_impact` (4.34) shall carry the same markers and the link to the row.
 
 ## 5. Key Business Data Flows
 
