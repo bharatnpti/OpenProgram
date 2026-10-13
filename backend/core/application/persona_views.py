@@ -17,6 +17,7 @@ from core.application.blocker_resolution import BlockerResolutionService, Resolv
 from core.application.checkin_drift import CHECKIN_DRIFT_FACT_SOURCE
 from core.application.person_names import UNKNOWN_PERSON, member_names
 from core.application.rollup_service import (
+    CONFIRMED_NO_BLOCKERS_REASON,
     NO_WORK_REASON,
     DriftSignals,
     RollupService,
@@ -588,6 +589,17 @@ class PersonaViewService:
         once, there.
         """
         tree = await self._pod_tree(tenant_id, pod_id, as_of)
+        return PodBlockersView(
+            pod_id=tree.root.id,
+            pod_name=tree.root.name,
+            as_of=as_of,
+            blockers=await self._pod_blocker_views(tenant_id, tree, as_of),
+        )
+
+    async def _pod_blocker_views(
+        self, tenant_id: str, tree: GraphTree, as_of: date
+    ) -> tuple[BlockerView, ...]:
+        """The pod's blocker list (``pod_blockers``), oldest first."""
         found: list[tuple[GraphNode, DeveloperStatus | None, ResolvedBlocker]] = []
         for developer in _developers(tree):
             status = await self._status_repository.latest_developer_status(
@@ -618,12 +630,7 @@ class PersonaViewService:
                         counted_in=_blocker_pods(blocker.pod_ids, nodes_by_id),
                     )
                 )
-        return PodBlockersView(
-            pod_id=tree.root.id,
-            pod_name=tree.root.name,
-            as_of=as_of,
-            blockers=tuple(sorted(blockers, key=lambda item: (-item.age_days, item.owner_name))),
-        )
+        return tuple(sorted(blockers, key=lambda item: (-item.age_days, item.owner_name)))
 
     async def pod_checkins(self, tenant_id: str, pod_id: str, as_of: date) -> PodCheckinsView:
         """Each member's check-in for ``as_of``, and how the pod's day was captured.
@@ -963,7 +970,9 @@ class PersonaViewService:
             raise GraphNotFound(f"pod {pod_id} not found for tenant {tenant_id}")
         statuses = await self._node_statuses_for_tree(tree, as_of)
         status = statuses.get((tree.root.kind, tree.root.id))
-        factors = status.factors if status else ()
+        factors = await self._reasons_agreeing_with_blockers(
+            tenant_id, tree, as_of, status.factors if status else ()
+        )
         return PodRollupView(
             pod_id=tree.root.id,
             pod_name=tree.root.name,
@@ -972,6 +981,37 @@ class PersonaViewService:
             source=status.source if status else StatusSource.UNKNOWN,
             factors=factors,
             source_names=_source_names(tree, factors),
+        )
+
+    async def _reasons_agreeing_with_blockers(
+        self,
+        tenant_id: str,
+        tree: GraphTree,
+        as_of: date,
+        factors: tuple[RollupFactor, ...],
+    ) -> tuple[RollupFactor, ...]:
+        """A pod's reasons, its "no blockers" line reworded when its blocker list has some.
+
+        The pod's own page shows its reasons beside its open blockers. A
+        blocker on a task the pod lists that counts in another pod (IDP-6 on
+        the Platform Pod, counted in the Identity Pod) is on the list but, by
+        design, in none of the pod's factors, so a pod whose members all
+        confirmed read "All child statuses are confirmed with no blockers."
+        over "1 open blocker". That line now names what the list holds and
+        where it counts (``confirmed_with_listed_blockers``), read through the
+        list's own read so the two cannot disagree. Only the line's words
+        change: its colour, the pod's colour and every stored rollup stay as
+        they are, and the blocker still counts once, where it sits.
+        """
+        if not any(_claims_no_blockers(factor) for factor in factors):
+            return factors
+        listed = await self._pod_blocker_views(tenant_id, tree, as_of)
+        if not listed:
+            return factors
+        reason = confirmed_with_listed_blockers(listed)
+        return tuple(
+            replace(factor, description=reason) if _claims_no_blockers(factor) else factor
+            for factor in factors
         )
 
     async def program_tree(self, tenant_id: str, program_id: str, as_of: date) -> ProgramTreeView:
@@ -1636,6 +1676,57 @@ class _ListedTask:
     owners: tuple[GraphNode, ...]
     #: The task and the work item it implements (``_task_owners``).
     attributable: frozenset[str]
+
+
+def _claims_no_blockers(factor: RollupFactor) -> bool:
+    return factor.kind is FactorKind.AGGREGATE and factor.description == (
+        CONFIRMED_NO_BLOCKERS_REASON
+    )
+
+
+#: How many blockers a reason line names before it counts the rest.
+_LISTED_BLOCKERS_NAMED = 3
+
+
+def confirmed_with_listed_blockers(blockers: Sequence[BlockerView]) -> str:
+    """A green pod's reason line when its blocker list is not empty.
+
+    "All child statuses are confirmed; 1 open blocker (IDP-6, Omar Haddad, 5
+    days), counted in Identity Pod." Each blocker by its work item, owner and
+    age, oldest first as the list has them, several apart by "; ". Where the
+    blockers count in another pod it says which, so the green colour is
+    explained rather than contradicted.
+    """
+    named = "; ".join(_listed_blocker(blocker) for blocker in blockers[:_LISTED_BLOCKERS_NAMED])
+    more = len(blockers) - _LISTED_BLOCKERS_NAMED
+    if more > 0:
+        named = f"{named}; and {more} more"
+    noun = "open blocker" if len(blockers) == 1 else "open blockers"
+    elsewhere = [blocker for blocker in blockers if not blocker.counted_here]
+    where = ""
+    if elsewhere:
+        pods = list(
+            dict.fromkeys(pod.name for blocker in elsewhere for pod in blocker.counted_in)
+        ) or ["another pod"]
+        pods_text = pods[0] if len(pods) == 1 else f"{', '.join(pods[:-1])} and {pods[-1]}"
+        counted = (
+            "counted in" if len(elsewhere) == len(blockers) else f"{len(elsewhere)} counted in"
+        )
+        where = f", {counted} {pods_text}"
+    return f"All child statuses are confirmed; {len(blockers)} {noun} ({named}){where}."
+
+
+def _listed_blocker(blocker: BlockerView) -> str:
+    work = blocker.work_item_ref.id if blocker.work_item_ref is not None else None
+    return ", ".join(
+        part for part in (work, blocker.owner_name, _age_words(blocker.age_days)) if part
+    )
+
+
+def _age_words(days: int) -> str:
+    if days <= 0:
+        return "new today"
+    return "1 day" if days == 1 else f"{days} days"
 
 
 def _blocker_pods(

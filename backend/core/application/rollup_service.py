@@ -30,6 +30,10 @@ from core.ports.repositories import GraphRepository, RollupRepository, StatusRep
 _POD_SCOPED_KINDS = frozenset({FactorKind.BLOCKER, FactorKind.DRIFT})
 # The line a person in no team carries on their own cell (N5).
 NO_POD_REASON = "In no pod, so counted in no pod, project or program."
+# The line a node gets when every child that reports is green. A pod whose
+# blocker list holds blockers counted in other pods reads it otherwise
+# (PersonaViewService.pod_rollup), so its reason and its list agree.
+CONFIRMED_NO_BLOCKERS_REASON = "All child statuses are confirmed with no blockers."
 # The line an empty workstream carries: it is optional, so this is no gap.
 NO_WORK_REASON = (
     "No work is in this workstream yet. Workstreams are optional; one is in use once "
@@ -702,7 +706,7 @@ def _aggregate_node(
     if not factors:
         factors = (
             RollupFactor(
-                description="All child statuses are confirmed with no blockers.",
+                description=CONFIRMED_NO_BLOCKERS_REASON,
                 contributes=Rag.GREEN,
                 source_ref=node.ref,
                 kind=FactorKind.AGGREGATE,
