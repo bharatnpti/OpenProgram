@@ -2693,7 +2693,14 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Project Progress */
+    /**
+     * Project Progress
+     * @description The project's colour, its tasks, and the factors behind the colour.
+     *
+     *     An executive reads it with nobody in it (D87): no person's own status among
+     *     the factors, a blocker as "Open blocker." on its work item, and every name
+     *     said as a role or a team.
+     */
     get: operations["project_progress_projects__project_id__progress_get"];
     put?: never;
     post?: never;
@@ -2911,7 +2918,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Narrative Briefs */
+    /**
+     * Narrative Briefs
+     * @description The latest briefs, newest first.
+     *
+     *     An executive reads every brief with each person said as their role or team,
+     *     and no person among its sources (D87): a pod's brief names its people to the
+     *     people who run pods, never to an executive. A brief written before the
+     *     executive brief stopped naming people reads the same way.
+     */
     get: operations["narrative_briefs_persona_briefs_get"];
     put?: never;
     post?: never;

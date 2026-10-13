@@ -11321,6 +11321,7 @@
       "get": {
         "tags": ["personas"],
         "summary": "Project Progress",
+        "description": "The project's colour, its tasks, and the factors behind the colour.\n\nAn executive reads it with nobody in it (D87): no person's own status among\nthe factors, a blocker as \"Open blocker.\" on its work item, and every name\nsaid as a role or a team.",
         "operationId": "project_progress_projects__project_id__progress_get",
         "parameters": [
           {
@@ -12134,6 +12135,7 @@
       "get": {
         "tags": ["personas"],
         "summary": "Narrative Briefs",
+        "description": "The latest briefs, newest first.\n\nAn executive reads every brief with each person said as their role or team,\nand no person among its sources (D87): a pod's brief names its people to the\npeople who run pods, never to an executive. A brief written before the\nexecutive brief stopped naming people reads the same way.",
         "operationId": "narrative_briefs_persona_briefs_get",
         "parameters": [
           {
