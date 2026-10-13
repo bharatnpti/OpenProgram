@@ -436,7 +436,7 @@ function RowLabel({
   onKeyDown: (event: KeyboardEvent) => void;
   action?: ReactNode;
 }) {
-  const chip = verdictChip(row.verdict);
+  const chip = verdictChip(row.verdict, row.progress);
   const line = rowLine(row);
   return (
     <div

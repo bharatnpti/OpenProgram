@@ -1,4 +1,4 @@
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -8,6 +8,7 @@ import { projectPath } from "../../app/links";
 import { PanelState } from "../../components/PanelState";
 import { Pill } from "../../components/ui/Pill";
 import { readState } from "../../lib/readState";
+import { raisedStillOpen, waitingStillOpen } from "../coordination/raised";
 import { VizCard } from "../overall/viz";
 import { WHO_MUST_ACT_SHOWN, askAge, askWho, askWhy, mergeAsks } from "./todayWords";
 
@@ -36,10 +37,24 @@ export function WhoMustAct({
       queryFn: () => apiClient.projectAsks(projectId),
     })),
   });
+  // The same reads as Your asks below (one fetch each): the requests it lists.
+  const waiting = useQuery({
+    queryKey: ["requests", "mine", "waiting"],
+    queryFn: () => apiClient.myCrossPersonRequests("waiting"),
+  });
+  const raised = useQuery({
+    queryKey: ["requests", "mine", "raised"],
+    queryFn: () => apiClient.myCrossPersonRequests("raised"),
+  });
+  const yours = new Set([
+    ...(waiting.data?.requests ?? []).filter((r) => waitingStillOpen(r.status)).map((r) => r.id),
+    ...(raised.data?.requests ?? []).filter((r) => raisedStillOpen(r.status)).map((r) => r.id),
+  ]);
   const lists = asksOf(reads);
   const asks = mergeAsks(
     lists.map((list) => list?.asks ?? []),
     teams,
+    yours,
   );
   const shown = all ? asks : asks.slice(0, WHO_MUST_ACT_SHOWN);
   const single = projectIds.length === 1 ? lists[0] : undefined;

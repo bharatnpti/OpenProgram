@@ -17,7 +17,6 @@ import { podPath } from "../app/links";
 import { useRole } from "../app/role";
 import { useDayWords } from "../app/viewingDate";
 import { PanelState } from "../components/PanelState";
-import { RagBadge } from "../components/ui/Bits";
 import { useAssistantSubject } from "../features/assistant/assistantContext";
 import { PAGE_SURFACE } from "../features/coordination/pageSurface";
 import { PodDateStrips } from "../features/delivery/DeliveryStrips";
@@ -29,6 +28,7 @@ import { BlockersAndWaits } from "../features/pods/BlockersAndWaits";
 import { NudgeList } from "../features/pods/NudgeList";
 import { PodSwitcher } from "../features/pods/PodSwitcher";
 import {
+  colourReasons,
   defaultPod,
   podLine,
   podOptions,
@@ -292,18 +292,16 @@ function PodView({
       <header className="mb-5">
         {trail}
         <p className="text-[12px] font-bold uppercase tracking-wider text-grey-secondary">Pod</p>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-3">
-          {switcher}
-          <RagBadge rag={rag} />
-        </div>
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-3">{switcher}</div>
         {full && !read?.error ? (
           <p className="mt-1 text-[15px] text-grey-body">
+            {/* Today's health in words, never a second colour beside the dates (D92). */}
             {read?.isLoading
               ? "Loading…"
-              : (reason ??
-                (rag && rag !== "unknown"
-                  ? "No reason recorded."
-                  : "Nothing recorded for it yet."))}
+              : `Today: ${
+                  reason ??
+                  (rag && rag !== "unknown" ? "no reason recorded." : "nothing recorded yet.")
+                }`}
           </p>
         ) : null}
         <p className="mt-2 text-[13px] text-grey-body">
@@ -345,7 +343,7 @@ function PodView({
           {rollup.data ? (
             <FactorsPanel
               title="Why this colour"
-              factors={rollup.data.factors}
+              factors={colourReasons(rollup.data.factors)}
               names={rollup.data.source_names}
             />
           ) : null}

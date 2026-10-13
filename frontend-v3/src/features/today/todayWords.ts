@@ -175,8 +175,14 @@ export function askWhy(
 export function mergeAsks(
   lists: readonly (readonly ProjectAskDto[])[],
   teams?: ReadonlySet<string>,
+  listedAsYours?: ReadonlySet<string>,
 ): ProjectAskDto[] {
-  const all = lists.flat().filter((ask) => !teams || (ask.team != null && teams.has(ask.team)));
+  // A request Your asks already lists (waiting on you, or raised by you) is said
+  // there once, with its buttons, not again in this table.
+  const all = lists
+    .flat()
+    .filter((ask) => !teams || (ask.team != null && teams.has(ask.team)))
+    .filter((ask) => !ask.request_id || !listedAsYours?.has(ask.request_id));
   return all
     .map((ask, index) => ({ ask, index }))
     .sort(

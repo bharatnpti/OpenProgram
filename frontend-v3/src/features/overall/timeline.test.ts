@@ -206,6 +206,9 @@ test("a row says itself in one plain line, the team's own date apart and self-ex
   );
   assert.equal(verdictChip(null).label, "No likely date");
   assert.equal(verdictChip("off_track").tone, "danger");
+  // A row with nothing in scope says so, never "Done".
+  assert.equal(verdictChip("done", { total: 0 }).label, "Nothing in scope");
+  assert.equal(verdictChip("done", { total: 3 }).label, "Done");
 });
 
 test("changes on one day are one dot with a count, red when one pushed the date", () => {

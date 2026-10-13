@@ -3,6 +3,7 @@ import test from "node:test";
 
 import type { CheckinDeveloperDto } from "../../api/schema";
 import {
+  colourReasons,
   defaultPod,
   ladderLine,
   nudgeState,
@@ -163,4 +164,27 @@ test("a bare /pods opens the worst of mine, else the last opened, else the worst
   assert.equal(defaultPod([], []), null);
   assert.equal(podOptions(pods, new Set(["a"]))[0].programIds[0], "p");
   assert.equal(recentPodsKey("U1006"), "openprogram.v3.recent-pods.U1006");
+});
+
+test("Why this colour leaves the blockers to Blockers and waits", () => {
+  const factor = (kind: string, description: string) =>
+    ({
+      kind,
+      description,
+      contributes: "amber",
+      source_ref: { tenant_id: "t", kind: "pod", id: "pod-1" },
+      blocker_id: null,
+      work_item_ref: null,
+      unattributed: false,
+      applies_to_pod_ids: [],
+    }) as never;
+  const kept = colourReasons([
+    factor("blocker", "Blocker: waiting on the vendor"),
+    factor("status", "2 not replied."),
+    factor("task", "Task CHK-1 needs attention."),
+  ]);
+  assert.deepEqual(
+    kept.map((item: { description: string }) => item.description),
+    ["2 not replied.", "Task CHK-1 needs attention."],
+  );
 });

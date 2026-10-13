@@ -203,3 +203,17 @@ test("the footer says findings are about work and when they are from", () => {
   );
   assert.equal(footerLine(null), "Findings attach to work items, not people. Nobody is ranked.");
 });
+
+test("a request listed under Your asks is not said again in Who must act", () => {
+  const ask = (what: string, request_id: string | null = null) =>
+    ({ need: "answer", need_label: "Answer", what, level: 1, waited_days: 3, request_id }) as const;
+  const merged = mergeAsks(
+    [[ask("CHK-1: Noah asked for input", "req-1"), ask("CHK-2: blocked"), ask("CHK-3", "req-3")]],
+    undefined,
+    new Set(["req-1"]),
+  );
+  assert.deepEqual(
+    merged.map((item) => item.what),
+    ["CHK-2: blocked", "CHK-3"],
+  );
+});

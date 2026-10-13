@@ -11,6 +11,7 @@ import {
   healthLine,
   lateWords,
   markWords,
+  podDateWords,
   programmeLine,
   releaseChip,
   threeDates,
@@ -82,7 +83,7 @@ test("the tiles are the four answers, each a filter, no committed date counted r
   assert.deepEqual(
     tiles.map((tile) => [tile.filter, tile.label, tile.count, tile.tone]),
     [
-      ["late", "Late", 1, "danger"],
+      ["late", "Off track", 1, "danger"],
       ["at_risk", "At risk", 2, "warning"],
       ["no_date", "No committed date", 4, "danger"],
       ["on_track", "On track", 3, "success"],
@@ -208,7 +209,7 @@ test("grouped by programme where its worst project first appears", () => {
     ],
   );
   assert.equal(groups[1].counts, counts);
-  assert.equal(programmeLine(counts), "1 late · 2 at risk · 4 no committed date · 3 on track");
+  assert.equal(programmeLine(counts), "1 off track · 2 at risk · 4 no committed date · 3 on track");
   assert.equal(programmeLine(null), null);
 });
 
@@ -221,4 +222,10 @@ test("the filters live in the URL and toggle one at a time", () => {
   assert.deepEqual(on.getAll("verdict"), ["late", "bogus", "at_risk"]);
   assert.equal(on.get("asOf"), "2026-06-10");
   assert.deepEqual(toggledVerdict(on, "late").getAll("verdict"), ["bogus", "at_risk"]);
+});
+
+test("a pod with no requirements counted is nothing in scope, never done", () => {
+  assert.equal(podDateWords({ total: 0, verdict: "done" }), "Nothing in scope");
+  assert.equal(podDateWords({ total: 5, verdict: "at_risk" }), "At risk");
+  assert.equal(podDateWords({ total: 5, verdict: null }), "No forecast yet");
 });

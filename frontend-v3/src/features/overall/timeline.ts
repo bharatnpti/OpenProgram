@@ -198,8 +198,15 @@ export function likelyRange(p50: string, p85: string): string {
   return p50 === p85 ? `likely ${shortDay(p85)}` : `likely ${shortDay(p50)} – ${shortDay(p85)}`;
 }
 
-/** The verdict's pill: its word and tone; a dates row without a forecast says so. */
-export function verdictChip(verdict: Verdict | null): { label: string; tone: BadgeTone } {
+/**
+ * The verdict's pill: its word and tone; a dates row without a forecast says so,
+ * and a row with nothing in scope says that, never "Done" (as a date strip does).
+ */
+export function verdictChip(
+  verdict: Verdict | null,
+  progress?: { total: number } | null,
+): { label: string; tone: BadgeTone } {
+  if (progress && progress.total <= 0) return { label: "Nothing in scope", tone: "neutral" };
   if (verdict === null) return { label: "No likely date", tone: "neutral" };
   return { label: VERDICT_LABELS[verdict], tone: toneForVerdict(verdict) };
 }

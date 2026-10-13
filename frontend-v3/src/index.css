@@ -206,6 +206,11 @@
 :root[data-theme="dark"] .op-viz .bg-white {
   background-color: var(--op-viz-surface);
 }
+/* An ink button (bg-ink text-white) turns light in dark: its text takes the dark
+   surface, so it never reads white on white (Today's and Check-in's asks, too). */
+:root[data-theme="dark"] .op-viz .bg-ink.text-white {
+  color: var(--op-viz-surface);
+}
 
 @theme {
   --color-magenta: var(--op-magenta);

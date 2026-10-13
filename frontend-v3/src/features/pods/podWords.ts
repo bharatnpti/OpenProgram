@@ -5,6 +5,7 @@ import type {
   CheckinRungDto,
   DirectoryItemResponse,
   Rag,
+  RollupFactorDto,
 } from "../../api/schema";
 import { formatTime } from "../../lib/format.ts";
 import { ragSeverity } from "../../lib/status.ts";
@@ -12,6 +13,14 @@ import { plural } from "../../lib/words.ts";
 import type { ProjectOption } from "../project/projectChoice.ts";
 
 type Time = (iso: string) => string;
+
+/**
+ * The reasons "Why this colour" lists on the Pod page: every reason but the
+ * blockers, which Blockers and waits lists with their age and owner. Said once.
+ */
+export function colourReasons(factors: readonly RollupFactorDto[]): RollupFactorDto[] {
+  return factors.filter((factor) => factor.kind !== "blocker");
+}
 
 const RUNG_WORDS: Record<NonNullable<CheckinRungDto["target"]>, string> = {
   developer: "Reminder sent",

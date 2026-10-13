@@ -64,6 +64,19 @@ export function ownerWords(
   return "No owner named yet";
 }
 
+/**
+ * The item's line after its name: "has had no state change in 21 days." where
+ * the line starts with the name it stands beside, so the name is said once.
+ */
+export function itemLine(item: Pick<WarningItemDto, "key" | "line">): string {
+  const key = item.key.trim();
+  const line = item.line.trim();
+  if (key && line.toLowerCase().startsWith(`${key.toLowerCase()} `)) {
+    return line.slice(key.length + 1);
+  }
+  return line;
+}
+
 /** The empty line of a group with nothing open. */
 export function emptyWords(kind: WarningKind): string {
   return {

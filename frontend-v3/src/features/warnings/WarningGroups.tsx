@@ -5,7 +5,7 @@ import type { WarningGroupDto, WarningItemDto } from "../../api/schema";
 import { projectPath } from "../../app/links";
 import { RagDot } from "../../components/ui/Bits";
 import { VizPanel } from "../portfolio/VizPanel";
-import { ageWords, emptyWords, ownerWords, SHOWN } from "./warningWords";
+import { ageWords, emptyWords, itemLine, ownerWords, SHOWN } from "./warningWords";
 
 /**
  * One kind of warning: its count, and its items oldest first, five then all.
@@ -87,7 +87,7 @@ function WarningRow({
               item.key
             )}
           </span>
-          <span className="min-w-0 text-grey-body break-words">{item.line}</span>
+          <span className="min-w-0 text-grey-body break-words">{itemLine(item)}</span>
         </p>
         <p className="mt-0.5 text-[12px] text-grey-secondary">
           {ownerWords(item, group.kind)} ·{" "}

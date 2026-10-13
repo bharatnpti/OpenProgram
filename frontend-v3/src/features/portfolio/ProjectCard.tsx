@@ -4,9 +4,15 @@ import type { PortfolioPodDto, PortfolioProjectDto } from "../../api/schema";
 import { projectPath } from "../../app/links";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
-import { VERDICT_LABELS } from "../../lib/status";
 import { ProjectBar } from "./ProjectBar";
-import { healthLine, lateWords, releaseChip, threeDates, verdictPill } from "./portfolioWords";
+import {
+  healthLine,
+  lateWords,
+  podDateWords,
+  releaseChip,
+  threeDates,
+  verdictPill,
+} from "./portfolioWords";
 
 /**
  * One project on Will we make the date?: its name and release, the verdict as
@@ -137,9 +143,7 @@ function PodRows({ pods }: { pods: PortfolioPodDto[] }) {
                   </span>
                 </span>
               </td>
-              <td className="py-2 text-right text-grey-secondary">
-                {pod.verdict ? VERDICT_LABELS[pod.verdict] : "No forecast yet"}
-              </td>
+              <td className="py-2 text-right text-grey-secondary">{podDateWords(pod)}</td>
             </tr>
           );
         })}

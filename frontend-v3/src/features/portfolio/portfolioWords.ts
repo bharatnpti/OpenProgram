@@ -5,6 +5,7 @@
 // their .ts path, so `node --test` runs it as written.
 import type {
   PortfolioMarkDto,
+  PortfolioPodDto,
   PortfolioProgramDto,
   PortfolioProjectDto,
   PortfolioReleaseDto,
@@ -18,8 +19,10 @@ import { VERDICT_LABELS, toneForVerdict, type BadgeTone } from "../../lib/status
 /** The filters the count tiles are, in the order they read: the date's four answers. */
 export const TILE_FILTERS: readonly VerdictFilter[] = ["late", "at_risk", "no_date", "on_track"];
 
+// The tiles say each verdict as every pill, Today and the Project page say it
+// (lib/status VERDICT_LABELS): one word for one verdict. The filter key stays `late`.
 const TILE_LABELS: Record<VerdictFilter, string> = {
-  late: "Late",
+  late: "Off track",
   at_risk: "At risk",
   no_date: "No committed date",
   on_track: "On track",
@@ -69,6 +72,16 @@ export function verdictPill(project: Pick<PortfolioProjectDto, "verdict" | "tota
   // A date nobody committed to is not on track: red, as its tile is (our own rule).
   const tone = project.verdict === "no_date" ? "danger" : toneForVerdict(project.verdict);
   return { label: VERDICT_LABELS[project.verdict], tone };
+}
+
+/**
+ * A pod row's date words: "Nothing in scope" for a pod with no requirements
+ * counted (never "Done", as its date strip says it), else its verdict, else
+ * that no forecast is kept yet.
+ */
+export function podDateWords(pod: Pick<PortfolioPodDto, "total" | "verdict">): string {
+  if (pod.total <= 0) return "Nothing in scope";
+  return pod.verdict ? VERDICT_LABELS[pod.verdict] : "No forecast yet";
 }
 
 /**
@@ -274,11 +287,11 @@ export function byProgramme(
   return [...ordered.filter((group) => group.id), ...ordered.filter((group) => !group.id)];
 }
 
-/** A programme's counts in one line: "1 late · 2 at risk · 3 on track". */
+/** A programme's counts in one line: "1 off track · 2 at risk · 3 on track". */
 export function programmeLine(counts: VerdictCountsDto | null): string | null {
   if (!counts) return null;
   const parts: [number, string][] = [
-    [counts.off_track ?? 0, "late"],
+    [counts.off_track ?? 0, "off track"],
     [counts.at_risk ?? 0, "at risk"],
     [counts.no_date ?? 0, "no committed date"],
     [counts.not_enough_data ?? 0, "not enough history"],

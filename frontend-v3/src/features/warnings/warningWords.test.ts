@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { PortfolioWarningsResponse, WarningGroupDto, WarningKind } from "../../api/schema";
-import { ageWords, countLine, emptyWords, ownerWords, shownGroups } from "./warningWords.ts";
+import {
+  ageWords,
+  countLine,
+  emptyWords,
+  itemLine,
+  ownerWords,
+  shownGroups,
+} from "./warningWords.ts";
 
 function group(kind: WarningKind, count: number): WarningGroupDto {
   return { kind, title: kind, count, items: [], counts_only: false };
@@ -58,4 +65,21 @@ test("the owner as the reader may see them, never an id", () => {
     "No owner named yet",
   );
   assert.equal(emptyWords("done_in_code"), "Nothing merged is still open.");
+});
+
+test("a line says the item's name once, beside it", () => {
+  assert.equal(
+    itemLine({
+      key: "3-D Secure step-up",
+      line: "3-D Secure step-up has had no state change in 21 days.",
+    }),
+    "has had no state change in 21 days.",
+  );
+  assert.equal(
+    itemLine({
+      key: "Passkey enrolment",
+      line: "Pull request 'IDP-301' has been open for 20 days.",
+    }),
+    "Pull request 'IDP-301' has been open for 20 days.",
+  );
 });
