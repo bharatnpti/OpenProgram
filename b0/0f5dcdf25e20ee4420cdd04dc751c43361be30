@@ -1,0 +1,25 @@
+backend/api/routers/persona.py
+  s_5f08a60d42019a::t_28a1b1dc11d17d 68,156-159
+backend/core/application/teammate_reasons.py
+  s_5f08a60d42019a::t_1564b6b5194260 1-144
+backend/core/application/portfolio_privacy.py
+  s_5f08a60d42019a::t_28a1b1dc11d17d 127-131,160
+backend/tests/unit/test_teammate_reasons.py
+  s_5f08a60d42019a::t_46b047f89cc3bd 1-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b00f5dcdf25e20ee4420cdd04dc751c43361be30",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
