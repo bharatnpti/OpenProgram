@@ -2,7 +2,7 @@
 // only so `node --test` runs it directly.
 import type { ReleaseCandidateResponse, ScopeDeliveryResponse } from "../../api/schema";
 
-import { daysBetween, formatDate, formatDay } from "../../lib/format.ts";
+import { daysBetween, formatDay } from "../../lib/format.ts";
 import { VERDICT_LABELS } from "../../lib/status.ts";
 
 /** "Release Checkout 1.0", but "Release 1.1" when the name already says it. */
@@ -153,18 +153,6 @@ export function verdictCause(
     };
   }
   return null;
-}
-
-/** "Mon 6 Oct 2026 · 20 Nov 2026 · Ira Novak · why": one change of a delivery date, in a line. */
-export function dateChangeLine(change: {
-  target_date: string | null;
-  changed_at: string;
-  changed_by_name: string;
-  note: string;
-}): string {
-  const to = change.target_date ? formatDate(change.target_date) : "Cleared";
-  const why = change.note.trim() ? ` · ${change.note.trim()}` : "";
-  return `${formatDate(change.changed_at)} · ${to} · ${change.changed_by_name}${why}`;
 }
 
 /**

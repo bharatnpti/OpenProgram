@@ -3,7 +3,6 @@ import { test } from "node:test";
 
 import {
   candidateLabel,
-  dateChangeLine,
   dateProblem,
   historyStart,
   inStageSinceWords,
@@ -218,26 +217,5 @@ test("the cause says whether it already counted the requirements with no date", 
   assert.equal(
     verdictCause(scope({ verdict: "off_track", team: { latest: "2027-01-08" } }))?.saysUndated,
     false,
-  );
-});
-
-test("a change of date reads as one line, with who and why", () => {
-  assert.equal(
-    dateChangeLine({
-      target_date: "2026-11-20",
-      changed_at: "2026-10-07T09:12:00Z",
-      changed_by_name: "Ira Novak",
-      note: " Agreed at the checkout review ",
-    }),
-    "7 Oct 2026 · 20 Nov 2026 · Ira Novak · Agreed at the checkout review",
-  );
-  assert.equal(
-    dateChangeLine({
-      target_date: null,
-      changed_at: "2026-10-07T09:12:00Z",
-      changed_by_name: "Ira Novak",
-      note: "",
-    }),
-    "7 Oct 2026 · Cleared · Ira Novak",
   );
 });

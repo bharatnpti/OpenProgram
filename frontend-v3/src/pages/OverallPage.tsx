@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 import { ApiError } from "../api/client";
@@ -7,34 +8,35 @@ import { GateAnswer, ProjectAnswer, ScrumMasterAnswer } from "../features/overal
 import { BaselineSection } from "../features/overall/BaselineSection";
 import { GatesSection } from "../features/overall/GatesSection";
 import { HygieneSection } from "../features/overall/HygieneSection";
-import { PodDatesSection, ScrumMasterPodDates } from "../features/overall/PodDatesSection";
 import { useGateBoard, useReadsReadiness, useReleases } from "../features/overall/queries";
 import { QuestionsSection } from "../features/overall/QuestionsSection";
 import { ReadinessSection } from "../features/overall/ReadinessSection";
 import { ReleaseScope } from "../features/overall/ReleaseScope";
 import { RequirementsSection } from "../features/overall/RequirementsSection";
 import { RisksSection } from "../features/overall/RisksSection";
-import { SlipSection } from "../features/overall/SlipChart";
+import { overallSections } from "../features/overall/sections";
+import { TimelineSection } from "../features/overall/TimelineSection";
 import { ReportsHeader } from "../features/reports/ReportsHeader";
 
 /**
  * The project's state since it started, read today, for the whole project or
- * one release (`?release=`), from summary to detail: one answer line, the date
- * strip, how the date moved (O1), the planning baseline, dates by pod (O6),
- * requirements by stage (O3), the gates (O5), release readiness, Jira hygiene,
- * risks and questions. Date first,
- * then scope, then quality, then people. Each section is its own query, so one
- * refused or slow read never blanks the others. Risks are always the whole
- * project's.
+ * one release (`?release=`), from summary to detail, in the order
+ * features/overall/sections.ts keeps: the answer line with its date strip, the
+ * Timeline (each row from planning to its committed date, then why the picked
+ * row's date moved), the planning baseline, requirements by stage (O3), the
+ * gates (O5), release readiness, Jira hygiene, risks and questions. Date
+ * first, then scope, then quality, then people. Each section is its own query,
+ * so one refused or slow read never blanks the others. Risks are always the
+ * whole project's.
  *
  * Each role gets the sections it reads (app/access.ts):
  * - the project's readers (product owner, manager, executive, admin): all of it,
  *   with Mark planning complete for the product owner, manager and admin; an
  *   executive reads Jira hygiene's counts, never who;
- * - a scrum master: an answer line for the pod they run, every pod's date with
- *   Set date on their own, the gates, release readiness where one of their pods
- *   works on the project (the project's rows and their pods'), Jira hygiene there
- *   too, risks and questions;
+ * - a scrum master: an answer line for the pod they run, the Timeline's pods
+ *   (theirs whole with Set date, the others' dates), the gates, release
+ *   readiness and Jira hygiene where one of their pods works on the project,
+ *   risks and questions;
  * - a developer: an answer line on the gates, the gates and the questions.
  */
 export function OverallPage() {
@@ -58,8 +60,8 @@ export function OverallPage() {
   const gone =
     asked !== "" && ((list && !list.some((r) => r.release_id === asked)) || goneForReader);
   const releaseId = gone ? "" : asked;
-  const scrumMaster = !overall.forecast && overall.podDates;
-  const developer = !overall.forecast && !overall.podDates;
+  const scrumMaster = !overall.forecast && overall.timeline;
+  const developer = !overall.forecast && !overall.timeline;
 
   return (
     <>
@@ -83,35 +85,39 @@ export function OverallPage() {
           </p>
         ) : null}
         <div className="grid grid-cols-[minmax(0,1fr)] gap-10 max-sm:gap-8">
-          {overall.forecast ? (
-            <>
+          {overallSections({
+            answer: overall.forecast ? (
               <ProjectAnswer projectId={projectId} releaseId={releaseId} />
-              <SlipSection projectId={projectId} releaseId={releaseId} />
-              <BaselineSection projectId={projectId} releaseId={releaseId} />
-              <PodDatesSection projectId={projectId} releaseId={releaseId} />
-            </>
-          ) : scrumMaster ? (
-            <>
+            ) : scrumMaster ? (
               <ScrumMasterAnswer projectId={projectId} />
-              <ScrumMasterPodDates projectId={projectId} />
-            </>
-          ) : (
-            <GateAnswer projectId={projectId} releaseId={releaseId} />
-          )}
-          {overall.requirements ? (
-            <RequirementsSection projectId={projectId} releaseId={releaseId} />
-          ) : null}
-          <GatesSection projectId={projectId} releaseId={releaseId} summary={!developer} />
-          {readiness ? (
-            <ReadinessSection
-              projectId={projectId}
-              releaseId={releaseId}
-              answered={overall.forecast}
-            />
-          ) : null}
-          <HygieneSection projectId={projectId} releaseId={releaseId} />
-          {overall.risks ? <RisksSection projectId={projectId} /> : null}
-          <QuestionsSection projectId={projectId} releaseId={releaseId} />
+            ) : (
+              <GateAnswer projectId={projectId} releaseId={releaseId} />
+            ),
+            timeline: overall.timeline ? (
+              <TimelineSection projectId={projectId} releaseId={releaseId} />
+            ) : null,
+            baseline: overall.forecast ? (
+              <BaselineSection projectId={projectId} releaseId={releaseId} />
+            ) : null,
+            requirements: overall.requirements ? (
+              <RequirementsSection projectId={projectId} releaseId={releaseId} />
+            ) : null,
+            gates: (
+              <GatesSection projectId={projectId} releaseId={releaseId} summary={!developer} />
+            ),
+            readiness: readiness ? (
+              <ReadinessSection
+                projectId={projectId}
+                releaseId={releaseId}
+                answered={overall.forecast}
+              />
+            ) : null,
+            hygiene: <HygieneSection projectId={projectId} releaseId={releaseId} />,
+            risks: overall.risks ? <RisksSection projectId={projectId} /> : null,
+            questions: <QuestionsSection projectId={projectId} releaseId={releaseId} />,
+          }).map(({ key, element }) => (
+            <Fragment key={key}>{element}</Fragment>
+          ))}
         </div>
       </div>
     </>
@@ -120,11 +126,11 @@ export function OverallPage() {
 
 /** What a past day shows as it stood, named by the sections this role has. */
 function pastDayWords(
-  overall: { forecast: boolean; podDates: boolean; requirements: boolean; risks: boolean },
+  overall: { forecast: boolean; timeline: boolean; requirements: boolean; risks: boolean },
   label: string,
 ): string {
   const kept = [
-    overall.forecast ? "the forecast" : overall.podDates ? "the pods' dates" : null,
+    overall.forecast ? "the forecast" : overall.timeline ? "the pods' dates" : null,
     overall.requirements ? "requirements" : null,
     overall.risks ? "risks" : null,
   ].filter((part): part is string => part !== null);

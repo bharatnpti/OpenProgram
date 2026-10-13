@@ -155,7 +155,7 @@ function ChangedKeys({ baseline }: { baseline: PlanningBaselineResponse }) {
  * stored snapshot is frozen). Mounted while open, so each opening starts from
  * the defaults: the active baseline's label, else the server's.
  */
-function PlanningCompleteDialog({
+export function PlanningCompleteDialog({
   projectId,
   read,
   onClose,
@@ -177,7 +177,12 @@ function PlanningCompleteDialog({
     mutationFn: () =>
       apiClient.markPlanningComplete(projectId, planningBody(form, read.release_id ?? "")),
     onSuccess: async (saved) => {
-      await queryClient.invalidateQueries({ queryKey: ["baselines", projectId] });
+      // The timeline's rows start from the baseline, and "since planning" reads it.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["baselines", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["timeline"] }),
+        queryClient.invalidateQueries({ queryKey: ["delivery-impact", projectId] }),
+      ]);
       toast.success(
         `${read.name}: planning marked complete, ${saved.requirements} ${saved.requirements === 1 ? "requirement" : "requirements"} frozen.`,
       );

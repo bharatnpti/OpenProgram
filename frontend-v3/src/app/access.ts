@@ -90,8 +90,13 @@ export type Access = {
   overall: {
     /** Delivery date and forecast, and the release picker: the project's progress readers. */
     forecast: boolean;
-    /** Dates by pod: anyone who reads or sets a pod's date. */
-    podDates: boolean;
+    /**
+     * The Timeline and, under it, why a row's date moved: the forecast's readers
+     * (every row) and whoever sets a pod's date (a scrum master: the pods, their
+     * own whole, the others' dates only). The server words each row; "why it
+     * moved" is drawn for a row the reader has whole. Not a developer.
+     */
+    timeline: boolean;
     requirements: boolean;
     risks: boolean;
     /** A link to Admin › Escalation, where the matrix is kept. */
@@ -187,7 +192,7 @@ export function accessOf({ lens, chatEnabled }: Lens): Access {
     },
     overall: {
       forecast: can.canReadProjectProgress,
-      podDates: can.canReadProjectProgress || has("admin", "mgr", "sm"),
+      timeline: can.canReadProjectProgress || has("admin", "mgr", "sm"),
       requirements: can.canReadProjectProgress,
       risks: can.canReadAggregate,
       escalationLink: can.canManageConfig,

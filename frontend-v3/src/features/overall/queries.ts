@@ -1,6 +1,7 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../../api/client";
+import type { Measure, PeriodKind } from "../../api/schema";
 import { readsHygiene, readsReadiness } from "../../app/access";
 import { useOwnTree } from "../../app/directory";
 import { sameOnEveryDay } from "../../app/queryCache";
@@ -83,6 +84,71 @@ export function useBaselines(projectId: string, releaseId?: string) {
       queryKey: ["baselines", projectId, releaseId ?? ""],
       queryFn: () => apiClient.projectBaselines(projectId, releaseId),
       enabled: canReadProjectProgress && projectId !== "",
+    }),
+  };
+}
+
+/**
+ * The project's (or one release's) timeline: its row, its releases and its pods,
+ * each worded by the server for the reader (a scrum master gets the pods only).
+ * Read by the forecast's readers and by whoever sets a pod's date; `readable`
+ * says this reader may read this one project where the role decides otherwise.
+ */
+export function useTimeline(projectId: string, releaseId?: string, readable?: boolean) {
+  const { access } = useRole();
+  const can = readable ?? access.overall.timeline;
+  return {
+    readable: can,
+    query: useQuery({
+      queryKey: ["timeline", "project", projectId, releaseId ?? ""],
+      queryFn: () => apiClient.projectTimeline(projectId, releaseId),
+      enabled: can && projectId !== "",
+    }),
+  };
+}
+
+/** A pod's own row, for each project it works on, under the pod's dates' gate. */
+export function usePodTimeline(podId: string, readable: boolean) {
+  return {
+    readable,
+    query: useQuery({
+      queryKey: ["timeline", "pod", podId],
+      queryFn: () => apiClient.podTimeline(podId),
+      enabled: readable && podId !== "",
+    }),
+  };
+}
+
+/**
+ * Why one row's date moved over a period (GET /projects/{id}/delivery/impact):
+ * the project's, a release's or a pod's, on the 85% or the 50% date.
+ */
+export function useImpact(
+  projectId: string,
+  row: { scope_kind: string; scope_id: string } | null,
+  period: PeriodKind,
+  measure: Measure,
+  readable: boolean,
+) {
+  return {
+    readable,
+    query: useQuery({
+      queryKey: [
+        "delivery-impact",
+        projectId,
+        row?.scope_kind ?? "",
+        row?.scope_id ?? "",
+        period,
+        measure,
+      ],
+      queryFn: () =>
+        apiClient.deliveryImpact(projectId, {
+          period,
+          measure,
+          releaseId: row?.scope_kind === "release" ? row.scope_id : undefined,
+          podId: row?.scope_kind === "pod" ? row.scope_id : undefined,
+        }),
+      enabled: readable && projectId !== "" && row !== null,
     }),
   };
 }

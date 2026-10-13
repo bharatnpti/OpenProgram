@@ -140,7 +140,7 @@ export function ProjectAnswer({ projectId, releaseId }: { projectId: string; rel
 /**
  * A scrum master's answer line, for each of the project's pods they run (the
  * pod read's `can_set_dates`): its verdict and why. Their Today shows the pod's
- * dates in full; here the pod sits against the others, in "Dates by pod" below.
+ * dates in full; here the pod sits against the others, on the Timeline below.
  */
 export function ScrumMasterAnswer({ projectId }: { projectId: string }) {
   const projects = useProjects();
@@ -163,8 +163,8 @@ export function ScrumMasterAnswer({ projectId }: { projectId: string }) {
         <VizCard key={scope.scope_id} edge={answerEdge(scope)} className="gap-3">
           <Headline scope={scope} text={scopeAnswer(scope, `${scope.name}, the pod you run,`)} />
           <p className="text-[13px] text-grey-secondary">
-            Your Today shows its dates in full. Here it sits against the other pods and the
-            project&apos;s date.
+            Your Today shows its dates in full. The Timeline below sets it against the other pods
+            and the project&apos;s date.
           </p>
         </VizCard>
       ))}

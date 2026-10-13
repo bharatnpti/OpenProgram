@@ -14,7 +14,9 @@ import { readState } from "../../lib/readState";
 import { countedElsewhere, plural } from "../../lib/words";
 import { PodPeoplePanel } from "../profiles/PodPeople";
 import { FactorsPanel, NodeHeader, Related, type OwnPanel } from "./NodeBits";
+import { useReportAccess } from "../reports/useReportAccess";
 import { PodDateStrips } from "./DeliveryStrips";
+import { PodTimeline } from "./DeliveryTimeline";
 import { PodTasksPanel } from "./PodTasks";
 import { reasonLine, type Finder } from "./factors";
 
@@ -37,6 +39,7 @@ export function PodPanel({
   own?: OwnPanel;
 }) {
   const { canReadPodDetail } = useRole();
+  const { readPodDelivery } = useReportAccess();
   const day = useDayWords();
   const on = own ? own.full : canReadPodDetail;
   const rollup = useQuery({
@@ -101,9 +104,11 @@ export function PodPanel({
             : ""}
         </p>
       </div>
-      <div className="mb-5">
+      <div className="mb-5 grid grid-cols-[minmax(0,1fr)] gap-3">
         {/* Every listed pod that opens shows its dates: that is all a name-only pod lacks. */}
         <PodDateStrips pod={pod} readable={own ? true : undefined} />
+        {/* Its own timeline row, with its project's date as a reference tick. */}
+        <PodTimeline pod={pod} readable={own ? true : readPodDelivery} />
       </div>
       {/* Per person, so only for the roles that read a pod's people. */}
       {on ? (

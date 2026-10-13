@@ -8,6 +8,7 @@ import { readState } from "../../lib/readState";
 import { PERSON_KEY_WORDS } from "../../lib/words";
 import { Facts, FactorsPanel, NodeHeader, Related, ReportLinks, type OwnPanel } from "./NodeBits";
 import { ProjectDateStrip } from "./DeliveryStrips";
+import { ProjectTimeline } from "./DeliveryTimeline";
 import { ProgressBlock } from "./ProgressBlock";
 import { metadataFacts, reasonLine, type Finder } from "./factors";
 
@@ -75,8 +76,10 @@ export function ProjectPanel({
           </>
         )}
       </div>
-      <div className="mb-5">
+      <div className="mb-5 grid grid-cols-[minmax(0,1fr)] gap-3">
         <ProjectDateStrip projectId={project.id} readable={own ? own.full : undefined} />
+        {/* The project's and its pods' rows, where the date history was; a scrum master's pods only. */}
+        <ProjectTimeline projectId={project.id} readable={readable} />
       </div>
       <PanelState isLoading={progress.isLoading} error={progress.error}>
         {p ? (

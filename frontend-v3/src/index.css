@@ -148,11 +148,15 @@
   --op-viz-red-hatch: #5a1f1a;
 }
 :root[data-theme="dark"] .op-viz {
-  color-scheme: dark;
   margin: -16px;
   padding: 16px;
   border-radius: 28px;
   background: #0d0d0d;
+}
+/* The tokens, for the Overall page and for a report visual on another page (a
+   Delivery panel's timeline card, .op-viz-card), so it reads as one dark card. */
+:root[data-theme="dark"] :is(.op-viz, .op-viz-card) {
+  color-scheme: dark;
   color: #ffffff;
   --op-black: #ffffff;
   --op-black-hover: #e3e2dc;

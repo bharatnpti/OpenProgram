@@ -118,14 +118,14 @@ test("Coordination: no board for an executive, and each role's own scope and bri
 test("Overall: a developer has only gates and questions; escalation is a link for an admin", () => {
   assert.deepEqual(access("dev").overall, {
     forecast: false,
-    podDates: false,
+    timeline: false,
     requirements: false,
     risks: false,
     escalationLink: false,
   });
   assert.deepEqual(access("sm").overall, {
     forecast: false,
-    podDates: true,
+    timeline: true,
     requirements: false,
     risks: true,
     escalationLink: false,
@@ -138,7 +138,7 @@ test("Overall: a developer has only gates and questions; escalation is a link fo
 test("held roles combine under a real sign-in: a product owner and scrum master gets both", () => {
   const both = accessOf({ lens: ["po", "sm"], chatEnabled: false });
   assert.equal(both.coordination.boardScope, "projects");
-  assert.equal(both.overall.podDates, true);
+  assert.equal(both.overall.timeline, true);
   assert.equal(capabilitiesFor(["po", "sm"]).canReadPodDetail, true);
 });
 
