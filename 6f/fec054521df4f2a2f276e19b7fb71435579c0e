@@ -1,0 +1,31 @@
+backend/core/application/hygiene_open_findings.py
+  s_ed47025cfc8469::t_3dc0c95df8ba92 1-38
+backend/tests/unit/test_timeline.py
+  s_ed47025cfc8469::t_d19fb0932ddab4 15,26,28,121-124,225-265,269
+  s_ed47025cfc8469::t_6780391c9733ab 266-268
+  s_ed47025cfc8469::t_f517d17105e621 270-271
+backend/tests/unit/test_delivery_impact.py
+  s_ed47025cfc8469::t_6780391c9733ab 582-584
+backend/core/application/timeline_service.py
+  s_ed47025cfc8469::t_61f27e09830e57 96-98,303-307,482-485
+backend/infra/registry.py
+  s_ed47025cfc8469::t_61f27e09830e57 33,600-601
+backend/core/application/impact_service.py
+  s_ed47025cfc8469::t_61f27e09830e57 145-149,153-154,404-406,408-410,419,862-864
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6ffec054521df4f2a2f276e19b7fb71435579c0e",
+  "prompts": {},
+  "sessions": {
+    "s_ed47025cfc8469": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c3dacc8-00da-46b1-a2f5-ce44e164bb12",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
