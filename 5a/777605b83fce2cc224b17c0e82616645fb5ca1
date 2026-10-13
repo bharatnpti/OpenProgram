@@ -1,0 +1,33 @@
+backend/core/application/impact_service.py
+  s_ed47025cfc8469::t_7043034585c05f 70,642
+backend/core/domain/impact.py
+  s_ed47025cfc8469::t_3afa959ed92c63 635-703
+backend/core/domain/impact_words.py
+  s_ed47025cfc8469::t_4595489d73aeab 31-32,45-46,144-148
+backend/tests/unit/test_impact.py
+  s_ed47025cfc8469::t_fbd9d3e16a671a 18,22,26,31,36,444-528
+docs/lld/delivery-impact.md
+  s_ed47025cfc8469::t_cb923a3932311d 75-80
+features.md
+  s_ed47025cfc8469::t_e6e60d4aa3c526 653
+frontend-v3/src/features/overall/waterfall.test.ts
+  s_ed47025cfc8469::t_11f33565bee50a 55,58-65,72
+frontend-v3/src/features/overall/waterfall.ts
+  s_ed47025cfc8469::t_ba992f3e802215 70-71,133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5a777605b83fce2cc224b17c0e82616645fb5ca1",
+  "prompts": {},
+  "sessions": {
+    "s_ed47025cfc8469": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c3dacc8-00da-46b1-a2f5-ce44e164bb12",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
