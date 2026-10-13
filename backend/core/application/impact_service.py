@@ -18,7 +18,9 @@ numbers it says:
   rows alone, so Ora and the picture never disagree: scope added (with or
   without the change label), bugs, scope removed, reopened, closing late, the
   committed date's moves, and blockers opened and closed for the readers of the
-  pod's blockers.
+  pod's blockers. The scope events carry the working days their day's step
+  moved the date, split among that day's markers by item count (D88); the
+  others are evidence and carry none (D12).
 
 Who reads it is the delivery forecast's own rule, decided once here for the
 route and for Ora alike (``access``). A developer reads none of it. A scrum
@@ -57,6 +59,7 @@ from core.domain.forecast import (
 )
 from core.domain.graph import EntityRef, FactEvent, GraphNode, NodeKind
 from core.domain.impact import (
+    Driver,
     Item,
     KeptDay,
     Measure,
@@ -287,6 +290,20 @@ class MarkerView:
     items: tuple[MarkerItemView, ...] = ()
     #: For scope added: whether the items carry the change label.
     change_label: bool | None = None
+    #: Scope events only (scope added, a bug counted as a requirement, scope removed,
+    #: reopened): the working days the event moved the date, on the measure read (the
+    #: timeline reads the 85% date). Its share of its day's step, split among that day's
+    #: markers of the step by item count, every item counted before the list is cut
+    #: (D88). Blockers, late requirements and the committed date get none (D12).
+    working_days: float | None = None
+    p50_days: float | None = None
+    p85_days: float | None = None
+    #: True when the days come from the day's kept breakdown; False for a scope event
+    #: whose day kept none that can be read ("not known"); None for a kind that never
+    #: gets days, and for bugs the forecast does not count.
+    taken_apart: bool | None = None
+    #: The scope event's day was read from a reconstruction rather than kept on the day.
+    reconstructed: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -520,13 +537,12 @@ class DeliveryImpactService:
                     start=resolved.start,
                     as_of=as_of,
                     access=access,
+                    measure=measure,
                 )
                 if full and attribution is not None
                 else ()
             ),
-            link=(
-                f"/reports/{scope.project_id}/overall?row={scope.kind.value}:{scope.id}#timeline"
-            ),
+            link=f"/projects/{scope.project_id}?row={scope.kind.value}:{scope.id}#timeline",
             reconstructed_days=attribution.reconstructed_days if attribution is not None else 0,
             not_known=tuple(dict.fromkeys(notes)),
         )
@@ -816,7 +832,7 @@ class DeliveryImpactService:
     ) -> tuple[MarkerView, ...]:
         """One timeline row's impact lane after ``start`` up to ``as_of``, from the kept
         rows alone (no forecast is run): the markers the impact read carries, so the
-        picture and Ora say the same events."""
+        picture and Ora say the same events. Their days are on the 85% date."""
         data = await self._period_data(tenant_id, scope, start, as_of, access, live=False)
         committed = await self._committed_changes(tenant_id, scope, start, as_of, data)
         return await self._markers(
@@ -829,6 +845,7 @@ class DeliveryImpactService:
             start=start,
             as_of=as_of,
             access=access,
+            measure=Measure.P85,
         )
 
     async def _markers(
@@ -843,6 +860,7 @@ class DeliveryImpactService:
         start: date,
         as_of: date,
         access: ImpactAccess,
+        measure: Measure,
     ) -> tuple[MarkerView, ...]:
         """The timeline's impact lane: one marker per day and kind, never per person.
 
@@ -851,9 +869,10 @@ class DeliveryImpactService:
         scope (counted as a requirement or not), scope removed, reopened, a
         requirement passing its date while open, the committed date's moves, and,
         for the pod blocker read's readers only, blockers opened and closed on the
-        scope's requirements.
+        scope's requirements. The scope events carry the working days they moved
+        the date on ``measure`` (D88); the others carry none.
         """
-        grouped: dict[tuple[date, str, bool | None], list[MarkerItemView]] = {}
+        grouped: dict[_MarkerKey, list[MarkerItemView]] = {}
 
         def add(
             day: date | None, kind: str, item: MarkerItemView, label: bool | None = None
@@ -866,8 +885,7 @@ class DeliveryImpactService:
             if self._findings is not None and access.hygiene
             else None
         )
-        if data.period is not None:
-            _attribution_markers(data.period, data, stages, flagged, add)
+        days = _attribution_markers(data, stages, flagged, add) if data.period is not None else {}
         for entry in late:
             add(
                 entry.date + timedelta(days=1),
@@ -885,14 +903,7 @@ class DeliveryImpactService:
         if access.blockers and self._status is not None:
             await self._blocker_markers(tenant_id, scope, stages, start, as_of, add)
         markers = [
-            MarkerView(
-                day=day,
-                kind=kind,
-                count=len(items),
-                items=tuple(sorted(items, key=lambda item: key_order(item.key)))[:MAX_ITEMS],
-                change_label=label,
-            )
-            for (day, kind, label), items in grouped.items()
+            _marker_view(key, items, days.get(key), measure) for key, items in grouped.items()
         ]
         moved: dict[date, int] = {}
         for change in committed:
@@ -1295,55 +1306,179 @@ def _late(
 
 
 _Add = Callable[..., None]
+#: A marker's day, kind and change label: one marker each.
+_MarkerKey = tuple[date, str, bool | None]
+#: One item of a day's breakdown under the marker it goes to; the day may be missing.
+_Event = tuple[tuple[date | None, str, bool | None], MarkerItemView]
+
+
+@dataclass(frozen=True, kw_only=True)
+class _Moved:
+    """What one scope marker moved the date by, read from its day's kept row."""
+
+    #: None when the day kept no breakdown that can be read: not known.
+    shift: Shift | None
+    reconstructed: bool = False
+
+    def __add__(self, other: _Moved) -> _Moved:
+        return _Moved(
+            shift=(
+                self.shift + other.shift
+                if self.shift is not None and other.shift is not None
+                else None
+            ),
+            reconstructed=self.reconstructed or other.reconstructed,
+        )
 
 
 def _attribution_markers(
-    attribution: PeriodAttribution,
     data: _PeriodData,
     stages: Mapping[str, DeliveryStage],
     flagged: frozenset[str] | None,
     add: _Add,
-) -> None:
-    """The kept breakdowns' events: scope added (a bug apart), removed and reopened."""
-    for item in attribution.added:
+) -> dict[_MarkerKey, _Moved]:
+    """The kept breakdowns' events, day by day: scope added (a bug apart), removed and
+    reopened, with what each moved the date by (D88).
+
+    Each day's own kept row is read, never the period's ledger, so an item added,
+    removed and added again is marked on each day with that day's share. A day's
+    step is split among that day's markers of it by their item counts, so they add
+    up to the step: scope added among the bugs counted as requirements and the
+    additions with and without the change label, scope removed and reopened each
+    among their own. Time passed, throughput, rounding and re-estimates are never
+    handed to an event (D12). A day is counted as summed() counts it: one whose
+    breakdown is missing, does not follow on from the row before, was not taken
+    apart, or came before the period's first likely date is not known.
+    """
+    rows = data.rows
+    anchor = next((index for index, row in enumerate(rows) if row.p85 is not None), None)
+    moved: dict[_MarkerKey, _Moved] = {}
+    for index in range(1, len(rows)):
+        row = rows[index]
+        attribution = attribution_from_payload(row.attribution)
+        if attribution is None:
+            continue
+        known = (
+            anchor is not None
+            and index > anchor
+            and attribution.from_day == rows[index - 1].day
+            and attribution.taken_apart
+        )
+        removed: list[_Event] = [
+            (
+                (item.day, "scope_removed", None),
+                MarkerItemView(key=item.key, title=item.title, stage=stages.get(item.key)),
+            )
+            for item in attribution.removed
+        ]
+        reopened: list[_Event] = [
+            (
+                (item.day, "reopened", None),
+                MarkerItemView(key=item.key, title=item.title, stage=stages.get(item.key)),
+            )
+            for item in attribution.reopened
+        ]
+        for driver, events in (
+            (Driver.SCOPE_ADDED, _added_markers(attribution.added, data, stages, flagged)),
+            (Driver.SCOPE_REMOVED, removed),
+            (Driver.REOPENED, reopened),
+        ):
+            counts: dict[_MarkerKey, int] = {}
+            for (day, kind, label), item in events:
+                add(day, kind, item, label)
+                if day is not None:
+                    counts[(day, kind, label)] = counts.get((day, kind, label), 0) + 1
+            for key, share in _split(attribution.step(driver) if known else None, counts).items():
+                found = _Moved(shift=share, reconstructed=row.reconstructed)
+                moved[key] = moved[key] + found if key in moved else found
+    return moved
+
+
+def _added_markers(
+    items: Iterable[Item],
+    data: _PeriodData,
+    stages: Mapping[str, DeliveryStage],
+    flagged: frozenset[str] | None,
+) -> list[_Event]:
+    """One day's additions, each under its marker: a bug, or scope added with or
+    without the change label (ringed where a hygiene finding is open on it)."""
+    found: list[_Event] = []
+    for item in items:
         added = data.added.get(item.key)
         group = added.group if added is not None else None
         added_by = added.added_by if added is not None else None
         if group is ScopeGroup.BUG:
-            add(
-                item.day,
-                "bug",
+            found.append(
+                (
+                    (item.day, "bug", None),
+                    MarkerItemView(
+                        key=item.key,
+                        title=item.title,
+                        stage=stages.get(item.key),
+                        group=group,
+                        added_by=added_by,
+                    ),
+                )
+            )
+            continue
+        labelled = added.change_label if added is not None else False
+        found.append(
+            (
+                (item.day, "scope_added", labelled),
                 MarkerItemView(
                     key=item.key,
                     title=item.title,
                     stage=stages.get(item.key),
                     group=group,
                     added_by=added_by,
+                    change_label=labelled,
+                    hygiene=(item.key in flagged) if flagged is not None and not labelled else None,
                 ),
             )
-            continue
-        labelled = added.change_label if added is not None else False
-        add(
-            item.day,
-            "scope_added",
-            MarkerItemView(
-                key=item.key,
-                title=item.title,
-                stage=stages.get(item.key),
-                group=group,
-                added_by=added_by,
-                change_label=labelled,
-                hygiene=(item.key in flagged) if flagged is not None and not labelled else None,
-            ),
-            labelled,
         )
-    for kind, items in (("scope_removed", attribution.removed), ("reopened", attribution.reopened)):
-        for item in items:
-            add(
-                item.day,
-                kind,
-                MarkerItemView(key=item.key, title=item.title, stage=stages.get(item.key)),
-            )
+    return found
+
+
+def _split(step: Shift | None, counts: Mapping[_MarkerKey, int]) -> dict[_MarkerKey, Shift | None]:
+    """A day's step shared among its markers by item count, to 2 decimals; the last
+    takes what rounding leaves, so the shares add up to the step. None: not known."""
+    total = sum(counts.values())
+    if step is None or total <= 0:
+        return dict.fromkeys(counts)
+    shares: dict[_MarkerKey, Shift | None] = {}
+    left = step
+    for index, (key, count) in enumerate(counts.items()):
+        share = (
+            _rounded(left)
+            if index == len(counts) - 1
+            else _rounded(Shift(p50=step.p50 * count / total, p85=step.p85 * count / total))
+        )
+        shares[key] = share
+        left = left - share
+    return shares
+
+
+def _marker_view(
+    key: _MarkerKey, items: Sequence[MarkerItemView], moved: _Moved | None, measure: Measure
+) -> MarkerView:
+    day, kind, label = key
+    shift = moved.shift if moved is not None else None
+    return MarkerView(
+        day=day,
+        kind=kind,
+        count=len(items),
+        items=tuple(sorted(items, key=lambda item: key_order(item.key)))[:MAX_ITEMS],
+        change_label=label,
+        working_days=round(shift.of(measure), 2) if shift is not None else None,
+        p50_days=round(shift.p50, 2) if shift is not None else None,
+        p85_days=round(shift.p85, 2) if shift is not None else None,
+        taken_apart=(shift is not None) if moved is not None else None,
+        reconstructed=moved.reconstructed if moved is not None else False,
+    )
+
+
+def _rounded(shift: Shift) -> Shift:
+    return Shift(p50=round(shift.p50, 2), p85=round(shift.p85, 2))
 
 
 def _clip(text: str) -> str | None:

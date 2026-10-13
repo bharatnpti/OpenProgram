@@ -95,14 +95,29 @@ const item = (key, title, stage, extra = {}) => ({
   hygiene: null,
   ...extra,
 });
-const marker = (day, kind, items, extra = {}) => ({
-  day,
-  kind,
-  count: items.length || 1,
-  items,
-  change_label: null,
-  ...extra,
-});
+/**
+ * One marker. A scope event carries the working days it moved the 85% date
+ * (D88): 2.5 a requirement added, 1 for the removal, as the impact read's bars
+ * count them; the evidence (late, blockers) carries none.
+ */
+const DAYS = { scope_added: [2.5, 1.5], scope_removed: [-1, -0.6] };
+const marker = (day, kind, items, extra = {}) => {
+  const step = DAYS[kind];
+  const n = items.length || 1;
+  return {
+    day,
+    kind,
+    count: n,
+    items,
+    change_label: null,
+    working_days: step ? step[0] * (kind === "scope_added" ? n : 1) : null,
+    p50_days: step ? step[1] * (kind === "scope_added" ? n : 1) : null,
+    p85_days: step ? step[0] * (kind === "scope_added" ? n : 1) : null,
+    taken_apart: step ? true : null,
+    reconstructed: false,
+    ...extra,
+  };
+};
 
 // ---- Checkout Revamp's events --------------------------------------------------------
 
@@ -750,10 +765,41 @@ function impactOf(req, roles, projectId, scope, period, measure, asOf) {
           added_by: has(roles, "po", "mgr", "sm") ? i.added_by : null,
         })),
         change_label: m.change_label,
+        // Its days on the measure read: the bars' own counts, split by item count.
+        ...markerDays(m, measure, row.forecast !== null && row.forecast !== undefined),
       })),
-    link: `/reports/${projectId}/overall?row=${scope.kind}:${scope.id}#timeline`,
+    link: `/projects/${projectId}?row=${scope.kind}:${scope.id}#timeline`,
     reconstructed_days: 0,
     not_known: notes,
+  };
+}
+
+/** A marker's days on the measure read; none without a likely date (nothing to take apart). */
+function markerDays(m, measure, forecast) {
+  if (m.taken_apart === null) {
+    return {
+      working_days: null,
+      p50_days: null,
+      p85_days: null,
+      taken_apart: null,
+      reconstructed: false,
+    };
+  }
+  if (!forecast) {
+    return {
+      working_days: null,
+      p50_days: null,
+      p85_days: null,
+      taken_apart: false,
+      reconstructed: false,
+    };
+  }
+  return {
+    working_days: measure === "p50" ? m.p50_days : m.p85_days,
+    p50_days: m.p50_days,
+    p85_days: m.p85_days,
+    taken_apart: true,
+    reconstructed: m.reconstructed,
   };
 }
 

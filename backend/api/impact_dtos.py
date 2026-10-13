@@ -218,11 +218,24 @@ class MarkerResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     day: date
-    #: scope_added, bug, scope_removed, reopened, late or committed_date_changed.
+    #: scope_added, bug, scope_removed, reopened, late, blocker_opened, blocker_closed or
+    #: committed_date_changed.
     kind: str
     count: int
     items: list[MarkerItemResponse]
     change_label: bool | None
+    #: Working days this event moved the date, on the measure read: scope events only
+    #: (scope added, a bug counted as a requirement, scope removed, reopened), the day's
+    #: step split among its markers by item count (D88). None for the other kinds (D12)
+    #: and for a day whose move is not known.
+    working_days: float | None
+    p50_days: float | None
+    p85_days: float | None
+    #: True: read from the day's kept breakdown; False: a scope event whose day kept none
+    #: that can be read ("not known"); None: a kind that never gets days.
+    taken_apart: bool | None
+    #: The day's kept row was a reconstruction.
+    reconstructed: bool
 
     @classmethod
     def from_view(cls, marker: MarkerView) -> MarkerResponse:
@@ -241,6 +254,11 @@ class MarkerResponse(BaseModel):
                 for item in marker.items
             ],
             change_label=marker.change_label,
+            working_days=marker.working_days,
+            p50_days=marker.p50_days,
+            p85_days=marker.p85_days,
+            taken_apart=marker.taken_apart,
+            reconstructed=marker.reconstructed,
         )
 
 

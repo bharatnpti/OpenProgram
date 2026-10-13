@@ -232,6 +232,32 @@ async def test_a_manager_reads_the_blockers_opened_and_closed_with_what_they_wai
     assert all(item.added_by is None for item in opened.items)
 
 
+async def test_scope_events_carry_their_days_and_the_evidence_none() -> None:
+    registry, store = await _reconstructed()
+    await _blockers(store)
+
+    view = await registry.timeline_service().project_timeline(
+        _principal(Role.MGR), "checkout", as_of=TODAY
+    )
+    markers = {(marker.day, marker.kind): marker for marker in view.rows[0].markers}
+
+    # On the 85% date, the same days as the day report's lines for 6 and 8 Oct.
+    labelled = markers[(date(2026, 10, 6), "scope_added")]
+    unlabelled = markers[(date(2026, 10, 8), "scope_added")]
+    assert (labelled.working_days, labelled.p85_days) == (4.0, 4.0)
+    assert unlabelled.working_days == 3.0
+    assert all(marker.taken_apart and marker.reconstructed for marker in (labelled, unlabelled))
+    # Blockers, late requirements and the committed date are evidence: no days (D12).
+    evidence = {"late", "blocker_opened", "blocker_closed", "committed_date_changed"}
+    others = [marker for (_day, kind), marker in markers.items() if kind in evidence]
+    assert {marker.kind for marker in others} == evidence
+    assert all(
+        (marker.taken_apart, marker.working_days, marker.p50_days, marker.p85_days)
+        == (None, None, None, None)
+        for marker in others
+    )
+
+
 async def test_an_executive_reads_every_row_without_blockers_or_who_added_an_item() -> None:
     registry, store = await _reconstructed()
     await _blockers(store)
@@ -442,6 +468,8 @@ async def test_a_bug_that_is_no_requirement_is_marked_on_the_day_it_was_opened()
 
     bug = project[(FRIDAY, "bug")]
     assert [(item.key, item.stage) for item in bug.items] == [("CHK-30", None)]
+    # The forecast never counted it: it moved nothing, so it carries no days.
+    assert (bug.taken_apart, bug.working_days) == (None, None)  # type: ignore[attr-defined]
     assert (FRIDAY, "bug") in _markers(next(r for r in view.rows if r.row_id == "pod:pod-pay"))
     assert (FRIDAY, "bug") not in store_row
 

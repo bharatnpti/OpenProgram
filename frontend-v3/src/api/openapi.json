@@ -20845,10 +20845,69 @@
               }
             ],
             "title": "Change Label"
+          },
+          "working_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Working Days"
+          },
+          "p50_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50 Days"
+          },
+          "p85_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P85 Days"
+          },
+          "taken_apart": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken Apart"
+          },
+          "reconstructed": {
+            "type": "boolean",
+            "title": "Reconstructed"
           }
         },
         "type": "object",
-        "required": ["day", "kind", "count", "items", "change_label"],
+        "required": [
+          "day",
+          "kind",
+          "count",
+          "items",
+          "change_label",
+          "working_days",
+          "p50_days",
+          "p85_days",
+          "taken_apart",
+          "reconstructed"
+        ],
         "title": "MarkerResponse",
         "description": "One kind of event on one day, on the timeline's impact lane."
       },
@@ -27821,10 +27880,69 @@
               }
             ],
             "title": "Change Label"
+          },
+          "working_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Working Days"
+          },
+          "p50_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50 Days"
+          },
+          "p85_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P85 Days"
+          },
+          "taken_apart": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken Apart"
+          },
+          "reconstructed": {
+            "type": "boolean",
+            "title": "Reconstructed"
           }
         },
         "type": "object",
-        "required": ["day", "kind", "count", "items", "change_label"],
+        "required": [
+          "day",
+          "kind",
+          "count",
+          "items",
+          "change_label",
+          "working_days",
+          "p50_days",
+          "p85_days",
+          "taken_apart",
+          "reconstructed"
+        ],
         "title": "TimelineMarkerResponse",
         "description": "One kind of event on one day, on a row's impact lane."
       },

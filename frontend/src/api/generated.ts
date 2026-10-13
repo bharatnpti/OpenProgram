@@ -6157,6 +6157,16 @@ export interface components {
       items: components["schemas"]["MarkerItemResponse"][];
       /** Change Label */
       change_label: boolean | null;
+      /** Working Days */
+      working_days: number | null;
+      /** P50 Days */
+      p50_days: number | null;
+      /** P85 Days */
+      p85_days: number | null;
+      /** Taken Apart */
+      taken_apart: boolean | null;
+      /** Reconstructed */
+      reconstructed: boolean;
     };
     /**
      * MatcherKind
@@ -8883,6 +8893,16 @@ export interface components {
       items: components["schemas"]["TimelineMarkerItemResponse"][];
       /** Change Label */
       change_label: boolean | null;
+      /** Working Days */
+      working_days: number | null;
+      /** P50 Days */
+      p50_days: number | null;
+      /** P85 Days */
+      p85_days: number | null;
+      /** Taken Apart */
+      taken_apart: boolean | null;
+      /** Reconstructed */
+      reconstructed: boolean;
     };
     /** TimelineProgressResponse */
     TimelineProgressResponse: {

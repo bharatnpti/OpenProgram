@@ -121,6 +121,18 @@ class TimelineMarkerResponse(BaseModel):
     items: list[TimelineMarkerItemResponse]
     #: Scope added: whether these items carry the change label.
     change_label: bool | None
+    #: Working days this event moved the date, on the 85% date: scope events only (scope
+    #: added, a bug counted as a requirement, scope removed, reopened), the day's step
+    #: split among its markers by item count (D88). None for the other kinds (D12) and
+    #: for a day whose move is not known.
+    working_days: float | None
+    p50_days: float | None
+    p85_days: float | None
+    #: True: read from the day's kept breakdown; False: a scope event whose day kept none
+    #: that can be read ("not known"); None: a kind that never gets days.
+    taken_apart: bool | None
+    #: The day's kept row was a reconstruction.
+    reconstructed: bool
 
     @classmethod
     def from_view(cls, marker: MarkerView) -> TimelineMarkerResponse:
@@ -142,6 +154,11 @@ class TimelineMarkerResponse(BaseModel):
                 for item in marker.items
             ],
             change_label=marker.change_label,
+            working_days=marker.working_days,
+            p50_days=marker.p50_days,
+            p85_days=marker.p85_days,
+            taken_apart=marker.taken_apart,
+            reconstructed=marker.reconstructed,
         )
 
 

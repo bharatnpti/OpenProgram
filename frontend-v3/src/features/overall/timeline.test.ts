@@ -51,6 +51,11 @@ const marker = (day: string, kind: string, items: Item[], extra: Partial<Marker>
   count: items.length || 1,
   items,
   change_label: null,
+  working_days: null,
+  p50_days: null,
+  p85_days: null,
+  taken_apart: null,
+  reconstructed: false,
   ...extra,
 });
 

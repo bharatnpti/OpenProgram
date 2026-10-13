@@ -20,7 +20,9 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+from api.impact_dtos import MarkerResponse
 from api.main import create_app
+from api.timeline_dtos import TimelineMarkerResponse
 from config.settings import Settings
 from core.application.ask_investigation import PLAN_MORE_REMINDER, STEP_GUIDANCE
 from core.application.ask_service import (
@@ -37,6 +39,7 @@ from core.application.impact_service import (
     ImpactAccess,
     ImpactDetail,
     ImpactPeriod,
+    MarkerView,
     PeriodKind,
 )
 from core.application.persona_views import PersonaViewService
@@ -54,8 +57,10 @@ from core.domain.forecast import (
     CommitmentScope,
     CommitmentScopeKind,
     DateChange,
+    ForecastDayRecord,
     ReleaseMatch,
     ReleaseMatchKind,
+    Verdict,
 )
 from core.domain.graph import (
     Developer,
@@ -69,10 +74,16 @@ from core.domain.graph import (
     Task,
 )
 from core.domain.impact import (
+    DayAttribution,
     Driver,
+    Item,
     Measure,
+    NotTakenApart,
     ScopeGroup,
+    Shift,
+    Step,
     attribution_from_payload,
+    attribution_payload,
     working_days_moved,
 )
 from core.domain.llm import LlmResponse, LlmToolCall, TokenUsage
@@ -417,7 +428,7 @@ async def test_since_planning_the_drivers_add_up_and_the_additions_are_grouped()
         word in view.summary.lower() for word in ("85%", "throughput", "window", "replay", "pace")
     )
     assert view.reconstructed_days > 0
-    assert view.link == "/reports/checkout/overall?row=project:checkout#timeline"
+    assert view.link == "/projects/checkout?row=project:checkout#timeline"
 
 
 async def test_the_committed_date_lane_names_who_and_why_beside_the_addition() -> None:
@@ -493,6 +504,269 @@ async def test_the_markers_are_per_day_and_kind_and_carry_the_change_label() -> 
     assert all(marker.count == len(marker.items) for marker in view.markers if marker.items)
 
 
+# --- Days per event on the markers (D88) ---------------------------------------------------
+#
+# A made-up week of kept rows on Checkout Revamp, Mon 5 Oct to Fri 9 Oct:
+#
+# - Tue: CHK-40 and CHK-41 join with the CR label, CHK-42 without it, and CHK-43, a bug
+#   counted as a requirement; together they pushed the dates out 4 (50%) and 8 (85%)
+#   working days; a re-estimate added one more on the 85% date, and time passing took
+#   one and two back.
+# - Wed (a reconstructed row): CHK-42 left the scope (-1, -2), OLD-1 reopened (+1, +2).
+# - Thu: CHK-42 came back (+1, +3).
+# - Fri: CHK-44 joined, but the day's breakdown cannot be read; the dates moved +3, +4.
+
+MON, TUE, WED, THU, FRI = (date(2026, 10, day) for day in (5, 6, 7, 8, 9))
+_WEEK: dict[date, dict[Driver, tuple[float, float]]] = {
+    TUE: {
+        Driver.TIME_PASSED: (-1, -2),
+        Driver.SCOPE_ADDED: (4, 8),
+        Driver.RE_ESTIMATED: (0, 1),
+    },
+    WED: {Driver.TIME_PASSED: (-1, -1), Driver.SCOPE_REMOVED: (-1, -2), Driver.REOPENED: (1, 2)},
+    THU: {Driver.SCOPE_ADDED: (1, 3)},
+    FRI: {Driver.SCOPE_ADDED: (3, 4)},
+}
+#: The re-estimate on Tuesday: it joins the scope-added bar but is no event's (D12).
+_RE_ESTIMATE = {Measure.P50: 0.0, Measure.P85: 1.0}
+
+
+def _by_working_days(day: date, count: float) -> date:
+    """The working day ``count`` working days from ``day``, later or earlier."""
+    step, left = (1 if count >= 0 else -1), abs(int(count))
+    while left:
+        day += timedelta(days=step)
+        if day.weekday() < 5:
+            left -= 1
+    return day
+
+
+def _requirement(key: str, kind: str = "Story") -> Item:
+    return Item(key=key, title=f"{key} work", type=kind)
+
+
+async def _week(registry: ServiceRegistry, store: InMemoryGraphStore, friday: str) -> None:
+    """Keep the week's rows; ``friday`` says why Friday's breakdown cannot be read:
+    not_taken_apart, not_chained (it runs from Wednesday), or no_date_yet (no likely
+    date before Friday, so nothing before it is counted)."""
+    for key in ("CHK-40", "CHK-41"):
+        await _task(
+            store, key, "To Do", "todo", "pod-pay", {"labels": "CR", "created_at": "2026-10-06"}
+        )
+    items: dict[date, dict[str, tuple[Item, ...]]] = {
+        TUE: {
+            "added": (
+                *(_requirement(key) for key in ("CHK-40", "CHK-41", "CHK-42")),
+                _requirement("CHK-43", "Bug"),
+            )
+        },
+        WED: {"removed": (_requirement("CHK-42"),), "reopened": (_requirement("OLD-1"),)},
+        THU: {"added": (_requirement("CHK-42"),)},
+        FRI: {"added": (_requirement("CHK-44"),)},
+    }
+    p50, p85 = date(2026, 11, 2), date(2026, 11, 16)
+    rows = [_kept_row(MON, p50, p85, None)]
+    previous = MON
+    for day, steps in _WEEK.items():
+        to50 = _by_working_days(p50, sum(move for move, _ in steps.values()))
+        to85 = _by_working_days(p85, sum(move for _, move in steps.values()))
+        unreadable = day == FRI and friday == "not_taken_apart"
+        kept_steps = tuple(
+            Step(driver=driver, shift=Shift(p50=move50, p85=move85))
+            for driver, (move50, move85) in steps.items()
+        )
+        breakdown = DayAttribution(
+            from_day=WED if day == FRI and friday == "not_chained" else previous,
+            to_day=day,
+            unit="requirements",
+            from_p50=p50,
+            from_p85=p85,
+            to_p50=to50,
+            to_p85=to85,
+            steps=() if unreadable else kept_steps,
+            not_taken_apart=NotTakenApart.REPLAY_DIFFERS if unreadable else None,
+            added=items[day].get("added", ()),
+            removed=items[day].get("removed", ()),
+            reopened=items[day].get("reopened", ()),
+        )
+        rows.append(
+            _kept_row(day, to50, to85, attribution_payload(breakdown), reconstructed=day == WED)
+        )
+        p50, p85, previous = to50, to85, day
+    if friday == "no_date_yet":
+        rows = [replace(row, p50=None, p85=None) if row.day < FRI else row for row in rows]
+    await registry.forecast_day_repository().save(rows)
+
+
+def _kept_row(
+    day: date,
+    p50: date | None,
+    p85: date | None,
+    attribution: dict[str, object] | None,
+    *,
+    reconstructed: bool = False,
+) -> ForecastDayRecord:
+    return ForecastDayRecord(
+        tenant_id=TENANT,
+        scope=PROJECT,
+        day=day,
+        p50=p50,
+        p85=p85,
+        verdict=Verdict.ON_TRACK,
+        target_date=date(2026, 11, 27),
+        team_latest=None,
+        team_latest_key=None,
+        remaining=10.0,
+        unit="requirements",
+        sample_days=20,
+        completed_in_sample=6.0,
+        min_sample_days=10,
+        computed_at=NOW,
+        reconstructed=reconstructed,
+        attribution=attribution,
+    )
+
+
+async def _week_markers(
+    friday: str = "not_taken_apart",
+) -> dict[tuple[date, str, bool | None], MarkerView]:
+    registry, store = await _world()
+    await _week(registry, store, friday)
+    markers = await registry.delivery_impact_service().timeline_markers(
+        TENANT,
+        PROJECT,
+        start=MON,
+        as_of=FRI,
+        access=FULL,
+        open_requirements=(),
+        baseline=None,
+        stages={},
+    )
+    return {(marker.day, marker.kind, marker.change_label): marker for marker in markers}
+
+
+async def test_a_days_scope_added_step_is_split_among_its_markers_by_item_count() -> None:
+    markers = await _week_markers()
+
+    labelled = markers[(TUE, "scope_added", True)]
+    unlabelled = markers[(TUE, "scope_added", False)]
+    bug = markers[(TUE, "bug", None)]
+    assert [item.key for item in labelled.items] == ["CHK-40", "CHK-41"]
+    assert [item.key for item in unlabelled.items] == ["CHK-42"]
+    assert [item.key for item in bug.items] == ["CHK-43"]
+    # The timeline reads the 85% date: 2, 1 and 1 of the 4 items of an 8-day step.
+    assert [(m.working_days, m.p85_days, m.p50_days) for m in (labelled, unlabelled, bug)] == [
+        (4.0, 4.0, 2.0),
+        (2.0, 2.0, 1.0),
+        (2.0, 2.0, 1.0),
+    ]
+    assert (
+        sum(m.p85_days or 0 for m in (labelled, unlabelled, bug))
+        == _WEEK[TUE][Driver.SCOPE_ADDED][1]
+    )
+    assert all(m.taken_apart is True and not m.reconstructed for m in (labelled, unlabelled, bug))
+
+
+async def test_removed_and_reopened_get_their_own_steps_on_their_own_day() -> None:
+    markers = await _week_markers()
+
+    removed = markers[(WED, "scope_removed", None)]
+    reopened = markers[(WED, "reopened", None)]
+    assert [item.key for item in removed.items] == ["CHK-42"]
+    assert (removed.working_days, removed.p50_days, removed.p85_days) == (-2.0, -1.0, -2.0)
+    assert [item.key for item in reopened.items] == ["OLD-1"]
+    assert (reopened.working_days, reopened.p50_days, reopened.p85_days) == (2.0, 1.0, 2.0)
+    # Wednesday's row was a reconstruction: its events say so, and only theirs.
+    assert removed.reconstructed and reopened.reconstructed
+    assert not any(marker.reconstructed for marker in markers.values() if marker.day != WED)
+
+
+async def test_an_item_added_removed_and_added_again_is_marked_each_day_with_its_share() -> None:
+    markers = await _week_markers()
+
+    again = markers[(THU, "scope_added", False)]
+    assert [item.key for item in again.items] == ["CHK-42"]
+    assert (again.count, again.working_days, again.p50_days) == (1, 3.0, 1.0)
+    # Its first day keeps Tuesday's share, not the two days' summed.
+    assert markers[(TUE, "scope_added", False)].working_days == 2.0
+
+
+@pytest.mark.parametrize("friday", ["not_taken_apart", "not_chained", "no_date_yet"])
+async def test_a_day_whose_breakdown_cannot_be_read_is_not_known(friday: str) -> None:
+    markers = await _week_markers(friday)
+
+    joined = markers[(FRI, "scope_added", False)]
+    assert [item.key for item in joined.items] == ["CHK-44"] and joined.count == 1
+    assert joined.taken_apart is False
+    assert (joined.working_days, joined.p50_days, joined.p85_days) == (None, None, None)
+    # Before the period's first likely date nothing is counted, as summed() counts it.
+    scope = [
+        marker
+        for (day, kind, _label), marker in markers.items()
+        if day < FRI and kind in {"scope_added", "bug", "scope_removed", "reopened"}
+    ]
+    assert len(scope) == 6
+    assert all(marker.taken_apart is (friday != "no_date_yet") for marker in scope)
+
+
+async def test_the_committed_dates_move_carries_no_days() -> None:
+    markers = await _week_markers()
+
+    moved = markers[(WED, "committed_date_changed", None)]
+    assert (moved.taken_apart, moved.working_days, moved.reconstructed) == (None, None, False)
+
+
+@pytest.mark.parametrize("measure", [Measure.P85, Measure.P50])
+async def test_the_events_and_team_speed_add_up_to_the_move(measure: Measure) -> None:
+    registry, store = await _world()
+    await _week(registry, store, "not_taken_apart")
+
+    view = await registry.delivery_impact_service().impact(
+        TENANT,
+        PROJECT,
+        period=ImpactPeriod(kind=PeriodKind.FROM_DAY, from_day=MON),
+        measure=measure,
+        as_of=FRI,
+        access=FULL,
+    )
+
+    assert view.moved_working_days == {Measure.P85: 13.0, Measure.P50: 6.0}[measure]
+    events = sum(marker.working_days or 0.0 for marker in view.markers)
+    team = next(
+        (driver.working_days for driver in view.drivers if driver.kind == "team_speed"), 0.0
+    )
+    # Friday is not known: its move is under team speed, never handed to CHK-44.
+    assert events == {Measure.P85: 11.0, Measure.P50: 5.0}[measure]
+    assert events + team + _RE_ESTIMATE[measure] == pytest.approx(view.moved_working_days, abs=0.05)
+    labelled = next(m for m in view.markers if (m.day, m.change_label) == (TUE, True))
+    assert labelled.working_days == {Measure.P85: 4.0, Measure.P50: 2.0}[measure]
+
+
+def test_the_marker_responses_carry_the_days() -> None:
+    marker = MarkerView(
+        day=TUE,
+        kind="scope_added",
+        count=3,
+        change_label=False,
+        working_days=2.5,
+        p50_days=1.0,
+        p85_days=2.5,
+        taken_apart=True,
+        reconstructed=True,
+    )
+
+    for response in (TimelineMarkerResponse.from_view(marker), MarkerResponse.from_view(marker)):
+        assert (
+            response.working_days,
+            response.p50_days,
+            response.p85_days,
+            response.taken_apart,
+            response.reconstructed,
+        ) == (2.5, 1.0, 2.5, True, True)
+    late = MarkerResponse.from_view(MarkerView(day=TUE, kind="late", count=1))
+    assert (late.working_days, late.taken_apart, late.reconstructed) == (None, None, False)
+
+
 async def test_a_pod_reads_only_its_own_requirements() -> None:
     registry, _store = await _reconstructed()
 
@@ -508,7 +782,7 @@ async def test_a_pod_reads_only_its_own_requirements() -> None:
     assert view.name == "Payments Pod" and view.project_name == "Checkout Revamp"
     assert view.scope_changes.added_count == 2
     assert view.evidence is not None and view.evidence.late == ()
-    assert view.link == "/reports/checkout/overall?row=pod:pod-pay#timeline"
+    assert view.link == "/projects/checkout?row=pod:pod-pay#timeline"
 
 
 async def test_before_planning_is_marked_it_reads_the_last_thirty_days_and_says_so() -> None:
@@ -761,7 +1035,7 @@ async def test_ora_reads_what_moved_the_date_since_planning_with_markers_and_lin
     }
     assert payload["committed_changes"][0]["by"] == "Mina Patel"
     assert payload["evidence"]["late"][0]["key"] == "CHK-4"
-    assert payload["link"] == "/reports/checkout/overall?row=project:checkout#timeline"
+    assert payload["link"] == "/projects/checkout?row=project:checkout#timeline"
     assert any(marker["kind"] == "scope_added" for marker in payload["markers"])
     # No person's id anywhere: names only, on the item's row.
     text = json.dumps(payload)
@@ -1078,7 +1352,7 @@ async def test_a_release_reads_its_own_keys_and_a_fix_version_move_is_moved_in()
     assert set(added) == {"CHK-4"}
     assert added["CHK-4"].group is ScopeGroup.MOVED_IN
     assert added["CHK-4"].added_by == "Dana Kim"
-    assert view.link == f"/reports/checkout/overall?row=release:{release.release_id}#timeline"
+    assert view.link == f"/projects/checkout?row=release:{release.release_id}#timeline"
 
 
 # --- The team's date ------------------------------------------------------------------
