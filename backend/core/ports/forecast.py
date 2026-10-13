@@ -48,23 +48,25 @@ class ForecastSettingsRepository(Protocol):
 
 
 class ForecastDayRepository(Protocol):
-    """Each scope's forecast as it stood per day (forecast_days)."""
+    """Each scope's forecast as it stood per day (forecast_days), one row per scope,
+    project and day: a pod two projects share keeps its part of each under that project."""
 
     async def save(self, records: Sequence[ForecastDayRecord]) -> None:
-        """Keep each record, replacing the scope's row for its day.
+        """Keep each record, replacing the scope's row for its project and day.
 
         A reconstructed record never replaces a row the hourly run kept; any
         other record replaces whatever is there. A key (tenant, scope kind, scope
-        id, day) offered twice in one call keeps its last record and is warned
-        about, never the whole call lost. A store that cannot take rows raises
-        ForecastDaysNotKept with how many.
+        id, project, day) offered twice in one call keeps its last record and is
+        warned about, never the whole call lost. A store that cannot take rows
+        raises ForecastDaysNotKept with how many.
         """
         ...
 
     async def list_between(
         self, tenant_id: str, scope: CommitmentScope, start: date, end: date
     ) -> list[ForecastDayRecord]:
-        """The scope's rows from ``start`` to ``end``, oldest first."""
+        """The scope's rows under its project (``scope.project_id``) from ``start`` to
+        ``end``, oldest first: never a row the scope kept under another project."""
         ...
 
     async def fill_attribution(self, records: Sequence[ForecastDayRecord]) -> None:

@@ -7,6 +7,7 @@ from datetime import date
 from core.domain.forecast import (
     CommitmentScope,
     DateChange,
+    ForecastDayKey,
     ForecastDayRecord,
     ForecastSettings,
     Release,
@@ -76,7 +77,10 @@ class InMemoryForecastSettingsRepository:
 
 @dataclass
 class InMemoryForecastDayRepository:
-    _rows: dict[tuple[str, str, str, date], ForecastDayRecord] = field(default_factory=dict)
+    """forecast_days as Postgres keeps them: one row per (tenant, scope kind, scope id,
+    project, day), so a pod two projects share has a row under each."""
+
+    _rows: dict[ForecastDayKey, ForecastDayRecord] = field(default_factory=dict)
 
     async def save(self, records: Sequence[ForecastDayRecord]) -> None:
         # As Postgres keeps them: a key offered twice in one call keeps its last record.
@@ -100,11 +104,11 @@ class InMemoryForecastDayRepository:
         return sorted(
             (
                 row
-                for (tenant, kind, scope_id, day), row in self._rows.items()
+                for (tenant, kind, scope_id, project_id, day), row in self._rows.items()
                 if tenant == tenant_id
                 and kind == scope.kind.value
                 and scope_id == scope.id
-                and row.scope.project_id == scope.project_id
+                and project_id == scope.project_id
                 and start <= day <= end
             ),
             key=lambda row: row.day,

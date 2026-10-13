@@ -16,9 +16,8 @@ the hourly snapshot run keeps today's, and a one-off reconstruction rebuilds
 earlier days from the stored snapshots, with each day's committed date and ETAs
 as they stood that day. The history read reads those rows and replays only the
 days nobody kept, and today, which is always live. A pod's row is its part of one
-project's work, but the store's key has no project, so a pod that works on more
-than one project on a day keeps no row that day: its forecast is live in each
-project's own context, and its past days are not kept yet.
+project's work, and the store's key has the project, so a pod that works on more
+than one project keeps a row under each, read only in that project's context.
 
 Each kept day also says why its forecast moved since the scope's day before
 with a snapshot (``attribution``, core/domain/impact.py): the move replayed one
@@ -28,7 +27,7 @@ input at a time, under the day's own seed, so its parts add up exactly.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from uuid import uuid4
@@ -592,40 +591,19 @@ class ForecastService:
         The hourly snapshot run calls it after storing the day's snapshots; each
         later run that day replaces the rows, so the day's last run stays.
 
-        A pod that works on more than one project that day keeps no row. A pod's
-        forecast is its part of one project's work (its keys, its date, its seed),
-        yet the store's key has no project: a row kept under one project would be
-        read as the pod's for the other too. Until the key has the project, such a
-        pod is live in each project's own context (:meth:`forecast_day`,
-        :meth:`live_days`) and has no kept history for the day; one info line says so.
+        A pod's forecast is its part of one project's work (its keys, its date, its
+        seed), so a pod that works on more than one project keeps one row under each,
+        each from that project's own delivery view with its own breakdown: the store's
+        key has the project (migration 0044).
         """
         if self._forecast_days is None:
             return 0
         projects = await self._graph.list_nodes(tenant_id, NodeKind.PROJECT, as_of=day)
-        shared = await self._shared_pods(tenant_id, [project.id for project in projects], day)
-        for pod_id, project_ids in sorted(shared.items()):
-            _log_info(
-                "forecast_day_not_kept_pod_on_several_projects",
-                tenant_id=tenant_id,
-                day=day.isoformat(),
-                pod_id=pod_id,
-                project_ids=",".join(project_ids),
-            )
         records: list[ForecastDayRecord] = []
         for project in projects:
-            records += await self._day_records(tenant_id, project.id, day, skip_pods=shared)
+            records += await self._day_records(tenant_id, project.id, day)
         await self._forecast_days.save(records)
         return len(records)
-
-    async def _shared_pods(
-        self, tenant_id: str, project_ids: Sequence[str], day: date
-    ) -> dict[str, list[str]]:
-        """The pods that work on more than one of the projects on ``day``, with their projects."""
-        found: dict[str, list[str]] = {}
-        for project_id in sorted(project_ids):
-            for pod in await self._project_pods(tenant_id, project_id, day):
-                found.setdefault(pod.id, []).append(project_id)
-        return {pod_id: ids for pod_id, ids in found.items() if len(ids) > 1}
 
     async def forecast_day(
         self, tenant_id: str, scope: CommitmentScope, day: date
@@ -773,10 +751,9 @@ class ForecastService:
         day: date,
         *,
         only: CommitmentScope | None = None,
-        skip_pods: Collection[str] = (),
     ) -> list[ForecastDayRecord]:
         """The rows the hourly run keeps for the project's scopes on ``day`` (or ``only``),
-        except for the pods in ``skip_pods``: the ones that keep no row (record_forecast_days)."""
+        each pod's row and its breakdown from this one computation of the project."""
         view = await self.project_delivery(tenant_id, project_id, day)
         computed_at = self._clock()
         rule = await self.forecast_settings(tenant_id)
@@ -784,8 +761,6 @@ class ForecastService:
         records: list[ForecastDayRecord] = []
         for item in (view.project, *view.pods, *view.releases):
             if only is not None and item.scope != only:
-                continue
-            if item.scope.kind is CommitmentScopeKind.POD and item.scope.id in skip_pods:
                 continue
             record = _record(tenant_id, item, day, computed_at)
             records.append(
@@ -886,9 +861,9 @@ class ForecastService:
         it (the same snapshots, keys, seed and today's minimum), against the
         committed date as it stood at the end of that day and the ETAs stated by
         then. Due dates are today's: their history is not kept. A pod's keys are
-        its tasks as the graph held them that day, and it has no row for a day it
-        worked on more than one project, as the hourly run keeps none. Each row
-        keeps why it moved since the scope's day before. The rows are marked
+        its tasks as the graph held them that day, and a pod is rebuilt under each
+        project it worked on, its part of that project, as the hourly run keeps it.
+        Each row keeps why it moved since the scope's day before. The rows are marked
         reconstructed, and a day the hourly run kept is left as it is, except
         that it gains its breakdown when it kept none.
         """
@@ -901,12 +876,9 @@ class ForecastService:
         rule = await self.forecast_settings(tenant_id)
         eta_facts = await self._eta_facts(tenant_id)
         projects = await self._graph.list_nodes(tenant_id, NodeKind.PROJECT, as_of=as_of)
-        shared = await self._shared_pod_days(
-            tenant_id, [project.id for project in projects], first, last
-        )
         for project in projects:
             done = await self._reconstruct_project(
-                tenant_id, project.id, first, last, rule, eta_facts, shared
+                tenant_id, project.id, first, last, rule, eta_facts
             )
             total = ReconstructionSummary(
                 first_day=first,
@@ -925,7 +897,6 @@ class ForecastService:
         last: date,
         rule: ForecastSettingsView,
         eta_facts: Sequence[FactEvent],
-        shared_pod_days: Mapping[date, frozenset[str]],
     ) -> ReconstructionSummary:
         repository = self._forecast_days
         if repository is None:
@@ -941,9 +912,7 @@ class ForecastService:
             _task_key(task): task
             for task in await self._delivery.scope_tasks(tenant_id, project_id, self._today())
         }
-        scopes = await self._reconstruct_scopes(
-            tenant_id, project_id, lead, last, stored, tasks, shared_pod_days
-        )
+        scopes = await self._reconstruct_scopes(tenant_id, project_id, lead, last, stored, tasks)
         context = _ReconstructContext(
             first=first,
             stored=stored,
@@ -977,12 +946,11 @@ class ForecastService:
         last: date,
         stored: Sequence[RequirementsSnapshot],
         tasks: Mapping[str, GraphNode],
-        shared_pod_days: Mapping[date, frozenset[str]],
     ) -> list[_ReconstructScope]:
         """The project, its releases and its pods, each with its own snapshots of the days.
 
-        A pod has no row on a day it works on more than one project, as
-        record_forecast_days keeps none: ``shared_pod_days`` names those pods per day.
+        A pod is the project's pod on the days it worked on the project, whatever other
+        project it also worked on: its rows here are its part of this project only.
         """
         project_days = [item for item in stored if item.day >= lead]
         scopes: list[_ReconstructScope] = [
@@ -1018,11 +986,7 @@ class ForecastService:
         )
         by_day = {item.day: membership.keys_on(item.day) for item in project_days}
         for pod_id in sorted({pod for keys in by_day.values() for pod in keys}):
-            pod_days = [
-                item
-                for item in project_days
-                if pod_id in by_day[item.day] and pod_id not in shared_pod_days.get(item.day, ())
-            ]
+            pod_days = [item for item in project_days if pod_id in by_day[item.day]]
             if not pod_days:
                 continue
             scopes.append(
@@ -1124,43 +1088,6 @@ class ForecastService:
             records.append(replace(record, attribution=attribution))
             previous = state
         return records, fills, kept
-
-    async def _shared_pod_days(
-        self, tenant_id: str, project_ids: Sequence[str], first: date, last: date
-    ) -> dict[date, frozenset[str]]:
-        """Per day from a week before ``first`` to ``last``, the pods that work on more than one
-        of the projects (:meth:`_shared_pods` from one edge read). A day with none is left out.
-
-        One info line for each such pod and day from ``first`` on, as the hourly run says it.
-        """
-        projects = frozenset(project_ids)
-        pods = frozenset(node.id for node in await self._graph.list_nodes(tenant_id, NodeKind.POD))
-        edges = [
-            edge
-            for edge in await self._graph.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
-            if edge.from_node_id in projects and edge.to_node_id in pods
-        ]
-        shared: dict[date, frozenset[str]] = {}
-        day = first - timedelta(days=PREVIOUS_SNAPSHOT_DAYS)
-        while day <= last:
-            working: dict[str, list[str]] = {}
-            for edge in edges:
-                if edge.is_active_on(day):
-                    working.setdefault(edge.to_node_id, []).append(edge.from_node_id)
-            several = {pod_id: ids for pod_id, ids in working.items() if len(set(ids)) > 1}
-            if several:
-                shared[day] = frozenset(several)
-                if day >= first:
-                    for pod_id, ids in sorted(several.items()):
-                        _log_info(
-                            "forecast_day_not_kept_pod_on_several_projects",
-                            tenant_id=tenant_id,
-                            day=day.isoformat(),
-                            pod_id=pod_id,
-                            project_ids=",".join(sorted(set(ids))),
-                        )
-            day += timedelta(days=1)
-        return shared
 
     def _end_of(self, day: date) -> datetime:
         """The first moment after ``day`` in the tenant's zone."""
@@ -1440,14 +1367,6 @@ def _latest_etas(
         if day is not None:
             latest[key] = (fact.observed_at, day)
     return {key: day for key, (_seen, day) in latest.items() if day is not None}
-
-
-def _log_info(event: str, **fields: str) -> None:
-    # Imported here, not at module load, as in rollup_service: the workflow
-    # sandbox refuses structlog's import-time randomness.
-    import structlog
-
-    structlog.get_logger(__name__).info(event, **fields)
 
 
 def _record(

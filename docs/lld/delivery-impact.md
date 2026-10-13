@@ -59,7 +59,8 @@ share) and the window's change. Keys, titles, types, numbers and dates only.
 - The reconstruction writes it on each rebuilt row, and fills it on a row the
   hourly run kept without one (`ForecastDayRepository.fill_attribution`),
   without touching that row's forecast. Pod rows are rebuilt with the pod's
-  tasks as the graph held them each day.
+  tasks as the graph held them each day, under each project the pod worked
+  on, its part of that project.
 - Today is always computed live (`ForecastService.forecast_day`).
 
 ## The read (`core/application/impact_service.py`)

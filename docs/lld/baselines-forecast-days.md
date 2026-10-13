@@ -52,7 +52,9 @@ planned_on, change_label, grace_working_days, note, actor)`:
 
 ## forecast_days
 
-Each project's and release's forecast as it stood on one day:
+Each project's, release's and pod's forecast as it stood on one day, under the
+project it was computed in (`project_id`: the project itself, the release's
+project, or for a pod the project whose part of the pod it is):
 
 - `p50` and `p85` dates, the verdict and the `target_date` it was measured
   against (committed, else the tracker's release date);
@@ -70,7 +72,10 @@ later run the same day replaces the rows, so the day's last run stays. If the
 write fails, the failure is logged and the snapshots stay stored; the history
 read replays the day.
 
-Pods get no rows yet; the table allows `pod`.
+A pod's row is its part of one project's work: that project's keys, date and
+seed. A pod that works on two projects keeps one row a day under each, from each
+project's own delivery view and breakdown, and every reader asks for the row
+under the project it reads (`list_between` with the scope's project).
 
 ## Reconstruction
 
@@ -121,8 +126,15 @@ It is additive and has no data step.
   - a partial unique index for one active baseline per (tenant, scope kind,
     scope);
   - indexes by scope and by project.
-- `forecast_days`: PK (tenant, scope kind, scope, day), with an index by
+- `forecast_days`: PK (tenant, scope kind, scope, project, day) since
+  `0044_forecast_days_project` (before it, (tenant, scope kind, scope, day),
+  so a pod on two projects kept no row on those days, D80), with an index by
   project and day.
+
+`0044_forecast_days_project` only changes the key: `project_id` has been on
+every row, NOT NULL, since 0042, so there is nothing to backfill. Its
+downgrade drops a pod's days kept under more than one project (the old rule)
+and keeps the row computed last for any other scope kept under two.
 
 The downgrade drops both tables; nothing else is touched, neither the graph nor
 the AGE mirror. Memory mode and the tests use in-memory repositories.

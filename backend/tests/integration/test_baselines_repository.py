@@ -1,7 +1,8 @@
 """Planning baselines and the forecast kept per day round-trip through Postgres.
 
-Never point it at a database anyone uses: it writes rows. Run it on a copy of a
-seeded database migrated to 0042, under a tenant of its own:
+Never point it at a database anyone uses: it writes rows, and the migration test takes
+0044 down and up again. Run it on a copy of a seeded database migrated to head (0044),
+under a tenant of its own:
 
     docker exec openprogram-postgres-1 createdb -U openprogram -T <seeded db> bltest
     OPENPROGRAM_DATABASE_URL=postgresql://openprogram:openprogram@localhost:5432/bltest \
@@ -16,11 +17,15 @@ from __future__ import annotations
 import os
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 import psycopg.errors
 import pytest
+from alembic import command
+from alembic.config import Config
 
+from config.settings import get_settings
 from core.domain.baseline import (
     BaselineItem,
     BaselineKind,
@@ -41,6 +46,7 @@ from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
 
 DATABASE_URL = os.getenv("OPENPROGRAM_BASELINES_DATABASE_URL", "")
 AT = datetime(2026, 10, 5, 9, 0, tzinfo=UTC)
+ROOT = Path(__file__).resolve().parents[3]
 
 pytestmark = [
     pytest.mark.integration,
@@ -205,8 +211,11 @@ def _pod_day(tenant: str, project_id: str, day: date, p50: date | None) -> Forec
     )
 
 
-async def test_a_key_offered_twice_in_one_save_keeps_the_last_and_the_rest_of_the_day() -> None:
-    """A pod two projects share: one key twice in one multi-row statement (CardinalityViolation)."""
+async def test_a_pod_two_projects_share_keeps_a_row_under_each_and_a_repeat_keeps_the_last() -> (
+    None
+):
+    """The key has the project (0044): a pod two projects share is two keys a day. One key
+    twice in one multi-row statement is still refused whole (CardinalityViolation)."""
     executor = PsycopgAsyncExecutor(DATABASE_URL, min_size=1, max_size=2)
     repository = PostgresForecastDayRepository(executor)
     tenant = f"fd-test-{uuid4().hex[:8]}"
@@ -235,7 +244,8 @@ async def test_a_key_offered_twice_in_one_save_keeps_the_last_and_the_rest_of_th
                 INSERT INTO forecast_days ({columns})
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s),
                     (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (tenant_id, scope_kind, scope_id, day) DO UPDATE SET p50 = EXCLUDED.p50
+                ON CONFLICT (tenant_id, scope_kind, scope_id, project_id, day)
+                DO UPDATE SET p50 = EXCLUDED.p50
                 """,
                 (*row, *row),
             )
@@ -244,33 +254,55 @@ async def test_a_key_offered_twice_in_one_save_keeps_the_last_and_the_rest_of_th
         )
         assert refused[0]["rows"] == 0
 
-        # The repository's save of the same shape: the pod once, the last one, and both projects.
+        # The repository's save of a day: the pod under each project, both projects, and the
+        # pod's part of Identity offered twice, of which the last stays.
         await repository.save(
             [
                 project_rows[0],
                 _pod_day(tenant, "project-checkout", day, date(2026, 11, 3)),
+                _pod_day(tenant, "project-identity", day, date(2026, 11, 20)),
                 _pod_day(tenant, "project-identity", day, date(2026, 12, 1)),
                 project_rows[1],
             ]
         )
         found = await executor.fetch(
             "SELECT scope_kind, scope_id, project_id, p50 FROM forecast_days "
-            "WHERE tenant_id = %s ORDER BY scope_kind, scope_id",
+            "WHERE tenant_id = %s ORDER BY scope_kind, scope_id, project_id",
             (tenant,),
         )
         assert [(r["scope_kind"], r["scope_id"], r["project_id"], r["p50"]) for r in found] == [
+            ("pod", "pod-platform", "project-checkout", date(2026, 11, 3)),
             ("pod", "pod-platform", "project-identity", date(2026, 12, 1)),
             ("project", "project-checkout", "project-checkout", date(2026, 11, 3)),
             ("project", "project-identity", "project-identity", date(2026, 11, 9)),
         ]
-        # The key has no project, so a read is by the scope's project too: the row kept under
-        # one project is never the pod's row under the other.
+        # Each project reads its own part of the pod, never the other's.
         under_identity, under_checkout = (
             CommitmentScope(kind=CommitmentScopeKind.POD, id="pod-platform", project_id=project)
             for project in ("project-identity", "project-checkout")
         )
-        assert len(await repository.list_between(tenant, under_identity, day, day)) == 1
-        assert await repository.list_between(tenant, under_checkout, day, day) == []
+        assert [
+            row.p50 for row in await repository.list_between(tenant, under_identity, day, day)
+        ] == [date(2026, 12, 1)]
+        assert [
+            row.p50 for row in await repository.list_between(tenant, under_checkout, day, day)
+        ] == [date(2026, 11, 3)]
+        # A rebuilt row of one project's part never replaces the kept one; the other's is
+        # replaced by a later run of its own.
+        await repository.save(
+            [
+                replace(
+                    _pod_day(tenant, "project-checkout", day, date(2027, 3, 1)), reconstructed=True
+                ),
+                _pod_day(tenant, "project-identity", day, date(2026, 12, 8)),
+            ]
+        )
+        assert [
+            row.p50 for row in await repository.list_between(tenant, under_checkout, day, day)
+        ] == [date(2026, 11, 3)]
+        assert [
+            row.p50 for row in await repository.list_between(tenant, under_identity, day, day)
+        ] == [date(2026, 12, 8)]
 
         # A later run replaces the rows, and a repeat across the 100-row batch edge is still one.
         many = [
@@ -290,7 +322,7 @@ async def test_a_key_offered_twice_in_one_save_keeps_the_last_and_the_rest_of_th
             "SELECT count(*) AS rows FROM forecast_days WHERE tenant_id = %s", (tenant,)
         )
         first = await repository.list_between(tenant, many[0].scope, day, day)
-        assert total[0]["rows"] == 153
+        assert total[0]["rows"] == 154
         assert [row.p50 for row in first] == [date(2027, 1, 4)]
     finally:
         await executor.execute("DELETE FROM forecast_days WHERE tenant_id = %s", (tenant,))
@@ -324,3 +356,90 @@ async def test_a_batch_the_database_refuses_says_how_many_rows_it_did_not_take()
     finally:
         await executor.execute("DELETE FROM forecast_days WHERE tenant_id = %s", (tenant,))
         await executor.close()
+
+
+async def _primary_key(executor: PsycopgAsyncExecutor) -> list[str]:
+    rows = await executor.fetch(
+        """
+        SELECT attribute.attname AS name
+        FROM pg_index AS key
+        JOIN pg_attribute AS attribute
+            ON attribute.attrelid = key.indrelid AND attribute.attnum = ANY(key.indkey)
+        WHERE key.indrelid = 'forecast_days'::regclass AND key.indisprimary
+        ORDER BY array_position(key.indkey, attribute.attnum)
+        """
+    )
+    return [str(row["name"]) for row in rows]
+
+
+async def test_the_project_key_migration_goes_down_and_up_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """0044 down: a pod's day under two projects is dropped (D80), a release's day under two
+    keeps the row computed last, every other row stays; 0044 up again: the same key as before."""
+    monkeypatch.setenv("OPENPROGRAM_DATABASE_URL", DATABASE_URL)
+    get_settings.cache_clear()
+    alembic = Config(str(ROOT / "backend/infra/persistence/alembic.ini"))
+    executor = PsycopgAsyncExecutor(DATABASE_URL, min_size=1, max_size=2)
+    repository = PostgresForecastDayRepository(executor)
+    tenant = f"fd-test-{uuid4().hex[:8]}"
+    day = date(2026, 10, 13)
+    release = CommitmentScope(
+        kind=CommitmentScopeKind.RELEASE, id="rel-1", project_id="project-checkout"
+    )
+    moved = CommitmentScope(
+        kind=CommitmentScopeKind.RELEASE, id="rel-1", project_id="project-identity"
+    )
+    alone = CommitmentScope(kind=CommitmentScopeKind.POD, id="pod-alone", project_id="project-a")
+    rows = [
+        _pod_day(tenant, "project-checkout", day, date(2026, 11, 3)),
+        _pod_day(tenant, "project-identity", day, date(2026, 12, 1)),
+        _pod_day(tenant, "project-checkout", day - timedelta(days=1), date(2026, 11, 4)),
+        replace(_pod_day(tenant, "project-a", day, date(2026, 11, 5)), scope=alone),
+        replace(_pod_day(tenant, "project-checkout", day, None), scope=release),
+        replace(
+            _pod_day(tenant, "project-identity", day, date(2026, 12, 2)),
+            scope=moved,
+            computed_at=AT + timedelta(hours=1),
+        ),
+    ]
+    try:
+        assert await _primary_key(executor) == [
+            "tenant_id",
+            "scope_kind",
+            "scope_id",
+            "project_id",
+            "day",
+        ]
+        await repository.save(rows)
+
+        command.downgrade(alembic, "0043_jira_hygiene")
+        assert await _primary_key(executor) == ["tenant_id", "scope_kind", "scope_id", "day"]
+        left = await executor.fetch(
+            "SELECT scope_kind, scope_id, project_id, day FROM forecast_days "
+            "WHERE tenant_id = %s ORDER BY scope_kind, scope_id, day",
+            (tenant,),
+        )
+        assert [(r["scope_kind"], r["scope_id"], r["project_id"], r["day"]) for r in left] == [
+            ("pod", "pod-alone", "project-a", day),
+            # The shared pod's day under two projects is gone; its day under one stays.
+            ("pod", "pod-platform", "project-checkout", day - timedelta(days=1)),
+            ("release", "rel-1", "project-identity", day),
+        ]
+
+        command.upgrade(alembic, "head")
+        assert await _primary_key(executor) == [
+            "tenant_id",
+            "scope_kind",
+            "scope_id",
+            "project_id",
+            "day",
+        ]
+        await repository.save(rows[:2])
+        for row in rows[:2]:
+            assert await repository.list_between(tenant, row.scope, day, day) == [row]
+    finally:
+        command.upgrade(alembic, "head")
+        await executor.execute("DELETE FROM forecast_days WHERE tenant_id = %s", (tenant,))
+        await executor.close()
+        get_settings.cache_clear()

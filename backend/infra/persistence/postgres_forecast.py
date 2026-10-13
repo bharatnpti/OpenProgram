@@ -164,7 +164,9 @@ class PostgresReleaseRepository:
 
 
 class PostgresForecastDayRepository:
-    """forecast_days: a reconstructed row never replaces one the hourly run kept."""
+    """forecast_days, keyed (tenant, scope kind, scope id, project, day) since 0044: a pod
+    two projects share keeps a row under each. A reconstructed row never replaces one the
+    hourly run kept."""
 
     def __init__(self, executor: AsyncSqlExecutor) -> None:
         self._executor = executor
@@ -192,8 +194,8 @@ class PostgresForecastDayRepository:
                         f"""
                         INSERT INTO forecast_days ({_FORECAST_DAY_COLUMNS})
                         VALUES {values}
-                        ON CONFLICT (tenant_id, scope_kind, scope_id, day) DO UPDATE SET
-                            project_id = EXCLUDED.project_id,
+                        ON CONFLICT (tenant_id, scope_kind, scope_id, project_id, day)
+                        DO UPDATE SET
                             p50 = EXCLUDED.p50,
                             p85 = EXCLUDED.p85,
                             verdict = EXCLUDED.verdict,

@@ -265,12 +265,25 @@ class ForecastDayRecord:
     attribution: Mapping[str, object] | None = None
 
 
-def forecast_day_key(record: ForecastDayRecord) -> tuple[str, str, str, date]:
-    """What a stored row is unique by: the tenant, the kind and id of the scope, and the day.
+#: A stored row's key: the tenant, the scope's kind, id and project, and the day.
+ForecastDayKey = tuple[str, str, str, str, date]
 
-    The scope's project is not part of it: a pod two projects share has one row a day.
+
+def forecast_day_key(record: ForecastDayRecord) -> ForecastDayKey:
+    """What a stored row is unique by: the tenant, the scope's kind, id and project, and the day.
+
+    The project is part of it (migration 0044): a pod's forecast is its part of one
+    project's work, so a pod two projects share keeps one row a day under each. A
+    project's row is under itself and a release's under its one project, so for them
+    the project adds nothing to the key.
     """
-    return (record.tenant_id, record.scope.kind.value, record.scope.id, record.day)
+    return (
+        record.tenant_id,
+        record.scope.kind.value,
+        record.scope.id,
+        record.scope.project_id,
+        record.day,
+    )
 
 
 def last_row_per_key(
@@ -282,7 +295,7 @@ def last_row_per_key(
     A store keeps one row per key, and a statement that offers it two for the same
     key is refused whole: a repeated key must cost the repeat, never the day.
     """
-    kept: dict[tuple[str, str, str, date], ForecastDayRecord] = {}
+    kept: dict[ForecastDayKey, ForecastDayRecord] = {}
     replaced: list[ForecastDayRecord] = []
     for record in records:
         key = forecast_day_key(record)
