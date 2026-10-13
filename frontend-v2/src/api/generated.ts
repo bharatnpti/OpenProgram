@@ -7735,6 +7735,11 @@ export interface components {
       escalated_to?: string | null;
       /** Escalation Label */
       escalation_label?: string | null;
+      /**
+       * Request Id
+       * @description The request between people this ask is, when it is one: the console lists it under the caller's own asks and leaves it out of this table then.
+       */
+      request_id?: string | null;
     };
     /** ProjectAsksResponse */
     ProjectAsksResponse: {

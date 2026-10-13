@@ -24833,6 +24833,18 @@
               }
             ],
             "title": "Escalation Label"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id",
+            "description": "The request between people this ask is, when it is one: the console lists it under the caller's own asks and leaves it out of this table then."
           }
         },
         "type": "object",
