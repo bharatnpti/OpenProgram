@@ -13,11 +13,13 @@ from core.domain.forecast import (
     CommitmentScopeKind,
     DateChange,
     ForecastDayRecord,
+    ForecastDaysNotKept,
     Release,
     ReleaseMatch,
     ReleaseMatchKind,
     Verdict,
 )
+from infra.persistence.forecast_day_rows import distinct_forecast_days
 
 _tracer = trace.get_tracer("openprogram.persistence.forecast")
 _CHANGE_COLUMNS = (
@@ -168,12 +170,16 @@ class PostgresForecastDayRepository:
         self._executor = executor
 
     async def save(self, records: Sequence[ForecastDayRecord]) -> None:
-        if not records:
+        """Keep each record. A key offered twice keeps its last record, and says so: the
+        statement would otherwise be refused whole and no row of the day saved. If the
+        store refuses a batch anyway, ForecastDaysNotKept counts the rows it did not take."""
+        rows = distinct_forecast_days(records)
+        if not rows:
             return
         with _tracer.start_as_current_span("postgres.forecast.save_forecast_days"):
             # One statement per batch of days, so a reconstruction of 90 days is a few round trips.
-            for start in range(0, len(records), 100):
-                batch = records[start : start + 100]
+            for start in range(0, len(rows), 100):
+                batch = rows[start : start + 100]
                 values = ", ".join(
                     [
                         "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
@@ -181,30 +187,34 @@ class PostgresForecastDayRepository:
                     ]
                     * len(batch)
                 )
-                await self._executor.execute(
-                    f"""
-                    INSERT INTO forecast_days ({_FORECAST_DAY_COLUMNS})
-                    VALUES {values}
-                    ON CONFLICT (tenant_id, scope_kind, scope_id, day) DO UPDATE SET
-                        project_id = EXCLUDED.project_id,
-                        p50 = EXCLUDED.p50,
-                        p85 = EXCLUDED.p85,
-                        verdict = EXCLUDED.verdict,
-                        target_date = EXCLUDED.target_date,
-                        team_latest = EXCLUDED.team_latest,
-                        team_latest_key = EXCLUDED.team_latest_key,
-                        remaining = EXCLUDED.remaining,
-                        unit = EXCLUDED.unit,
-                        sample_days = EXCLUDED.sample_days,
-                        completed_in_sample = EXCLUDED.completed_in_sample,
-                        min_sample_days = EXCLUDED.min_sample_days,
-                        attribution = EXCLUDED.attribution,
-                        reconstructed = EXCLUDED.reconstructed,
-                        computed_at = EXCLUDED.computed_at
-                    WHERE forecast_days.reconstructed OR NOT EXCLUDED.reconstructed
-                    """,
-                    tuple(value for record in batch for value in _forecast_day_params(record)),
-                )
+                try:
+                    await self._executor.execute(
+                        f"""
+                        INSERT INTO forecast_days ({_FORECAST_DAY_COLUMNS})
+                        VALUES {values}
+                        ON CONFLICT (tenant_id, scope_kind, scope_id, day) DO UPDATE SET
+                            project_id = EXCLUDED.project_id,
+                            p50 = EXCLUDED.p50,
+                            p85 = EXCLUDED.p85,
+                            verdict = EXCLUDED.verdict,
+                            target_date = EXCLUDED.target_date,
+                            team_latest = EXCLUDED.team_latest,
+                            team_latest_key = EXCLUDED.team_latest_key,
+                            remaining = EXCLUDED.remaining,
+                            unit = EXCLUDED.unit,
+                            sample_days = EXCLUDED.sample_days,
+                            completed_in_sample = EXCLUDED.completed_in_sample,
+                            min_sample_days = EXCLUDED.min_sample_days,
+                            attribution = EXCLUDED.attribution,
+                            reconstructed = EXCLUDED.reconstructed,
+                            computed_at = EXCLUDED.computed_at
+                        WHERE forecast_days.reconstructed OR NOT EXCLUDED.reconstructed
+                        """,
+                        tuple(value for record in batch for value in _forecast_day_params(record)),
+                    )
+                except Exception as exc:
+                    # This batch and the ones after it were not taken; the ones before were.
+                    raise ForecastDaysNotKept(rows=len(rows) - start) from exc
 
     async def fill_attribution(self, records: Sequence[ForecastDayRecord]) -> None:
         with _tracer.start_as_current_span("postgres.forecast.fill_forecast_day_attribution"):

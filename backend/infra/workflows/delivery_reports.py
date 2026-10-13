@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from core.domain.forecast import ForecastDaysNotKept
 from core.domain.graph import NodeKind
 
 if TYPE_CHECKING:
@@ -114,11 +115,14 @@ async def run_delivery_snapshot_activity(payload: DeliverySnapshotInput) -> Deli
         except Exception as exc:  # noqa: BLE001 - the snapshots are stored; history replays the day
             import structlog
 
-            structlog.get_logger(__name__).warning(
+            # The run still ends well (the snapshots are stored, and the reconstruction can
+            # rebuild the day), so the error log is what says the day's rows are missing.
+            structlog.get_logger(__name__).error(
                 "forecast_days_not_recorded",
                 tenant_id=payload.tenant_id,
                 day=day.isoformat(),
-                error_type=type(exc).__name__,
+                error_type=type(exc.__cause__ or exc).__name__,
+                rows_lost=exc.rows if isinstance(exc, ForecastDaysNotKept) else None,
             )
             kept = 0
         rebuilt = left = 0

@@ -15,7 +15,9 @@ Each project's, pod's and release's forecast is kept per day (forecast_days):
 the hourly snapshot run keeps today's, and a one-off reconstruction rebuilds
 earlier days from the stored snapshots, with each day's committed date and ETAs
 as they stood that day. The history read reads those rows and replays only the
-days nobody kept, and today, which is always live.
+days nobody kept, and today, which is always live. A pod's row is its part of a
+project's work, and a pod has one row a day: one that works on several projects
+is kept under the first by id.
 
 Each kept day also says why its forecast moved since the scope's day before
 with a snapshot (``attribution``, core/domain/impact.py): the move replayed one
@@ -25,7 +27,7 @@ input at a time, under the day's own seed, so its parts add up exactly.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from uuid import uuid4
@@ -588,12 +590,25 @@ class ForecastService:
 
         The hourly snapshot run calls it after storing the day's snapshots; each
         later run that day replaces the rows, so the day's last run stays.
+
+        A pod has one row a day (the store's key has no project), however many
+        projects it works on: a pod's forecast is its part of a project, so the
+        row is the pod's part of the first project by id that it works on that
+        day, computed once, with its attribution from that same computation.
         """
         if self._forecast_days is None:
             return 0
         records: list[ForecastDayRecord] = []
-        for project in await self._graph.list_nodes(tenant_id, NodeKind.PROJECT, as_of=day):
-            records += await self._day_records(tenant_id, project.id, day)
+        kept_pods: set[str] = set()
+        for project in sorted(
+            await self._graph.list_nodes(tenant_id, NodeKind.PROJECT, as_of=day),
+            key=lambda node: node.id,
+        ):
+            rows = await self._day_records(tenant_id, project.id, day, skip_pods=kept_pods)
+            kept_pods.update(
+                row.scope.id for row in rows if row.scope.kind is CommitmentScopeKind.POD
+            )
+            records += rows
         await self._forecast_days.save(records)
         return len(records)
 
@@ -743,8 +758,10 @@ class ForecastService:
         day: date,
         *,
         only: CommitmentScope | None = None,
+        skip_pods: Container[str] = (),
     ) -> list[ForecastDayRecord]:
-        """The rows the hourly run keeps for the project's scopes on ``day`` (or ``only``)."""
+        """The rows the hourly run keeps for the project's scopes on ``day`` (or ``only``),
+        except for the pods in ``skip_pods``: ones another project already kept."""
         view = await self.project_delivery(tenant_id, project_id, day)
         computed_at = self._clock()
         rule = await self.forecast_settings(tenant_id)
@@ -752,6 +769,8 @@ class ForecastService:
         records: list[ForecastDayRecord] = []
         for item in (view.project, *view.pods, *view.releases):
             if only is not None and item.scope != only:
+                continue
+            if item.scope.kind is CommitmentScopeKind.POD and item.scope.id in skip_pods:
                 continue
             record = _record(tenant_id, item, day, computed_at)
             records.append(
@@ -865,9 +884,14 @@ class ForecastService:
             return total
         rule = await self.forecast_settings(tenant_id)
         eta_facts = await self._eta_facts(tenant_id)
-        for project in await self._graph.list_nodes(tenant_id, NodeKind.PROJECT, as_of=as_of):
+        # The pods' days already rebuilt under an earlier project: a pod has one row a day.
+        kept_pod_days: set[tuple[str, date]] = set()
+        for project in sorted(
+            await self._graph.list_nodes(tenant_id, NodeKind.PROJECT, as_of=as_of),
+            key=lambda node: node.id,
+        ):
             done = await self._reconstruct_project(
-                tenant_id, project.id, first, last, rule, eta_facts
+                tenant_id, project.id, first, last, rule, eta_facts, kept_pod_days
             )
             total = ReconstructionSummary(
                 first_day=first,
@@ -886,6 +910,7 @@ class ForecastService:
         last: date,
         rule: ForecastSettingsView,
         eta_facts: Sequence[FactEvent],
+        kept_pod_days: set[tuple[str, date]],
     ) -> ReconstructionSummary:
         repository = self._forecast_days
         if repository is None:
@@ -901,7 +926,9 @@ class ForecastService:
             _task_key(task): task
             for task in await self._delivery.scope_tasks(tenant_id, project_id, self._today())
         }
-        scopes = await self._reconstruct_scopes(tenant_id, project_id, lead, last, stored, tasks)
+        scopes = await self._reconstruct_scopes(
+            tenant_id, project_id, lead, last, stored, tasks, kept_pod_days
+        )
         context = _ReconstructContext(
             first=first,
             stored=stored,
@@ -935,8 +962,13 @@ class ForecastService:
         last: date,
         stored: Sequence[RequirementsSnapshot],
         tasks: Mapping[str, GraphNode],
+        kept_pod_days: set[tuple[str, date]],
     ) -> list[_ReconstructScope]:
-        """The project, its releases and its pods, each with its own snapshots of the days."""
+        """The project, its releases and its pods, each with its own snapshots of the days.
+
+        A pod's day goes to the first project (by id) that has it, as record_forecast_days
+        keeps it: ``kept_pod_days`` holds the days earlier projects took, and gains this one's.
+        """
         project_days = [item for item in stored if item.day >= lead]
         scopes: list[_ReconstructScope] = [
             _ReconstructScope(
@@ -971,21 +1003,23 @@ class ForecastService:
         )
         by_day = {item.day: membership.keys_on(item.day) for item in project_days}
         for pod_id in sorted({pod for keys in by_day.values() for pod in keys}):
+            pod_days = [
+                item
+                for item in project_days
+                if pod_id in by_day[item.day] and (pod_id, item.day) not in kept_pod_days
+            ]
+            if not pod_days:
+                continue
+            kept_pod_days.update((pod_id, item.day) for item in pod_days)
             scopes.append(
                 _ReconstructScope(
                     scope=CommitmentScope(
                         kind=CommitmentScopeKind.POD, id=pod_id, project_id=project_id
                     ),
-                    own=[
-                        _restricted(item, by_day[item.day][pod_id])
-                        for item in project_days
-                        if pod_id in by_day[item.day]
-                    ],
+                    own=[_restricted(item, by_day[item.day][pod_id]) for item in pod_days],
                     jira_date=None,
                     restricted=True,
-                    keys_by_day={
-                        day: keys[pod_id] for day, keys in by_day.items() if pod_id in keys
-                    },
+                    keys_by_day={item.day: by_day[item.day][pod_id] for item in pod_days},
                 )
             )
         return scopes

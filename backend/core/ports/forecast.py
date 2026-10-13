@@ -54,7 +54,10 @@ class ForecastDayRepository(Protocol):
         """Keep each record, replacing the scope's row for its day.
 
         A reconstructed record never replaces a row the hourly run kept; any
-        other record replaces whatever is there.
+        other record replaces whatever is there. A key (tenant, scope kind, scope
+        id, day) offered twice in one call keeps its last record and is warned
+        about, never the whole call lost. A store that cannot take rows raises
+        ForecastDaysNotKept with how many.
         """
         ...
 

@@ -10,7 +10,9 @@ from core.domain.forecast import (
     ForecastDayRecord,
     ForecastSettings,
     Release,
+    forecast_day_key,
 )
+from infra.persistence.forecast_day_rows import distinct_forecast_days
 
 
 @dataclass
@@ -77,8 +79,9 @@ class InMemoryForecastDayRepository:
     _rows: dict[tuple[str, str, str, date], ForecastDayRecord] = field(default_factory=dict)
 
     async def save(self, records: Sequence[ForecastDayRecord]) -> None:
-        for record in records:
-            key = (record.tenant_id, record.scope.kind.value, record.scope.id, record.day)
+        # As Postgres keeps them: a key offered twice in one call keeps its last record.
+        for record in distinct_forecast_days(records):
+            key = forecast_day_key(record)
             kept = self._rows.get(key)
             if kept is not None and record.reconstructed and not kept.reconstructed:
                 continue
@@ -86,7 +89,7 @@ class InMemoryForecastDayRepository:
 
     async def fill_attribution(self, records: Sequence[ForecastDayRecord]) -> None:
         for record in records:
-            key = (record.tenant_id, record.scope.kind.value, record.scope.id, record.day)
+            key = forecast_day_key(record)
             kept = self._rows.get(key)
             if kept is not None and kept.attribution is None and record.attribution is not None:
                 self._rows[key] = replace(kept, attribution=record.attribution)

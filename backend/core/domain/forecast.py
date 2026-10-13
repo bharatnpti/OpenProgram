@@ -73,6 +73,15 @@ class ForecastSettingsError(OpenProgramError):
     """A forecast setting that cannot be saved."""
 
 
+class ForecastDaysNotKept(OpenProgramError):
+    """Forecast rows the store refused: they are lost until the next run keeps them."""
+
+    def __init__(self, *, rows: int) -> None:
+        super().__init__(f"{rows} forecast day rows were not kept.")
+        #: How many rows were not saved.
+        self.rows = rows
+
+
 @dataclass(frozen=True, kw_only=True)
 class CommitmentScope:
     kind: CommitmentScopeKind
@@ -254,6 +263,34 @@ class ForecastDayRecord:
     computed_at: datetime
     reconstructed: bool = False
     attribution: Mapping[str, object] | None = None
+
+
+def forecast_day_key(record: ForecastDayRecord) -> tuple[str, str, str, date]:
+    """What a stored row is unique by: the tenant, the kind and id of the scope, and the day.
+
+    The scope's project is not part of it: a pod two projects share has one row a day.
+    """
+    return (record.tenant_id, record.scope.kind.value, record.scope.id, record.day)
+
+
+def last_row_per_key(
+    records: Sequence[ForecastDayRecord],
+) -> tuple[list[ForecastDayRecord], list[ForecastDayRecord]]:
+    """The rows to store, one per key with the last record of a key winning, and the
+    records it replaced, in the order they were given.
+
+    A store keeps one row per key, and a statement that offers it two for the same
+    key is refused whole: a repeated key must cost the repeat, never the day.
+    """
+    kept: dict[tuple[str, str, str, date], ForecastDayRecord] = {}
+    replaced: list[ForecastDayRecord] = []
+    for record in records:
+        key = forecast_day_key(record)
+        earlier = kept.get(key)
+        if earlier is not None:
+            replaced.append(earlier)
+        kept[key] = record
+    return list(kept.values()), replaced
 
 
 def changes_until(changes: Iterable[DateChange], cutoff: datetime) -> list[DateChange]:

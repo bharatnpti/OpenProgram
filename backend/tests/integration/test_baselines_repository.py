@@ -18,6 +18,7 @@ from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
+import psycopg.errors
 import pytest
 
 from core.domain.baseline import (
@@ -31,6 +32,7 @@ from core.domain.forecast import (
     CommitmentScope,
     CommitmentScopeKind,
     ForecastDayRecord,
+    ForecastDaysNotKept,
     Verdict,
 )
 from infra.persistence.postgres_baselines import PostgresPlanningBaselineRepository
@@ -176,6 +178,141 @@ async def test_a_kept_day_gains_its_breakdown_and_nothing_else_changes() -> None
         await repository.fill_attribution([replace(kept, attribution={"version": 2})])
         (again,) = await repository.list_between(tenant, scope, kept.day, kept.day)
         assert again.attribution == breakdown
+    finally:
+        await executor.execute("DELETE FROM forecast_days WHERE tenant_id = %s", (tenant,))
+        await executor.close()
+
+
+def _pod_day(tenant: str, project_id: str, day: date, p50: date | None) -> ForecastDayRecord:
+    return ForecastDayRecord(
+        tenant_id=tenant,
+        scope=CommitmentScope(
+            kind=CommitmentScopeKind.POD, id="pod-platform", project_id=project_id
+        ),
+        day=day,
+        p50=p50,
+        p85=None,
+        verdict=Verdict.NOT_ENOUGH_DATA,
+        target_date=None,
+        team_latest=None,
+        team_latest_key=None,
+        remaining=3,
+        unit="requirements",
+        sample_days=4,
+        completed_in_sample=1.0,
+        min_sample_days=10,
+        computed_at=AT,
+    )
+
+
+async def test_a_key_offered_twice_in_one_save_keeps_the_last_and_the_rest_of_the_day() -> None:
+    """A pod two projects share: one key twice in one multi-row statement (CardinalityViolation)."""
+    executor = PsycopgAsyncExecutor(DATABASE_URL, min_size=1, max_size=2)
+    repository = PostgresForecastDayRepository(executor)
+    tenant = f"fd-test-{uuid4().hex[:8]}"
+    day = date(2026, 10, 13)
+    checkout = CommitmentScope(
+        kind=CommitmentScopeKind.PROJECT, id="project-checkout", project_id="project-checkout"
+    )
+    identity = CommitmentScope(
+        kind=CommitmentScopeKind.PROJECT, id="project-identity", project_id="project-identity"
+    )
+    project_rows = [
+        replace(_pod_day(tenant, "project-checkout", day, date(2026, 11, 3)), scope=checkout),
+        replace(_pod_day(tenant, "project-identity", day, date(2026, 11, 9)), scope=identity),
+    ]
+    try:
+        # The database itself refuses a statement that offers a key twice, and saves none.
+        columns = (
+            "tenant_id, scope_kind, scope_id, project_id, day, verdict, remaining, unit, "
+            "sample_days, completed_in_sample, min_sample_days, computed_at"
+        )
+        row = (tenant, "pod", "pod-platform", "project-checkout", day, "no_date", 1, "requirements")
+        row += (1, 1, 1, AT)
+        with pytest.raises(psycopg.errors.CardinalityViolation):
+            await executor.execute(
+                f"""
+                INSERT INTO forecast_days ({columns})
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s),
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, scope_kind, scope_id, day) DO UPDATE SET p50 = EXCLUDED.p50
+                """,
+                (*row, *row),
+            )
+        refused = await executor.fetch(
+            "SELECT count(*) AS rows FROM forecast_days WHERE tenant_id = %s", (tenant,)
+        )
+        assert refused[0]["rows"] == 0
+
+        # The repository's save of the same shape: the pod once, the last one, and both projects.
+        await repository.save(
+            [
+                project_rows[0],
+                _pod_day(tenant, "project-checkout", day, date(2026, 11, 3)),
+                _pod_day(tenant, "project-identity", day, date(2026, 12, 1)),
+                project_rows[1],
+            ]
+        )
+        found = await executor.fetch(
+            "SELECT scope_kind, scope_id, project_id, p50 FROM forecast_days "
+            "WHERE tenant_id = %s ORDER BY scope_kind, scope_id",
+            (tenant,),
+        )
+        assert [(r["scope_kind"], r["scope_id"], r["project_id"], r["p50"]) for r in found] == [
+            ("pod", "pod-platform", "project-identity", date(2026, 12, 1)),
+            ("project", "project-checkout", "project-checkout", date(2026, 11, 3)),
+            ("project", "project-identity", "project-identity", date(2026, 11, 9)),
+        ]
+
+        # A later run replaces the rows, and a repeat across the 100-row batch edge is still one.
+        many = [
+            replace(
+                _pod_day(tenant, "project-checkout", day, date(2026, 11, 4)),
+                scope=CommitmentScope(
+                    kind=CommitmentScopeKind.POD,
+                    id=f"pod-{index:03d}",
+                    project_id="project-checkout",
+                ),
+            )
+            for index in range(150)
+        ]
+        repeat = replace(many[0], p50=date(2027, 1, 4))
+        await repository.save([*many, repeat])
+        total = await executor.fetch(
+            "SELECT count(*) AS rows FROM forecast_days WHERE tenant_id = %s", (tenant,)
+        )
+        first = await repository.list_between(tenant, many[0].scope, day, day)
+        assert total[0]["rows"] == 153
+        assert [row.p50 for row in first] == [date(2027, 1, 4)]
+    finally:
+        await executor.execute("DELETE FROM forecast_days WHERE tenant_id = %s", (tenant,))
+        await executor.close()
+
+
+async def test_a_batch_the_database_refuses_says_how_many_rows_it_did_not_take() -> None:
+    executor = PsycopgAsyncExecutor(DATABASE_URL, min_size=1, max_size=2)
+    repository = PostgresForecastDayRepository(executor)
+    tenant = f"fd-test-{uuid4().hex[:8]}"
+    day = date(2026, 10, 13)
+    rows = [
+        replace(
+            _pod_day(tenant, "project-checkout", day, None),
+            scope=CommitmentScope(
+                kind=CommitmentScopeKind.POD, id=f"pod-{index:03d}", project_id="project-checkout"
+            ),
+        )
+        for index in range(130)
+    ]
+    # A unit that cannot be stored ends the second statement (rows 100 to 129), not the first.
+    rows[110] = replace(rows[110], unit=None)  # type: ignore[arg-type]
+    try:
+        with pytest.raises(ForecastDaysNotKept) as refused:
+            await repository.save(rows)
+        assert refused.value.rows == 30
+        stored = await executor.fetch(
+            "SELECT count(*) AS rows FROM forecast_days WHERE tenant_id = %s", (tenant,)
+        )
+        assert stored[0]["rows"] == 100
     finally:
         await executor.execute("DELETE FROM forecast_days WHERE tenant_id = %s", (tenant,))
         await executor.close()
