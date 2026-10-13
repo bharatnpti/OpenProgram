@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
-import type { Measure, PeriodKind } from "../../api/schema";
+import type { DeliveryImpactResponse, Measure, PeriodKind } from "../../api/schema";
 import { useRole } from "../../app/role";
 import { PanelState, SectionHeader } from "../../components/PanelState";
 import { Fold } from "../../components/viz/Fold";
@@ -31,9 +31,20 @@ import { VizCard } from "./viz";
 export function TimelineSection({
   projectId,
   releaseId,
+  between,
 }: {
   projectId: string;
   releaseId: string;
+  /**
+   * Drawn between the drawing and Why the date moved, for the row picked and the
+   * impact read it explains (the Project page's What changed). With it, the
+   * drawing's own short change list is left out: the slot says it in full.
+   */
+  between?: (picked: {
+    row: Row;
+    impact: DeliveryImpactResponse | undefined;
+    loading: boolean;
+  }) => ReactNode;
 }) {
   const timeline = useTimeline(projectId, releaseId || undefined);
   const [search, setSearch] = useSearchParams();
@@ -92,6 +103,7 @@ export function TimelineSection({
                 data={data}
                 selected={selected?.row}
                 onSelect={pick}
+                changes={between === undefined}
                 actions={(row) =>
                   row.can_set_date && !access.readOnly ? (
                     <button
@@ -109,6 +121,13 @@ export function TimelineSection({
                 <Locked>{datesOff}</Locked>
               ) : null}
             </VizCard>
+            {selected && between
+              ? between({
+                  row: selected,
+                  impact: impact.query.data,
+                  loading: impact.query.isLoading,
+                })
+              : null}
             {selected ? (
               <ImpactWaterfall
                 row={selected}

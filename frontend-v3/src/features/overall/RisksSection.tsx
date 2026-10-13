@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import type { Rag } from "../../api/schema";
@@ -21,24 +22,46 @@ const DOT: Record<Rag, string> = {
  * Risks and drift from hard signals, one line each, worst and oldest first:
  * the colour is spent on the severity dot only, and what the owner says folds
  * under the line. The escalation matrix that decides who an ask reaches is kept
- * on Admin › Escalation; an admin gets a link to it here.
+ * on Admin › Escalation; an admin gets a link to it here unless `escalation` is
+ * off. `limit` shows the first lines only, with `footer` under them (the Project
+ * page's link to every warning); `names` off leaves out who resolves each and
+ * what they say (an executive, who sees no names).
  */
-export function RisksSection({ projectId }: { projectId: string }) {
+export function RisksSection({
+  projectId,
+  title = "Risks and drift",
+  limit,
+  footer,
+  names: named = true,
+  escalation = true,
+}: {
+  projectId: string;
+  title?: string;
+  limit?: number;
+  footer?: ReactNode;
+  names?: boolean;
+  escalation?: boolean;
+}) {
   const risks = useRisks(projectId);
   const { access } = useRole();
   const names = useNames();
   const today = useShownDay() ?? new Date().toLocaleDateString("en-CA");
   const data = risks.query.data;
-  const lines = data ? riskLines(data, names, names.known, today) : [];
+  const all = data ? riskLines(data, names, names.known, today) : [];
+  const lines = limit !== undefined ? all.slice(0, limit) : all;
 
   return (
     <section aria-labelledby="rk-h">
       <SectionHeader
         id="rk-h"
-        title="Risks and drift"
-        meta="From Jira and Git signals, independent of what anyone reports · worst and oldest first"
+        title={title}
+        meta={
+          limit !== undefined && all.length > lines.length
+            ? `From Jira and Git signals, independent of what anyone reports · the ${lines.length} worst and oldest of ${all.length}`
+            : "From Jira and Git signals, independent of what anyone reports · worst and oldest first"
+        }
         actions={
-          access.overall.escalationLink ? (
+          escalation && access.overall.escalationLink ? (
             <Link
               to="/admin?tab=escalation"
               className="text-[13px] font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
@@ -52,7 +75,7 @@ export function RisksSection({ projectId }: { projectId: string }) {
         isLoading={risks.query.isLoading}
         error={risks.query.error}
         onRetry={() => void risks.query.refetch()}
-        isEmpty={data ? lines.length === 0 : false}
+        isEmpty={data ? all.length === 0 : false}
         emptyText="No open risks or drift for this project."
       >
         <VizCard className="@container">
@@ -77,7 +100,7 @@ export function RisksSection({ projectId }: { projectId: string }) {
                     </span>
                   </p>
                   <p className="text-[12.5px] text-grey-secondary">{line.meta}</p>
-                  {line.saysTitle && line.says ? (
+                  {named && line.saysTitle && line.says ? (
                     <details className="mt-0.5">
                       <summary className="cursor-pointer list-none text-[12.5px] font-bold text-grey-body underline underline-offset-2 max-sm:inline-flex max-sm:min-h-11 max-sm:items-center [&::-webkit-details-marker]:hidden">
                         {line.saysTitle}
@@ -88,14 +111,17 @@ export function RisksSection({ projectId }: { projectId: string }) {
                     </details>
                   ) : null}
                 </div>
-                <p className="text-[12.5px] text-grey-secondary">
-                  <span>Who resolves</span>
-                  <br />
-                  <b className="text-ink">{line.owner || "No one named"}</b>
-                </p>
+                {named ? (
+                  <p className="text-[12.5px] text-grey-secondary">
+                    <span>Who resolves</span>
+                    <br />
+                    <b className="text-ink">{line.owner || "No one named"}</b>
+                  </p>
+                ) : null}
               </li>
             ))}
           </ul>
+          {footer}
         </VizCard>
       </PanelState>
     </section>

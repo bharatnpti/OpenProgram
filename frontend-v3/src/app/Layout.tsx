@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Menu, Search, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { AccountMenu } from "../components/shell/AccountMenu";
@@ -63,7 +63,11 @@ export function Layout() {
   return (
     // The assistant's button floats at the bottom right: the room it takes is set here,
     // once, and read by main's padding and the pages' sticky side panels (index.css).
-    <div className={cn("min-h-screen bg-white", roleState.access.assistant && "op-float-room")}>
+    // The header's height is a variable too, for a page's own sticky row (the Project page's index).
+    <div
+      className={cn("min-h-screen bg-white", roleState.access.assistant && "op-float-room")}
+      style={{ "--op-header-h": `${headerHeight}px` } as CSSProperties}
+    >
       <TabTitle />
       <header ref={header} className="sticky top-0 z-30 border-b border-grey-border bg-white">
         <div className="mx-auto flex max-w-[1480px] items-center gap-x-3 px-4 py-2.5 sm:px-6">

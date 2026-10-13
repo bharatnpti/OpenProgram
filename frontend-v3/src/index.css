@@ -201,6 +201,11 @@
   --color-rag-info: var(--op-info);
   --color-rag-info-bg: var(--op-info-bg);
 }
+/* The console's white cards (Panel, pickers) inside the Project page take the viz
+   surface in dark, so their remapped ink never sits on white. */
+:root[data-theme="dark"] .op-viz .bg-white {
+  background-color: var(--op-viz-surface);
+}
 
 @theme {
   --color-magenta: var(--op-magenta);

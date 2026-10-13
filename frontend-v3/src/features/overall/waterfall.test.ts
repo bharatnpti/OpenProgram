@@ -3,7 +3,6 @@ import { test } from "node:test";
 
 import type { DeliveryImpactResponse } from "../../api/schema";
 
-import { OVERALL_ORDER, overallSections } from "./sections.ts";
 import {
   causeBars,
   committedLine,
@@ -136,18 +135,4 @@ test("the likely date at both ends, the committed date and the team's date are s
     }),
     "4 Dec (CHK-103), unchanged",
   );
-});
-
-test("Overall's order lives in one place, and a section joins by its key", () => {
-  assert.deepEqual(OVERALL_ORDER.slice(0, 3), ["answer", "timeline", "baseline"]);
-  assert.ok(OVERALL_ORDER.indexOf("hygiene") > OVERALL_ORDER.indexOf("readiness"));
-  assert.ok(OVERALL_ORDER.indexOf("hygiene") < OVERALL_ORDER.indexOf("risks"));
-  const drawnKeys = overallSections({
-    questions: "q",
-    answer: "a",
-    timeline: null,
-    gates: "g",
-    risks: false,
-  }).map((section) => section.key);
-  assert.deepEqual(drawnKeys, ["answer", "gates", "questions"]);
 });

@@ -88,6 +88,7 @@ export function TimelineChart({
   actions,
   label = "Timeline",
   heading,
+  changes = true,
 }: {
   data: TimelineResponse;
   /** The row Why the date moved explains (`row` id); highlighted. */
@@ -100,6 +101,8 @@ export function TimelineChart({
   label?: string;
   /** A card's own title and links, on the toolbar's line (Delivery's panels). */
   heading?: ReactNode;
+  /** The short What changed list under the drawing; off where a page says it in full. */
+  changes?: boolean;
 }) {
   const [asTable, setAsTable] = useState(false);
   // The project's releases come folded under its row (DESIGN §5.2), open when one is picked.
@@ -150,6 +153,7 @@ export function TimelineChart({
           compact={compact}
           actions={actions}
           label={label}
+          changes={changes}
         />
       )}
     </div>
@@ -163,6 +167,7 @@ function Drawing({
   compact,
   actions,
   label,
+  changes,
 }: {
   data: TimelineResponse;
   selected?: string;
@@ -170,6 +175,7 @@ function Drawing({
   compact: boolean;
   actions?: (row: Row) => ReactNode;
   label: string;
+  changes: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
   // A phone, or a Delivery panel's card: each label above its bar, so the axis gets the width.
@@ -404,7 +410,9 @@ function Drawing({
         ) : null}
       </div>
       <TimelineLegend marks={marks} />
-      <WhatChanged rows={rows} changeLabel={data.change_label} compact={compact} />
+      {changes ? (
+        <WhatChanged rows={rows} changeLabel={data.change_label} compact={compact} />
+      ) : null}
     </figure>
   );
 }
