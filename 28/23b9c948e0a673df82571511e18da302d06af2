@@ -1,0 +1,35 @@
+backend/core/application/ask_investigation.py
+  s_5f08a60d42019a::t_40548483851dff 46,334-336
+backend/core/application/ask_people.py
+  s_5f08a60d42019a::t_00d349e3f58938 1-127
+backend/core/application/ask_service.py
+  s_5f08a60d42019a::t_a646f06bd2ded2 12,30,42,982-984,1035-1036,2203-2205,2212-2218,2220-2232,2305,2362-2365,2411-2417
+backend/tests/unit/test_ask_api.py
+  s_5f08a60d42019a::t_56ac0ca9930313 391-392,395
+backend/tests/unit/test_ask_jira_hygiene.py
+  s_5f08a60d42019a::t_15e3985aff57d9 17,60-63
+backend/tests/unit/test_ask_people.py
+  s_5f08a60d42019a::t_5daf05c9ceb60a 1-119
+backend/tests/unit/test_ask_release_readiness.py
+  s_5f08a60d42019a::t_c4fc4af05d6088 22,159-163
+backend/tests/unit/test_ask_service.py
+  s_5f08a60d42019a::t_5f452abb46b673 1106,1152,1278,1344,1383
+backend/tests/unit/test_profiles.py
+  s_5f08a60d42019a::t_f10d31b6de2441 756,766-768
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2823b9c948e0a673df82571511e18da302d06af2",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
