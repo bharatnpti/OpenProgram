@@ -664,8 +664,12 @@ class CrossPersonRequestService:
             # was read, and that one told the requester.
             return await self.repository.get(request.tenant_id, request.id) or request
         # Only the person asked replies in the DM thread or the inbox it routes.
+        # An acknowledgement keeps the when its reply said, for the request's trail.
         await self._append_fact(
-            updated, transition=reading.status.value, changed_by=request.counterpart_id
+            updated,
+            transition=reading.status.value,
+            changed_by=request.counterpart_id,
+            eta=reading.eta if reading.status is CrossPersonRequestStatus.ACKNOWLEDGED else None,
         )
         if reading.status is CrossPersonRequestStatus.RESOLVED:
             # What the resolution settles is stored before anyone is told, so
@@ -939,6 +943,7 @@ class CrossPersonRequestService:
         transition: str,
         changed_by: str | None,
         superseded_by: str | None = None,
+        eta: str | None = None,
     ) -> None:
         """Record one transition of the request, and who made it.
 
@@ -979,6 +984,9 @@ class CrossPersonRequestService:
         if superseded_by is not None:
             # The copy of the same ask that stays open in this one's place.
             payload["superseded_by"] = superseded_by
+        if eta is not None:
+            # When the person asked said it would be done ("by Friday"), in their words.
+            payload["eta"] = eta
         observed_at = (
             request.created_at
             if transition in {"opened", "needs_resolution"}

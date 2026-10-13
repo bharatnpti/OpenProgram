@@ -160,6 +160,9 @@ import type {
   JiraChangesResponse,
   ProjectAsksResponse,
   TodayCountsResponse,
+  ProjectCheckinCoverageResponse,
+  RequestCountsResponse,
+  RequestTrailResponse,
 } from "./schema";
 import { learnServerToday, withViewingAsOf } from "./asOf";
 import { readNdjson } from "./ndjson";
@@ -439,6 +442,22 @@ export const apiClient = {
       method: "POST",
       body: input,
     }),
+  /** What happened to one ask, and what is due (D91); dated by the viewing day. */
+  crossPersonRequestTrail: (requestId: string) =>
+    requestJson<RequestTrailResponse>(
+      `/cross-person-requests/${encodeURIComponent(requestId)}/trail`,
+    ),
+  /** The requests board as counts: an executive's whole view of it (D87). */
+  crossPersonRequestCounts: () =>
+    requestJson<RequestCountsResponse>("/cross-person-requests/counts"),
+  /** The asks resolved in the days up to the viewing day, newest first. */
+  resolvedCrossPersonRequests: (days?: number) =>
+    requestJson<CrossPersonRequestsResponse>(
+      withQuery("/cross-person-requests/resolved", { days: days?.toString() }),
+    ),
+  /** The day's check-ins across a project's people, as counts. */
+  projectCheckinCoverage: (projectId: string) =>
+    requestJson<ProjectCheckinCoverageResponse>(`/projects/${projectId}/checkin-coverage`),
   ask: (input: AskRequest) =>
     requestJson<AskResponse>("/ask", {
       method: "POST",

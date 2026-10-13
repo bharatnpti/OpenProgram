@@ -13217,6 +13217,266 @@
         }
       }
     },
+    "/cross-person-requests/counts": {
+      "get": {
+        "tags": ["coordination"],
+        "summary": "Cross Person Request Counts",
+        "operationId": "cross_person_request_counts_cross_person_requests_counts_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestCountsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cross-person-requests/resolved": {
+      "get": {
+        "tags": ["coordination"],
+        "summary": "Resolved Cross Person Requests",
+        "description": "Asks resolved in the ``days`` days up to ``as_of``, newest first; never dismissed copies.",
+        "operationId": "resolved_cross_person_requests_cross_person_requests_resolved_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrossPersonRequestsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cross-person-requests/{request_id}/trail": {
+      "get": {
+        "tags": ["coordination"],
+        "summary": "Cross Person Request Trail",
+        "operationId": "cross_person_request_trail_cross_person_requests__request_id__trail_get",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestTrailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/checkin-coverage": {
+      "get": {
+        "tags": ["coordination"],
+        "summary": "Project Checkin Coverage",
+        "description": "Counts only, no one named: every reader of the project's progress gets them.",
+        "operationId": "project_checkin_coverage_projects__project_id__checkin_coverage_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectCheckinCoverageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/profiles": {
       "get": {
         "tags": ["profiles"],
@@ -15338,6 +15598,64 @@
             ],
             "title": "No Data Cause",
             "description": "Why a day closed stale or unknown has no data."
+          },
+          "asked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asked At",
+            "description": "When the day's check-in first asked them; only where the ladder is read (reads_ladder)."
+          },
+          "replied_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replied At",
+            "description": "When their first reply of the day was recorded; null while none is, or where the ladder is not read."
+          },
+          "reminders": {
+            "items": {
+              "$ref": "#/components/schemas/CheckinRungDto"
+            },
+            "type": "array",
+            "title": "Reminders",
+            "description": "The day's silence-ladder rungs that went out for them, oldest first: a reminder to them, then their scrum master and manager told. Only where the ladder is read."
+          },
+          "checkin_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkin Time",
+            "description": "Their check-in time (HH:MM, in `timezone`): an admin's and their own pod's scrum master's read only (reads_schedule)."
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone",
+            "description": "The zone of `checkin_time`."
           }
         },
         "type": "object",
@@ -15596,6 +15914,42 @@
         "type": "object",
         "title": "CheckinPreferenceUpdateRequest",
         "description": "An admin's change to a member's check-in preference.\n\nA field left out keeps what is stored. A field sent as ``null`` is cleared,\nso the member follows the team default for it again."
+      },
+      "CheckinRungDto": {
+        "properties": {
+          "number": {
+            "type": "integer",
+            "title": "Number",
+            "description": "Its place on the ladder: 1 is the reminder to the person."
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["developer", "scrum_master", "manager"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target",
+            "description": "developer (a reminder to the person), scrum_master or manager; null when the rung was not recorded and today's ladder has no rung of that number."
+          },
+          "sent_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Sent At"
+          },
+          "recorded": {
+            "type": "boolean",
+            "title": "Recorded",
+            "description": "Whom it was for was recorded when it went out; false: read from today's ladder, for a rung sent before rungs were recorded."
+          }
+        },
+        "type": "object",
+        "required": ["number", "target", "sent_at", "recorded"],
+        "title": "CheckinRungDto",
+        "description": "One rung of the day's silence ladder that went out: whom it was for, and when."
       },
       "CheckinSendResponse": {
         "properties": {
@@ -22873,6 +23227,18 @@
               }
             ],
             "description": "How the pod's day was captured, counted per pod."
+          },
+          "reads_ladder": {
+            "type": "boolean",
+            "title": "Reads Ladder",
+            "description": "The caller reads the day's silence ladder: asked and replied times and the rungs sent (a scrum master for their own pods, a manager, an admin).",
+            "default": false
+          },
+          "reads_schedule": {
+            "type": "boolean",
+            "title": "Reads Schedule",
+            "description": "The caller reads each person's check-in time and zone (an admin, and a scrum master of their own pods).",
+            "default": false
           }
         },
         "type": "object",
@@ -24504,6 +24870,59 @@
         "type": "object",
         "required": ["project_id", "project_name", "as_of", "names_hidden", "asks"],
         "title": "ProjectAsksResponse"
+      },
+      "ProjectCheckinCoverageDto": {
+        "properties": {
+          "replied": {
+            "type": "integer",
+            "title": "Replied",
+            "description": "Gave the day's status themselves (confirmed or partial)."
+          },
+          "inferred": {
+            "type": "integer",
+            "title": "Inferred",
+            "description": "Filled from what moved in the tracker and Git."
+          },
+          "no_data": {
+            "type": "integer",
+            "title": "No Data",
+            "description": "Closed stale or unknown: nothing said, nothing moved."
+          },
+          "waiting": {
+            "type": "integer",
+            "title": "Waiting",
+            "description": "No status for the day yet."
+          }
+        },
+        "type": "object",
+        "required": ["replied", "inferred", "no_data", "waiting"],
+        "title": "ProjectCheckinCoverageDto",
+        "description": "How the day was captured across the project's people: counts, no names."
+      },
+      "ProjectCheckinCoverageResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "people": {
+            "type": "integer",
+            "title": "People",
+            "description": "Everyone on the project's pods, each once."
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/ProjectCheckinCoverageDto"
+          }
+        },
+        "type": "object",
+        "required": ["project_id", "as_of", "people", "coverage"],
+        "title": "ProjectCheckinCoverageResponse",
+        "description": "``GET /projects/{id}/checkin-coverage``: the day's check-ins over the project, counted."
       },
       "ProjectDeliveryResponse": {
         "properties": {
@@ -27685,6 +28104,257 @@
         "type": "object",
         "required": ["columns", "rows"],
         "title": "ReportTableResponse"
+      },
+      "RequestCountsResponse": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open",
+            "description": "Asked and not yet acknowledged."
+          },
+          "acknowledged": {
+            "type": "integer",
+            "title": "Acknowledged"
+          },
+          "needs_resolution": {
+            "type": "integer",
+            "title": "Needs Resolution",
+            "description": "The name matched nobody yet."
+          },
+          "waiting_over_a_week": {
+            "type": "integer",
+            "title": "Waiting Over A Week",
+            "description": "Open or acknowledged for 7 days or more."
+          },
+          "not_delivered": {
+            "type": "integer",
+            "title": "Not Delivered",
+            "description": "Open, and the DM to the person asked failed."
+          },
+          "resolved_recently": {
+            "type": "integer",
+            "title": "Resolved Recently",
+            "description": "Resolved in the last `resolved_window_days`."
+          },
+          "resolved_window_days": {
+            "type": "integer",
+            "title": "Resolved Window Days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "open",
+          "acknowledged",
+          "needs_resolution",
+          "waiting_over_a_week",
+          "not_delivered",
+          "resolved_recently",
+          "resolved_window_days"
+        ],
+        "title": "RequestCountsResponse",
+        "description": "``GET /cross-person-requests/counts``: the requests board as counts, no one named."
+      },
+      "RequestTrailResponse": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CrossPersonRequestStatus"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "names_hidden": {
+            "type": "boolean",
+            "title": "Names Hidden",
+            "description": "No one is named: the caller reads no names."
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/RequestTrailStepDto"
+            },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": ["request_id", "status", "as_of", "names_hidden", "steps"],
+        "title": "RequestTrailResponse",
+        "description": "``GET /cross-person-requests/{id}/trail``: what happened to one ask, and what is due."
+      },
+      "RequestTrailStepDto": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unmatched",
+              "asked",
+              "acknowledged",
+              "named",
+              "nobody_above",
+              "resolved",
+              "cleared",
+              "closed"
+            ],
+            "title": "Kind",
+            "description": "unmatched (nobody matched the name; the requester was asked whom they meant), asked, acknowledged, named (in the day report, by the escalation matrix), nobody_above (due to go up, nobody named above), resolved, cleared (the merge landed) or closed (a copy of a newer ask)."
+          },
+          "state": {
+            "type": "string",
+            "enum": ["done", "due"],
+            "title": "State",
+            "description": "done: it happened. due: the matrix makes it due and no day report has carried it (see report)."
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At",
+            "description": "When, for a step of a moment."
+          },
+          "on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On",
+            "description": "The day, for a step of a day: the report that named it, or the day the matrix reaches it."
+          },
+          "who": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Who",
+            "description": "The person at this step (the person asked, or whom the report names); null when not known or not read."
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role",
+            "description": "The matrix level's name for `named`."
+          },
+          "by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By",
+            "description": "Who made it happen; null for OpenProgram itself."
+          },
+          "dm": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["sent", "retrying", "not_delivered", "none"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dm",
+            "description": "On `asked`: the DM to the person asked was sent, is being retried, was not delivered, or none was sent."
+          },
+          "dm_attempts": {
+            "type": "integer",
+            "title": "Dm Attempts",
+            "default": 0
+          },
+          "dm_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dm At",
+            "description": "When the DM went out, if kept."
+          },
+          "eta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta",
+            "description": "On `acknowledged`: when their reply said, in its words."
+          },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name",
+            "description": "The project whose day report carries a named step."
+          },
+          "report": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["sent", "not_sent", "no_report", "upcoming"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report",
+            "description": "On `named`: sent (a day report carried it), not_sent (none went out while it stood there), no_report (the project has no day report) or upcoming."
+          },
+          "computed": {
+            "type": "boolean",
+            "title": "Computed",
+            "description": "Worked out from the escalation matrix, not a recorded event.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["kind", "state"],
+        "title": "RequestTrailStepDto"
       },
       "RequestType": {
         "type": "string",

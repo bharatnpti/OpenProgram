@@ -540,6 +540,14 @@ class DayReportBuilder:
                     found.setdefault(blocker.blocker_id, (developer_id, blocker))
         return list(found.values())
 
+    async def ask_scope(self, tenant_id: str, project_id: str, day: date) -> AskScope:
+        """Who is who in the project on ``day``, as its whole-project report's asks read it.
+
+        For a reader that works out one ask's way up the matrix without the
+        rest of the report (the request trail).
+        """
+        return await self._scope(tenant_id, project_id, day, None)
+
 
 # ---- the sections ---------------------------------------------------------------------
 

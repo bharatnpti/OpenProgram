@@ -51,6 +51,7 @@ from api.dtos import (
 )
 from api.people_projection import PeopleWordsDep, all_for_reader, for_reader
 from core.application.authorization import AuthorizationPolicy, Capability
+from core.application.checkin_ladder import pod_checkin_reads
 from core.application.cross_person_service import (
     CrossPersonRequestService,
     RequestStatusNotSettable,
@@ -62,6 +63,7 @@ from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.application.portfolio_privacy import counted_progress, reads_people
 from core.application.pull_request_flow_service import FlowScopeInvalid, PullRequestFlowService
+from core.application.request_trail_service import REQUEST_COUNTS_ONLY, reads_request_names
 from core.application.risk_service import RiskService
 from core.application.writeback_service import WriteBackService
 from core.domain.auth import Principal
@@ -123,8 +125,11 @@ async def pod_checkins(
     person_names: Annotated[PersonNames, Depends(get_person_names)],
 ) -> PodCheckinsResponse:
     await _ensure_pod_detail(scope, principal, pod_id)
+    # The day's ladder and each person's check-in time only for their readers
+    # (D87); a developer on their own pod gets the counts and their own row.
+    reads = await pod_checkin_reads(scope, principal, pod_id)
     try:
-        view = await persona_service.pod_checkins(principal.tenant_id, pod_id, as_of)
+        view = await persona_service.pod_checkins(principal.tenant_id, pod_id, as_of, reads)
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     # A summary stored before it named people can still hold their chat ids.
@@ -467,6 +472,10 @@ async def portfolio_cross_person_requests(
     status: Annotated[CrossPersonRequestStatus | None, Query()] = None,
 ) -> CrossPersonRequestsResponse:
     _ensure_aggregate(principal)
+    if not reads_request_names(principal):
+        # Every ask names two people and its note often a third (D87): an
+        # executive reads the waits as counts (GET /cross-person-requests/counts).
+        raise HTTPException(status_code=403, detail=REQUEST_COUNTS_ONLY)
     requests = await service.list_portfolio(principal.tenant_id, status)
     return CrossPersonRequestsResponse(
         requests=[CrossPersonRequestResponse.from_domain(request) for request in requests],

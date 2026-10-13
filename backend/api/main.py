@@ -42,6 +42,7 @@ from api.routers import (
     today,
     webhooks,
 )
+from api.routers import coordination_reads as coordination_reads_router
 from config.settings import Settings, get_settings
 from infra.observability.logging import configure_logging
 from infra.observability.metrics import build_http_metrics
@@ -168,6 +169,7 @@ def create_app(
     app.include_router(today.router)
     app.include_router(jira_changes.router)
     app.include_router(portfolio_reads.router)
+    app.include_router(coordination_reads_router.router)
     app.include_router(profiles.router)
     app.include_router(test_support.router)
     app.include_router(webhooks.router)

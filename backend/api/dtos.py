@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator
 
+from api.pod_checkin_dtos import CheckinRungDto
 from core.application.ask_conversation import (
     MAX_SUMMARY_CHARS,
     MAX_TURN_CHARS,
@@ -1162,6 +1163,28 @@ class CheckinDeveloperDto(BaseModel):
     no_data_cause: NoDataCause | None = Field(
         default=None, description="Why a day closed stale or unknown has no data."
     )
+    asked_at: datetime | None = Field(
+        default=None,
+        description="When the day's check-in first asked them; only where the ladder is read "
+        "(reads_ladder).",
+    )
+    replied_at: datetime | None = Field(
+        default=None,
+        description="When their first reply of the day was recorded; null while none is, "
+        "or where the ladder is not read.",
+    )
+    reminders: list[CheckinRungDto] = Field(
+        default_factory=list,
+        description="The day's silence-ladder rungs that went out for them, oldest first: a "
+        "reminder to them, then their scrum master and manager told. Only where the ladder "
+        "is read.",
+    )
+    checkin_time: str | None = Field(
+        default=None,
+        description="Their check-in time (HH:MM, in `timezone`): an admin's and their own "
+        "pod's scrum master's read only (reads_schedule).",
+    )
+    timezone: str | None = Field(default=None, description="The zone of `checkin_time`.")
 
     @classmethod
     def from_view(
@@ -1176,6 +1199,13 @@ class CheckinDeveloperDto(BaseModel):
             summary=without_member_ids(developer.summary, names or {}),
             evidence=list(developer.evidence),
             no_data_cause=developer.no_data_cause,
+            asked_at=developer.asked_at,
+            replied_at=developer.replied_at,
+            reminders=[CheckinRungDto.from_view(rung) for rung in developer.rungs],
+            checkin_time=(
+                developer.checkin_time.strftime("%H:%M") if developer.checkin_time else None
+            ),
+            timezone=developer.timezone,
         )
 
 
@@ -1226,6 +1256,16 @@ class PodCheckinsResponse(BaseModel):
     coverage: CheckinCoverageDto | None = Field(
         default=None, description="How the pod's day was captured, counted per pod."
     )
+    reads_ladder: bool = Field(
+        default=False,
+        description="The caller reads the day's silence ladder: asked and replied times and "
+        "the rungs sent (a scrum master for their own pods, a manager, an admin).",
+    )
+    reads_schedule: bool = Field(
+        default=False,
+        description="The caller reads each person's check-in time and zone (an admin, and a "
+        "scrum master of their own pods).",
+    )
 
     @classmethod
     def from_view(
@@ -1243,6 +1283,8 @@ class PodCheckinsResponse(BaseModel):
             missing=view.missing,
             developers=[CheckinDeveloperDto.from_view(item, names) for item in view.developers],
             coverage=CheckinCoverageDto.from_view(view.coverage),
+            reads_ladder=view.ladder,
+            reads_schedule=view.schedule,
         )
 
 

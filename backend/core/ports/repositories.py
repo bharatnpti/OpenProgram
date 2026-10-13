@@ -32,6 +32,7 @@ from core.domain.status import (
     CheckInCorrelation,
     CheckInDay,
     CheckInNudge,
+    CheckInNudgeSent,
     CheckInPreference,
     CheckInScheduleRun,
     CheckInSignals,
@@ -246,6 +247,12 @@ class CrossPersonRequestRepository(Protocol):
 
     async def list_open(self, tenant_id: str) -> list[CrossPersonRequest]: ...
 
+    async def list_resolved_since(
+        self, tenant_id: str, since: datetime
+    ) -> list[CrossPersonRequest]:
+        """Requests resolved (not dismissed) last changed on or after ``since``, newest first."""
+        ...
+
     async def get_by_notify_correlation(
         self,
         tenant_id: str,
@@ -346,6 +353,14 @@ class StatusRepository(Protocol):
     async def checkin_nudge_for(
         self, tenant_id: str, correlation_id: str, nudge_number: int
     ) -> CheckInNudge | None: ...
+
+    async def checkin_nudges_on_day(self, tenant_id: str, day: date) -> list[CheckInNudgeSent]:
+        """The rungs sent for the check-ins of ``day`` (their local day), oldest first.
+
+        Only rungs that went out (``sent_at`` set): a rung reserved but never
+        sent is not one. The day is read as ``checkins_on_day`` reads it.
+        """
+        ...
 
     async def record_checkin_clarification(
         self, clarification: CheckInClarification

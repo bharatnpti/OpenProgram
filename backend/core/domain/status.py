@@ -433,6 +433,21 @@ class CheckInNudge:
 
 
 @dataclass(frozen=True, kw_only=True)
+class CheckInNudgeSent:
+    """One rung of a check-in's silence ladder that went out, for a day's check-in.
+
+    Who it was about, which check-in, the rung's number and when it was sent;
+    never a message's text. Which rung (the person, the scrum master, the
+    manager) is the ladder's: ``checkin_nudges`` keeps only the number.
+    """
+
+    developer_id: str
+    correlation_id: str
+    nudge_number: int
+    sent_at: datetime
+
+
+@dataclass(frozen=True, kw_only=True)
 class CheckInClarification:
     tenant_id: str
     correlation_id: str

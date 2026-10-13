@@ -3216,6 +3216,80 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/cross-person-requests/counts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Cross Person Request Counts */
+    get: operations["cross_person_request_counts_cross_person_requests_counts_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/cross-person-requests/resolved": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Resolved Cross Person Requests
+     * @description Asks resolved in the ``days`` days up to ``as_of``, newest first; never dismissed copies.
+     */
+    get: operations["resolved_cross_person_requests_cross_person_requests_resolved_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/cross-person-requests/{request_id}/trail": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Cross Person Request Trail */
+    get: operations["cross_person_request_trail_cross_person_requests__request_id__trail_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/checkin-coverage": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Project Checkin Coverage
+     * @description Counts only, no one named: every reader of the project's progress gets them.
+     */
+    get: operations["project_checkin_coverage_projects__project_id__checkin_coverage_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/profiles": {
     parameters: {
       query?: never;
@@ -4040,6 +4114,31 @@ export interface components {
        * @description Why a day closed stale or unknown has no data.
        */
       no_data_cause?: ("no_jira_link" | "jira_not_synced" | "no_chat_id" | "nothing_moved") | null;
+      /**
+       * Asked At
+       * @description When the day's check-in first asked them; only where the ladder is read (reads_ladder).
+       */
+      asked_at?: string | null;
+      /**
+       * Replied At
+       * @description When their first reply of the day was recorded; null while none is, or where the ladder is not read.
+       */
+      replied_at?: string | null;
+      /**
+       * Reminders
+       * @description The day's silence-ladder rungs that went out for them, oldest first: a reminder to them, then their scrum master and manager told. Only where the ladder is read.
+       */
+      reminders?: components["schemas"]["CheckinRungDto"][];
+      /**
+       * Checkin Time
+       * @description Their check-in time (HH:MM, in `timezone`): an admin's and their own pod's scrum master's read only (reads_schedule).
+       */
+      checkin_time?: string | null;
+      /**
+       * Timezone
+       * @description The zone of `checkin_time`.
+       */
+      timezone?: string | null;
     };
     /** CheckinDispatchRequest */
     CheckinDispatchRequest: {
@@ -4133,6 +4232,32 @@ export interface components {
       reply_wait_seconds?: number | null;
       /** Final Reply Wait Seconds */
       final_reply_wait_seconds?: number | null;
+    };
+    /**
+     * CheckinRungDto
+     * @description One rung of the day's silence ladder that went out: whom it was for, and when.
+     */
+    CheckinRungDto: {
+      /**
+       * Number
+       * @description Its place on the ladder: 1 is the reminder to the person.
+       */
+      number: number;
+      /**
+       * Target
+       * @description developer (a reminder to the person), scrum_master or manager; null when the rung was not recorded and today's ladder has no rung of that number.
+       */
+      target: ("developer" | "scrum_master" | "manager") | null;
+      /**
+       * Sent At
+       * Format: date-time
+       */
+      sent_at: string;
+      /**
+       * Recorded
+       * @description Whom it was for was recorded when it went out; false: read from today's ladder, for a rung sent before rungs were recorded.
+       */
+      recorded: boolean;
     };
     /**
      * CheckinSendResponse
@@ -6978,6 +7103,18 @@ export interface components {
       developers: components["schemas"]["CheckinDeveloperDto"][];
       /** @description How the pod's day was captured, counted per pod. */
       coverage?: components["schemas"]["CheckinCoverageDto"] | null;
+      /**
+       * Reads Ladder
+       * @description The caller reads the day's silence ladder: asked and replied times and the rungs sent (a scrum master for their own pods, a manager, an admin).
+       * @default false
+       */
+      reads_ladder: boolean;
+      /**
+       * Reads Schedule
+       * @description The caller reads each person's check-in time and zone (an admin, and a scrum master of their own pods).
+       * @default false
+       */
+      reads_schedule: boolean;
     };
     /**
      * PodDeliveryResponse
@@ -7627,6 +7764,51 @@ export interface components {
       names_hidden: boolean;
       /** Asks */
       asks: components["schemas"]["ProjectAskDto"][];
+    };
+    /**
+     * ProjectCheckinCoverageDto
+     * @description How the day was captured across the project's people: counts, no names.
+     */
+    ProjectCheckinCoverageDto: {
+      /**
+       * Replied
+       * @description Gave the day's status themselves (confirmed or partial).
+       */
+      replied: number;
+      /**
+       * Inferred
+       * @description Filled from what moved in the tracker and Git.
+       */
+      inferred: number;
+      /**
+       * No Data
+       * @description Closed stale or unknown: nothing said, nothing moved.
+       */
+      no_data: number;
+      /**
+       * Waiting
+       * @description No status for the day yet.
+       */
+      waiting: number;
+    };
+    /**
+     * ProjectCheckinCoverageResponse
+     * @description ``GET /projects/{id}/checkin-coverage``: the day's check-ins over the project, counted.
+     */
+    ProjectCheckinCoverageResponse: {
+      /** Project Id */
+      project_id: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /**
+       * People
+       * @description Everyone on the project's pods, each once.
+       */
+      people: number;
+      coverage: components["schemas"]["ProjectCheckinCoverageDto"];
     };
     /** ProjectDeliveryResponse */
     ProjectDeliveryResponse: {
@@ -8823,6 +9005,151 @@ export interface components {
       columns: string[];
       /** Rows */
       rows: string[][];
+    };
+    /**
+     * RequestCountsResponse
+     * @description ``GET /cross-person-requests/counts``: the requests board as counts, no one named.
+     */
+    RequestCountsResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /**
+       * Open
+       * @description Asked and not yet acknowledged.
+       */
+      open: number;
+      /** Acknowledged */
+      acknowledged: number;
+      /**
+       * Needs Resolution
+       * @description The name matched nobody yet.
+       */
+      needs_resolution: number;
+      /**
+       * Waiting Over A Week
+       * @description Open or acknowledged for 7 days or more.
+       */
+      waiting_over_a_week: number;
+      /**
+       * Not Delivered
+       * @description Open, and the DM to the person asked failed.
+       */
+      not_delivered: number;
+      /**
+       * Resolved Recently
+       * @description Resolved in the last `resolved_window_days`.
+       */
+      resolved_recently: number;
+      /** Resolved Window Days */
+      resolved_window_days: number;
+    };
+    /**
+     * RequestTrailResponse
+     * @description ``GET /cross-person-requests/{id}/trail``: what happened to one ask, and what is due.
+     */
+    RequestTrailResponse: {
+      /** Request Id */
+      request_id: string;
+      status: components["schemas"]["CrossPersonRequestStatus"];
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /**
+       * Names Hidden
+       * @description No one is named: the caller reads no names.
+       */
+      names_hidden: boolean;
+      /** Steps */
+      steps: components["schemas"]["RequestTrailStepDto"][];
+    };
+    /** RequestTrailStepDto */
+    RequestTrailStepDto: {
+      /**
+       * Kind
+       * @description unmatched (nobody matched the name; the requester was asked whom they meant), asked, acknowledged, named (in the day report, by the escalation matrix), nobody_above (due to go up, nobody named above), resolved, cleared (the merge landed) or closed (a copy of a newer ask).
+       * @enum {string}
+       */
+      kind:
+        | "unmatched"
+        | "asked"
+        | "acknowledged"
+        | "named"
+        | "nobody_above"
+        | "resolved"
+        | "cleared"
+        | "closed";
+      /**
+       * State
+       * @description done: it happened. due: the matrix makes it due and no day report has carried it (see report).
+       * @enum {string}
+       */
+      state: "done" | "due";
+      /**
+       * At
+       * @description When, for a step of a moment.
+       */
+      at?: string | null;
+      /**
+       * On
+       * @description The day, for a step of a day: the report that named it, or the day the matrix reaches it.
+       */
+      on?: string | null;
+      /**
+       * Who
+       * @description The person at this step (the person asked, or whom the report names); null when not known or not read.
+       */
+      who?: string | null;
+      /**
+       * Role
+       * @description The matrix level's name for `named`.
+       */
+      role?: string | null;
+      /**
+       * By
+       * @description Who made it happen; null for OpenProgram itself.
+       */
+      by?: string | null;
+      /**
+       * Dm
+       * @description On `asked`: the DM to the person asked was sent, is being retried, was not delivered, or none was sent.
+       */
+      dm?: ("sent" | "retrying" | "not_delivered" | "none") | null;
+      /**
+       * Dm Attempts
+       * @default 0
+       */
+      dm_attempts: number;
+      /**
+       * Dm At
+       * @description When the DM went out, if kept.
+       */
+      dm_at?: string | null;
+      /**
+       * Eta
+       * @description On `acknowledged`: when their reply said, in its words.
+       */
+      eta?: string | null;
+      /**
+       * Project Name
+       * @description The project whose day report carries a named step.
+       */
+      project_name?: string | null;
+      /**
+       * Report
+       * @description On `named`: sent (a day report carried it), not_sent (none went out while it stood there), no_report (the project has no day report) or upcoming.
+       */
+      report?: ("sent" | "not_sent" | "no_report" | "upcoming") | null;
+      /**
+       * Computed
+       * @description Worked out from the escalation matrix, not a recorded event.
+       * @default false
+       */
+      computed: boolean;
     };
     /**
      * RequestType
@@ -17636,6 +17963,143 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PortfolioWarningsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  cross_person_request_counts_cross_person_requests_counts_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RequestCountsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  resolved_cross_person_requests_cross_person_requests_resolved_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        days?: number;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CrossPersonRequestsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  cross_person_request_trail_cross_person_requests__request_id__trail_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        request_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RequestTrailResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_checkin_coverage_projects__project_id__checkin_coverage_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectCheckinCoverageResponse"];
         };
       };
       /** @description Validation Error */

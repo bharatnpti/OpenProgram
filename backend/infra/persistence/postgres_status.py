@@ -26,6 +26,7 @@ from core.domain.status import (
     CheckInCorrelation,
     CheckInDay,
     CheckInNudge,
+    CheckInNudgeSent,
     CheckInPreference,
     CheckInScheduleRun,
     CheckInSignals,
@@ -834,6 +835,39 @@ class PostgresStatusRepository:
                 first_replied_at=_optional_datetime_field(
                     row.get("first_replied_at"), "first_replied_at"
                 ),
+            )
+            for row in rows
+        ]
+
+    async def checkin_nudges_on_day(self, tenant_id: str, day: date) -> list[CheckInNudgeSent]:
+        # The day of the check-in the rung belongs to, read as checkins_on_day reads it.
+        with _tracer.start_as_current_span("postgres.status.checkin_nudges_on_day"):
+            rows = await self._executor.fetch(
+                """
+                SELECT c.developer_id, n.correlation_id, n.nudge_number, n.sent_at
+                FROM checkin_nudges n
+                JOIN checkins c
+                  ON c.tenant_id = n.tenant_id AND c.correlation_id = n.correlation_id
+                WHERE n.tenant_id = %s
+                  AND n.sent_at IS NOT NULL
+                  AND (
+                    c.checkin_date = %s
+                    OR (
+                      c.checkin_date IS NULL
+                      AND c.asked_at >= %s::date
+                      AND c.asked_at < (%s::date + INTERVAL '1 day')
+                    )
+                  )
+                ORDER BY n.sent_at, n.correlation_id, n.nudge_number
+                """,
+                (tenant_id, day, day, day),
+            )
+        return [
+            CheckInNudgeSent(
+                developer_id=str(row["developer_id"]),
+                correlation_id=str(row["correlation_id"]),
+                nudge_number=_int_field(row["nudge_number"], "nudge_number"),
+                sent_at=_datetime_field(row.get("sent_at"), "sent_at"),
             )
             for row in rows
         ]

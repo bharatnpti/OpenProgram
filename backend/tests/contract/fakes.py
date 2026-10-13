@@ -39,6 +39,7 @@ from core.domain.status import (
     CheckInCorrelation,
     CheckInDay,
     CheckInNudge,
+    CheckInNudgeSent,
     CheckInPreference,
     CheckInScheduleRun,
     CheckInSignals,
@@ -48,7 +49,7 @@ from core.domain.writeback import WriteBackAudit, WriteBackStatus
 from core.ports.directory import DirectoryUserRepository
 from core.ports.repositories import InboundChatEventRepository, TimeSeriesRepository
 from infra.adapters.llm.fake import FakeLlmProvider
-from infra.persistence.in_memory_graph import checkins_on_day
+from infra.persistence.in_memory_graph import checkin_nudges_on_day, checkins_on_day
 
 __all__ = ["FakeLlmProvider"]
 
@@ -572,6 +573,9 @@ class FakeStatusRepository:
 
     async def checkins_on_day(self, tenant_id: str, day: date) -> list[CheckInDay]:
         return checkins_on_day(self.checkins, tenant_id, day)
+
+    async def checkin_nudges_on_day(self, tenant_id: str, day: date) -> list[CheckInNudgeSent]:
+        return checkin_nudges_on_day(self.checkins, self.checkin_nudges.values(), tenant_id, day)
 
     async def purge_checkin_raw_replies_older_than(self, tenant_id: str, cutoff: datetime) -> int:
         cleared = 0

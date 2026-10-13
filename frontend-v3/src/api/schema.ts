@@ -436,3 +436,12 @@ export type PortfolioWarningsResponse = components["schemas"]["PortfolioWarnings
 export type WarningGroupDto = components["schemas"]["WarningGroupDto"];
 export type WarningItemDto = components["schemas"]["WarningItemDto"];
 export type WarningKind = components["schemas"]["WarningKind"];
+
+// Requests and pods (lane R): a request's trail, the board as counts, a pod's ladder.
+export type RequestTrailResponse = components["schemas"]["RequestTrailResponse"];
+export type RequestTrailStepDto = components["schemas"]["RequestTrailStepDto"];
+export type RequestCountsResponse = components["schemas"]["RequestCountsResponse"];
+export type CheckinRungDto = components["schemas"]["CheckinRungDto"];
+export type CheckinDeveloperDto = components["schemas"]["CheckinDeveloperDto"];
+export type ProjectCheckinCoverageResponse =
+  components["schemas"]["ProjectCheckinCoverageResponse"];

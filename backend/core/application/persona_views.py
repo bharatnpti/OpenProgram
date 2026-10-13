@@ -15,6 +15,7 @@ from core.application.attention import (
 )
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
 from core.application.checkin_drift import CHECKIN_DRIFT_FACT_SOURCE
+from core.application.checkin_ladder import PodCheckinReads
 from core.application.people_words import SMALL_GROUP_LINE
 from core.application.person_names import UNKNOWN_PERSON, member_names
 from core.application.portfolio_privacy import (
@@ -43,8 +44,15 @@ from core.application.task_update_service import (
     task_facts,
     task_key,
 )
+from core.domain.checkin_rungs import (
+    CHECKIN_RUNG_FACT_SOURCE,
+    RungView,
+    rung_facts_since,
+    sent_rungs,
+)
 from core.domain.delivery import DEFAULT_STAGE_MAPPING, DeliveryStage, StageMapping
 from core.domain.errors import GraphNotFound
+from core.domain.escalation import EscalationPolicy
 from core.domain.graph import (
     EdgeKind,
     EntityRef,
@@ -59,7 +67,12 @@ from core.domain.identity import IdentityLink
 from core.domain.observed_day import observe_task
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
-from core.domain.status import DeveloperStatus, StatusSource
+from core.domain.status import (
+    CheckInDefaults,
+    DeveloperStatus,
+    StatusSource,
+    effective_checkin_preference,
+)
 from core.ports.delivery import DeliverySettingsRepository
 from core.ports.repositories import (
     GraphRepository,
@@ -70,6 +83,8 @@ from core.ports.repositories import (
 )
 
 TASK_FACT_LOOKBACK_DAYS = 30
+# Rung facts read for one day: a few per silent person, so this covers any tenant's day.
+_RUNG_FACT_LIMIT = 5000
 # Facts that say what a person stated about a task, not how it is going: a
 # task's colour never comes from them (a statement never repaints a task, and
 # an ETA fact never masks the tracker's colour).
@@ -247,6 +262,14 @@ class CheckinDeveloperView:
     evidence: tuple[str, ...] = ()
     #: Why the day has no data, for a day closed stale or unknown.
     no_data_cause: NoDataCause | None = None
+    #: The day's silence ladder (``PodCheckinReads.ladder``): when they were
+    #: first asked and first replied, and the rungs that went out.
+    asked_at: datetime | None = None
+    replied_at: datetime | None = None
+    rungs: tuple[RungView, ...] = ()
+    #: Their check-in time and zone (``PodCheckinReads.schedule``).
+    checkin_time: time | None = None
+    timezone: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -275,6 +298,19 @@ class PodCheckinsView:
     missing: int
     developers: tuple[CheckinDeveloperView, ...]
     coverage: CheckinCoverageView = CheckinCoverageView()
+    #: Whether the ladder and the schedule were read for this caller.
+    ladder: bool = False
+    schedule: bool = False
+
+
+@dataclass(frozen=True, kw_only=True)
+class ProjectCheckinCoverageView:
+    """How the day was captured across a project's people: counts only, no one named."""
+
+    project_id: str
+    as_of: date
+    people: int
+    coverage: CheckinCoverageView
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -477,11 +513,16 @@ class PersonaViewService:
         drift_signals: DriftSignals | None = None,
         identity_link_repository: IdentityLinkRepository | None = None,
         delivery_settings_repository: DeliverySettingsRepository | None = None,
+        escalation_policy: EscalationPolicy | None = None,
+        checkin_defaults: CheckInDefaults | None = None,
     ) -> None:
         """``drift_signals`` gives a rollup computed here, with nothing stored, its drift (N3).
 
         ``identity_link_repository`` maps a person to their tracker account, so
         a focus task can say whether they are its synced assignee.
+        ``escalation_policy`` is today's check-in ladder, which names a rung
+        sent before rungs were recorded; ``checkin_defaults`` fill a person's
+        check-in time and zone where they set none.
         """
         self._graph_repository = graph_repository
         self._status_repository = status_repository
@@ -490,6 +531,8 @@ class PersonaViewService:
         self._identity_links = identity_link_repository
         # The stage a tracker status maps to, for a task's "Jira today" line.
         self._delivery_settings = delivery_settings_repository
+        self._escalation_policy = escalation_policy
+        self._checkin_defaults = checkin_defaults or CheckInDefaults()
         self._blocker_resolution = BlockerResolutionService(graph_repository, status_repository)
         self._rollup_service = RollupService(
             status_repository, rollup_repository, self._blocker_resolution, drift_signals
@@ -639,17 +682,71 @@ class PersonaViewService:
                 )
         return tuple(sorted(blockers, key=lambda item: (-item.age_days, item.owner_name)))
 
-    async def pod_checkins(self, tenant_id: str, pod_id: str, as_of: date) -> PodCheckinsView:
+    async def pod_checkins(
+        self,
+        tenant_id: str,
+        pod_id: str,
+        as_of: date,
+        reads: PodCheckinReads | None = None,
+    ) -> PodCheckinsView:
         """Each member's check-in for ``as_of``, and how the pod's day was captured.
 
         An inferred day carries the lines it was inferred from; a day closed
-        with no data says why (``NoDataCause``).
+        with no data says why (``NoDataCause``). ``reads`` says what more the
+        caller reads (``checkin_ladder.pod_checkin_reads``): the day's silence
+        ladder, each person's check-in time and zone, or only their own row.
+        The counts and the coverage are always the whole pod's.
         """
+        reads = reads or PodCheckinReads()
         tree = await self._pod_tree(tenant_id, pod_id, as_of)
+        counted = await self._checkin_people(tenant_id, _developers(tree), as_of)
+        developers = counted
+        if reads.only is not None:
+            developers = [item for item in developers if item.developer_id == reads.only]
+        if reads.ladder:
+            developers = await self._with_ladder(tenant_id, developers, as_of)
+        if reads.schedule:
+            developers = await self._with_schedule(tenant_id, developers)
+        return PodCheckinsView(
+            pod_id=tree.root.id,
+            pod_name=tree.root.name,
+            as_of=as_of,
+            confirmed=sum(1 for item in counted if item.state == "confirmed"),
+            partial=sum(1 for item in counted if item.state == "partial"),
+            stale=sum(1 for item in counted if item.state == "stale"),
+            missing=sum(1 for item in counted if item.state == "missing"),
+            developers=tuple(sorted(developers, key=lambda item: item.developer_name)),
+            coverage=_coverage(counted, as_of),
+            ladder=reads.ladder,
+            schedule=reads.schedule,
+        )
+
+    async def project_checkin_coverage(
+        self, tenant_id: str, project_id: str, as_of: date
+    ) -> ProjectCheckinCoverageView:
+        """How the day was captured across the project's people, each counted once.
+
+        The pod coverage's counts (replied, filled from the tracker, no data,
+        waiting) over everyone on the project's pods, with no one named, so a
+        reader of the project's progress gets them without the pods' boards.
+        """
+        tree = await self._project_tree(tenant_id, project_id, as_of)
+        people = await self._checkin_people(tenant_id, _developers(tree), as_of)
+        return ProjectCheckinCoverageView(
+            project_id=tree.root.id,
+            as_of=as_of,
+            people=len(people),
+            coverage=_coverage(people, as_of),
+        )
+
+    async def _checkin_people(
+        self, tenant_id: str, people: Sequence[GraphNode], as_of: date
+    ) -> list[CheckinDeveloperView]:
+        """Each person's check-in state for ``as_of``, and why a day closed with no data."""
         links = await self._links(tenant_id)
         synced: bool | None = None
         developers: list[CheckinDeveloperView] = []
-        for developer in _developers(tree):
+        for developer in people:
             status = await self._status_repository.latest_developer_status(
                 tenant_id, developer.id, as_of
             )
@@ -674,17 +771,58 @@ class PersonaViewService:
                     no_data_cause=cause,
                 )
             )
-        return PodCheckinsView(
-            pod_id=tree.root.id,
-            pod_name=tree.root.name,
-            as_of=as_of,
-            confirmed=sum(1 for item in developers if item.state == "confirmed"),
-            partial=sum(1 for item in developers if item.state == "partial"),
-            stale=sum(1 for item in developers if item.state == "stale"),
-            missing=sum(1 for item in developers if item.state == "missing"),
-            developers=tuple(sorted(developers, key=lambda item: item.developer_name)),
-            coverage=_coverage(developers, as_of),
+        return developers
+
+    async def _with_ladder(
+        self, tenant_id: str, developers: Sequence[CheckinDeveloperView], as_of: date
+    ) -> list[CheckinDeveloperView]:
+        """The day's first asks and replies and the rungs that went out: three reads a pod."""
+        days = {
+            day.developer_id: day
+            for day in await self._status_repository.checkins_on_day(tenant_id, as_of)
+        }
+        nudges = await self._status_repository.checkin_nudges_on_day(tenant_id, as_of)
+        facts = (
+            await self._time_series_repository.list_recent_facts(
+                tenant_id,
+                since=rung_facts_since(as_of),
+                sources=(CHECKIN_RUNG_FACT_SOURCE,),
+                limit=_RUNG_FACT_LIMIT,
+            )
+            if nudges
+            else []
         )
+        rungs = sent_rungs(nudges, facts, self._escalation_policy, as_of)
+        result: list[CheckinDeveloperView] = []
+        for item in developers:
+            day = days.get(item.developer_id)
+            result.append(
+                replace(
+                    item,
+                    asked_at=day.first_asked_at if day else None,
+                    replied_at=day.first_replied_at if day else None,
+                    rungs=rungs.get(item.developer_id, ()),
+                )
+            )
+        return result
+
+    async def _with_schedule(
+        self, tenant_id: str, developers: Sequence[CheckinDeveloperView]
+    ) -> list[CheckinDeveloperView]:
+        """Each person's check-in time and zone: theirs, else the team default's."""
+        stored = {
+            preference.developer_id: preference
+            for preference in await self._status_repository.list_checkin_preferences(tenant_id)
+        }
+        result: list[CheckinDeveloperView] = []
+        for item in developers:
+            effective = effective_checkin_preference(
+                tenant_id, item.developer_id, stored.get(item.developer_id), self._checkin_defaults
+            )
+            result.append(
+                replace(item, checkin_time=effective.local_time, timezone=effective.timezone)
+            )
+        return result
 
     async def _links(self, tenant_id: str) -> dict[str, IdentityLink]:
         if self._identity_links is None:

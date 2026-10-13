@@ -335,6 +335,8 @@ def get_persona_view_service(request: Request) -> PersonaViewService:
         identity_link_repository=registry.identity_link_repository(),
         # The stage a task's tracker status maps to, on its "Jira today" line.
         delivery_settings_repository=registry.delivery_settings_repository(),
+        escalation_policy=registry.settings.escalation_policy(),
+        checkin_defaults=registry.settings.checkin_defaults(),
     )
 
 

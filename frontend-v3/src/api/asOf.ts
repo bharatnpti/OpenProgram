@@ -25,6 +25,9 @@ export function currentViewingAsOf(): string | null {
  * that adds or drops `as_of` fails the tests until the list follows.
  */
 export const DATED_READS = [
+  "/cross-person-requests/counts",
+  "/cross-person-requests/resolved",
+  "/cross-person-requests/{request_id}/trail",
   "/graph/programs/{program_id}/tree",
   "/me/delivery-tree",
   "/me/focus",
@@ -53,6 +56,7 @@ export const DATED_READS = [
   "/projects",
   "/projects/{project_id}/asks",
   "/projects/{project_id}/baselines",
+  "/projects/{project_id}/checkin-coverage",
   "/projects/{project_id}/delivery",
   "/projects/{project_id}/delivery/history",
   "/projects/{project_id}/delivery/impact",

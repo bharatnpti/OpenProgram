@@ -38,6 +38,7 @@ from core.domain.status import (
     CheckInCorrelation,
     CheckInDay,
     CheckInNudge,
+    CheckInNudgeSent,
     CheckInPreference,
     CheckInScheduleRun,
     CheckInSignals,
@@ -487,6 +488,21 @@ class InMemoryGraphStore:
             if request.tenant_id == tenant_id
             and request.requester_id == requester_id
             and (status_filter is None or request.status in status_filter)
+        )
+
+    async def list_resolved_since(
+        self, tenant_id: str, since: datetime
+    ) -> list[CrossPersonRequest]:
+        return sorted(
+            (
+                request
+                for request in self._cross_person_requests.values()
+                if request.tenant_id == tenant_id
+                and request.status is CrossPersonRequestStatus.RESOLVED
+                and request.updated_at >= since
+            ),
+            key=lambda request: (request.updated_at, request.id),
+            reverse=True,
         )
 
     async def list_open(self, tenant_id: str) -> list[CrossPersonRequest]:
@@ -1057,6 +1073,9 @@ class InMemoryGraphStore:
     async def checkins_on_day(self, tenant_id: str, day: date) -> list[CheckInDay]:
         return checkins_on_day(self._checkins, tenant_id, day)
 
+    async def checkin_nudges_on_day(self, tenant_id: str, day: date) -> list[CheckInNudgeSent]:
+        return checkin_nudges_on_day(self._checkins, self._checkin_nudges.values(), tenant_id, day)
+
     async def purge_checkin_raw_replies_older_than(self, tenant_id: str, cutoff: datetime) -> int:
         cleared = 0
         retained: list[CheckIn] = []
@@ -1601,6 +1620,38 @@ def _checkin_with_last_accessed_at(checkin: CheckIn) -> CheckIn:
 
 def _checkin_last_accessed_at(checkin: CheckIn) -> datetime:
     return checkin.last_accessed_at or checkin.replied_at or checkin.asked_at
+
+
+def _checkin_day(checkin: CheckIn) -> date:
+    """A check-in's local day; a legacy one without it, its ask's UTC day."""
+    if checkin.checkin_date is not None:
+        return checkin.checkin_date
+    asked_at = checkin.asked_at
+    return (asked_at if asked_at.tzinfo else asked_at.replace(tzinfo=UTC)).astimezone(UTC).date()
+
+
+def checkin_nudges_on_day(
+    checkins: list[CheckIn], nudges: Iterable[CheckInNudge], tenant_id: str, day: date
+) -> list[CheckInNudgeSent]:
+    """The rungs sent for the check-ins of ``day``, oldest first, as Postgres reads them."""
+    people = {
+        checkin.correlation_id: checkin.developer_id
+        for checkin in checkins
+        if checkin.tenant_id == tenant_id and _checkin_day(checkin) == day
+    }
+    sent = [
+        CheckInNudgeSent(
+            developer_id=people[nudge.correlation_id],
+            correlation_id=nudge.correlation_id,
+            nudge_number=nudge.nudge_number,
+            sent_at=nudge.sent_at,
+        )
+        for nudge in nudges
+        if nudge.tenant_id == tenant_id
+        and nudge.sent_at is not None
+        and nudge.correlation_id in people
+    ]
+    return sorted(sent, key=lambda rung: (rung.sent_at, rung.correlation_id, rung.nudge_number))
 
 
 def checkins_on_day(checkins: list[CheckIn], tenant_id: str, day: date) -> list[CheckInDay]:
