@@ -58,6 +58,59 @@ frontend-v2/src/api/generated.ts
 backend/core/application/portfolio_warnings_service.py
   s_5f08a60d42019a::t_e7ca9621b4a20c 174-175,180-182,247-248,260,275,279,294-302,406-409
   s_5f08a60d42019a::t_65f2a5e3db23b4 1-173,176-179,183-246,249-259,261-274,276-278,280-293,303-405,410-460
+frontend-v3/scripts/mock/portfolio.mjs
+  s_5f08a60d42019a::t_43fae77d7673ed 1-404
+frontend-v3/src/features/portfolio/ProjectCard.tsx
+  s_5f08a60d42019a::t_43fae77d7673ed 1-149
+frontend-v3/src/pages/ScopePage.tsx
+  s_5f08a60d42019a::t_43fae77d7673ed 1,4,10-11,14-17,22-25,27-29,31-43,45,48,51-54,57-74,78
+frontend-v3/src/api/schema.ts
+  s_5f08a60d42019a::t_3348fb723a08c5 419
+  s_5f08a60d42019a::t_43fae77d7673ed 420-438
+frontend-v3/src/features/portfolio/PortfolioTiles.tsx
+  s_5f08a60d42019a::t_43fae77d7673ed 1-73
+frontend-v3/src/features/portfolio/WindowedList.tsx
+  s_5f08a60d42019a::t_43fae77d7673ed 1-129
+frontend-v3/src/features/portfolio/windowing.ts
+  s_5f08a60d42019a::t_43fae77d7673ed 1-46
+frontend-v3/src/api/asOf.ts
+  s_5f08a60d42019a::t_43fae77d7673ed 44,49-50
+frontend-v3/src/features/warnings/WarningGroups.tsx
+  s_5f08a60d42019a::t_43fae77d7673ed 1-105
+frontend-v3/src/features/scope/scopeWords.ts
+  s_5f08a60d42019a::t_43fae77d7673ed 1-55
+frontend-v3/src/api/client.ts
+  s_5f08a60d42019a::t_43fae77d7673ed 130-134,397-425
+frontend-v3/src/features/warnings/warningWords.test.ts
+  s_5f08a60d42019a::t_43fae77d7673ed 1-61
+frontend-v3/scripts/mock-api.mjs
+  s_5f08a60d42019a::t_43fae77d7673ed 41,268
+frontend-v3/src/features/portfolio/usePortfolio.ts
+  s_5f08a60d42019a::t_43fae77d7673ed 1-36
+frontend-v3/src/features/portfolio/windowing.test.ts
+  s_5f08a60d42019a::t_43fae77d7673ed 1-31
+frontend-v3/src/features/portfolio/ProjectBar.tsx
+  s_5f08a60d42019a::t_43fae77d7673ed 1-106
+frontend-v3/src/pages/FlowPage.tsx
+  s_5f08a60d42019a::t_43fae77d7673ed 1-9,11-12,15-20,34-60
+frontend-v3/src/features/portfolio/portfolioWords.test.ts
+  s_5f08a60d42019a::t_43fae77d7673ed 1-224
+frontend-v3/src/features/portfolio/VizPanel.tsx
+  s_5f08a60d42019a::t_43fae77d7673ed 1-40
+frontend-v3/src/pages/PortfolioPage.tsx
+  s_5f08a60d42019a::t_43fae77d7673ed 1-2,4-5,7,9-26,29-34,38-91,93-136,138-140,142-206,209
+frontend-v3/src/pages/ReportsHomePage.tsx
+  s_5f08a60d42019a::t_43fae77d7673ed 18-20,25
+frontend-v3/src/features/scope/ScopeTables.tsx
+  s_5f08a60d42019a::t_43fae77d7673ed 1-317
+frontend-v3/src/features/warnings/warningWords.ts
+  s_5f08a60d42019a::t_43fae77d7673ed 1-77
+frontend-v3/src/pages/RisksPage.tsx
+  s_5f08a60d42019a::t_43fae77d7673ed 2,5-9,13-15,18-23,25-26,28,32-38,41-84
+frontend-v3/src/features/portfolio/portfolioWords.ts
+  s_5f08a60d42019a::t_43fae77d7673ed 1-314
+frontend-v3/src/features/scope/scopeWords.test.ts
+  s_5f08a60d42019a::t_43fae77d7673ed 1-62
 ---
 {
   "schema_version": "authorship/3.0.0",
