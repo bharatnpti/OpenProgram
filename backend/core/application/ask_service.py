@@ -126,13 +126,19 @@ ASK_TOOL_GUIDANCE = (
     "readiness: a release criterion is not a requirement. "
     "Why a date moved -- what changed, delayed or impacted a project's, release's or "
     "pod's timeline, what scope was added since planning -- is answered from "
-    "delivery_impact: its summary first, in its own words -- where the likely date stands, "
-    "then at most three causes in working days (scope added, scope removed, team speed) "
-    "and the requirements behind them -- then the committed date's moves with who and why, "
-    "and the team's date. Say 'likely by' for the date, never '85%', 'p85', 'throughput' "
-    "or 'window'. Never explain a move from colours, briefs or the forecast's dates "
-    "alone, and never add up or rank what people added: an item's added_by belongs to "
-    "that item only. "
+    "delivery_impact. Its summary's first line says what is not known (planning not "
+    "marked complete, too little history for a likely date, days with no breakdown): "
+    "begin the answer with that line, word for word, and never drop it. Then its summary "
+    "in its own words -- where the likely date stands, then at most three causes in "
+    "working days (scope added, scope removed, team speed) and the requirements behind "
+    "them -- then the committed date's moves with who and why, and the team's date. Keep "
+    "the three dates apart, as its dates field defines them: the committed date (only a "
+    "person moves it), the likely date (the forecast's, likely_by) and the team's date "
+    "(the team's own latest ETA). A team's date or a likely date that moved is never "
+    "'the project's date moved'. Say 'likely by' for the date, never '85%', 'p85', "
+    "'throughput' or 'window'. Never explain a move from colours, briefs or the "
+    "forecast's dates alone, and never add up or rank what people added: an item's "
+    "added_by belongs to that item only. "
     "Whether a project, release or pod is ready for production -- what is still missing "
     "before it can go live, whether it can be released -- is answered from "
     "release_readiness: name each missing or unsure criterion, blocking ones first, with "
@@ -1551,7 +1557,8 @@ class DeliveryImpactTool:
     name: str = "delivery_impact"
     description: str = (
         "Why a project's, release's or pod's delivery date moved over a period, and what "
-        "impacted its timeline: a summary that says where the likely date stands and why, "
+        "impacted its timeline: a summary whose first line says what is not known and "
+        "whose next says where the likely date stands and why, "
         "the likely date then and now, how many working days it moved, and at most three "
         "causes with their working days and the requirements behind them -- scope added "
         "(change requests carrying the change label, additions without it, bugs, moved "
@@ -3588,9 +3595,43 @@ def _measure(value: JsonScalar) -> Measure:
     return Measure.P50 if named == Measure.P50.value else Measure.P85
 
 
+#: The three dates delivery_impact speaks of, kept apart for the model: a team's date
+#: or a likely date that moved is never "the project's date moved".
+IMPACT_DATES: Mapping[str, str] = {
+    "committed_date": (
+        "The date people committed to deliver by. Only a person moves it; each move is "
+        "in committed_changes, with who and why."
+    ),
+    "likely_date": (
+        "When the forecast says the work will likely be done, from how fast the team "
+        "finishes: likely_by (85% likely) and likely_around (50%). It moves with the "
+        "causes in drivers; nobody sets it."
+    ),
+    "team_date": (
+        "The latest ETA or due date the team gave on its open requirements: the team's "
+        "own estimate, neither the committed date nor the likely date."
+    ),
+}
+
+
+def impact_first_line(not_known: Sequence[str]) -> str:
+    """The returned text's first line: what is not known, always, even when nothing is."""
+    if not not_known:
+        return "Not known: nothing; the likely date is known at both ends of the period."
+    said = "; ".join(f"{note[:1].lower()}{note[1:]}".rstrip(".") for note in not_known)
+    return f"Not known: {said}."
+
+
 def _impact_payload(view: ImpactView) -> dict[str, object]:
-    """One scope's move, taken apart, for the model: names beside ids, keys and dates only."""
+    """One scope's move, taken apart, for the model: names beside ids, keys and dates only.
+
+    What is not known comes first (``not_known`` and the summary's first line), so an
+    answer never drops it; the three dates are named apart (``dates``)."""
+    first_line = impact_first_line(view.not_known)
     payload: dict[str, object] = {
+        "not_known": list(view.not_known),
+        "summary": f"{first_line}\n{view.summary}",
+        "dates": dict(IMPACT_DATES),
         "scope": {
             "kind": view.scope.kind.value,
             "id": view.scope.id,
@@ -3603,11 +3644,11 @@ def _impact_payload(view: ImpactView) -> dict[str, object]:
         "measure": view.measure.value,
         "planning_complete_on": _iso(view.baseline_day),
         "change_label": view.change_label,
-        "from": _impact_end(view.start),
-        "to": _impact_end(view.end),
-        "moved_working_days": view.moved_working_days,
+        # The likely date and the committed date at the start of the period and now.
+        "then": _impact_end(view.start),
+        "now": _impact_end(view.end),
+        "likely_date_moved_working_days": view.moved_working_days,
         "unit": view.unit,
-        "summary": view.summary,
         "drivers": [
             {
                 "kind": driver.kind,
@@ -3645,10 +3686,10 @@ def _impact_payload(view: ImpactView) -> dict[str, object]:
         ],
         "team_date": (
             {
-                "from": _iso(view.team_date.from_date),
-                "from_issue": view.team_date.from_key,
-                "to": _iso(view.team_date.to_date),
-                "to_issue": view.team_date.to_key,
+                "team_date_then": _iso(view.team_date.from_date),
+                "then_issue": view.team_date.from_key,
+                "team_date_now": _iso(view.team_date.to_date),
+                "now_issue": view.team_date.to_key,
                 "moves": [
                     {"day": move.day.isoformat(), "cause": move.cause, "words": move.words}
                     for move in view.team_date.moves
@@ -3671,7 +3712,6 @@ def _impact_payload(view: ImpactView) -> dict[str, object]:
         ],
         "link": view.link,
         "reconstructed_days": view.reconstructed_days,
-        "not_known": list(view.not_known),
     }
     if view.evidence is not None:
         payload["evidence"] = {
@@ -3697,9 +3737,9 @@ def _impact_end(end: ImpactEnd | None) -> dict[str, object] | None:
         return None
     return {
         "day": end.day.isoformat(),
-        "p50": _iso(end.p50),
-        "p85": _iso(end.p85),
-        "committed": _iso(end.committed),
+        "likely_by": _iso(end.p85),
+        "likely_around": _iso(end.p50),
+        "committed_date": _iso(end.committed),
     }
 
 

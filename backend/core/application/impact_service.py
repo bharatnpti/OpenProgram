@@ -1152,7 +1152,11 @@ def _period_notes(attribution: PeriodAttribution | None, reason: str | None) -> 
         return ["No likely date was kept for this period yet."]
     notes: list[str] = []
     if attribution.to_p85 is None:
-        notes.append(f"No likely date yet: {reason}" if reason else "No likely date yet.")
+        notes.append(
+            f"No likely date yet: {reason[:1].lower()}{reason[1:]}"
+            if reason
+            else "No likely date yet."
+        )
     if attribution.forecast_began is not None:
         notes.append(
             f"There was too little history for a likely date before "

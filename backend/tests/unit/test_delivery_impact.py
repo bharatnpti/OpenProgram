@@ -746,7 +746,10 @@ async def test_ora_reads_what_moved_the_date_since_planning_with_markers_and_lin
         "project_name": "Checkout Revamp",
     }
     assert payload["period"] == "since_baseline" and payload["planning_complete_on"] == "2026-10-01"
-    assert payload["from"]["day"] == "2026-10-01" and payload["to"]["day"] == "2026-10-12"
+    assert payload["then"]["day"] == "2026-10-01" and payload["now"]["day"] == "2026-10-12"
+    # The likely date and the committed date are named apart at both ends.
+    assert set(payload["now"]) == {"day", "likely_by", "likely_around", "committed_date"}
+    assert payload["now"]["committed_date"] == "2026-11-27"
     groups = {
         item.get("group") for driver in payload["drivers"] for item in driver.get("items", [])
     }
@@ -884,6 +887,53 @@ def _llm_response(text: str = "", tool_calls: tuple[LlmToolCall, ...] = ()) -> L
         ),
         trace_id="trace-impact",
         tool_calls=tool_calls,
+    )
+
+
+async def test_ora_is_told_what_is_not_known_first_and_the_three_dates_apart() -> None:
+    registry, _store = await _reconstructed()
+    manager = _principal(Role.MGR, "dev-mina")
+
+    def tool_on(day: date) -> DeliveryImpactTool:
+        return DeliveryImpactTool(
+            principal=manager,
+            service=registry.delivery_impact_service(),
+            forecasts=registry.forecast_service(),
+            repository=registry.graph_repository(),
+            as_of=day,
+        )
+
+    # Mid-September: no planning baseline yet, and too little history for a likely date.
+    early = json.loads(await tool_on(date(2026, 9, 16)).run({"node_id": "checkout"}))
+    first = early["summary"].splitlines()[0]
+    # After the day it is read for, what is not known comes before anything else.
+    assert list(early)[:4] == ["as_of", "not_known", "summary", "dates"]
+    assert first.startswith(
+        "Not known: planning is not marked complete yet, so this covers the last 30 days; "
+        "no likely date yet: only 2 working days of history"
+    )
+    assert early["not_known"] == [
+        "Planning is not marked complete yet, so this covers the last 30 days.",
+        "No likely date yet: only 2 working days of history; a forecast needs 10.",
+    ]
+    # Today, with nothing unknown, the first line still says so.
+    today = json.loads(await tool_on(TODAY).run({"node_id": "checkout"}))
+    assert today["summary"].splitlines()[0] == (
+        "Not known: nothing; the likely date is known at both ends of the period."
+    )
+    # The committed date, the likely date and the team's date are three named things.
+    assert set(today["dates"]) == {"committed_date", "likely_date", "team_date"}
+    assert "Only a person moves it" in today["dates"]["committed_date"]
+    assert "neither the committed date nor the likely date" in today["dates"]["team_date"]
+    assert {"team_date_then", "team_date_now"} <= set(today["team_date"])
+    assert "p85" not in json.dumps(today["now"]) and "from" not in today
+    # And the guidance says to lead with it and keep the dates apart.
+    assert "begin the answer with that line, word for word, and never drop it" in (
+        ASK_TOOL_GUIDANCE
+    )
+    assert "is never 'the project's date moved'" in ASK_TOOL_GUIDANCE
+    assert "keeping the committed date, the likely date and the team's date apart" in (
+        STEP_GUIDANCE
     )
 
 
