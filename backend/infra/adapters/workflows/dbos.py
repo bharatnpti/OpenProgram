@@ -130,6 +130,10 @@ SyncWorkflowResult = (
 )
 
 
+class DbosDatabaseNotConfigured(RuntimeError):
+    """DBOS was asked to launch on a database nobody named."""
+
+
 @dataclass(frozen=True)
 class DbosRuntimeConfig:
     """What one DBOS runtime is launched with.
@@ -138,12 +142,19 @@ class DbosRuntimeConfig:
     config from its settings, so launching a runtime never reads the global
     settings: a caller holding only an application name and a database URL
     (an integration test, a one-off script) needs no secret key or provider.
+
+    ``database_explicit`` is False only when the settings fell back to their
+    default URL. A launch registers this code as the database's application
+    version, which on the developer's running stack at that address stalls its
+    scheduled runs, so a launch on the fallback is refused. A caller that wrote
+    its own URL is explicit by construction.
     """
 
     app_name: str
     system_database_url: str
     system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
     sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
+    database_explicit: bool = True
 
 
 _configured_runtime: DbosRuntimeConfig | None = None
@@ -907,6 +918,7 @@ class DbosWorkflowScheduler:
     reply_debounce_seconds: int = 30
     system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
     sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
+    database_explicit: bool = True
 
     def runtime_config(self) -> DbosRuntimeConfig:
         return DbosRuntimeConfig(
@@ -914,6 +926,7 @@ class DbosWorkflowScheduler:
             system_database_url=self.system_database_url,
             system_pool_size=self.system_pool_size,
             sync_queue_concurrency=self.sync_queue_concurrency,
+            database_explicit=self.database_explicit,
         )
 
     async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
@@ -1066,6 +1079,7 @@ class DbosRollupRefresher:
     debounce_seconds: float = ROLLUP_REFRESH_DEBOUNCE_SECONDS
     system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
     sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
+    database_explicit: bool = True
 
     def runtime_config(self) -> DbosRuntimeConfig:
         return DbosRuntimeConfig(
@@ -1073,6 +1087,7 @@ class DbosRollupRefresher:
             system_database_url=self.system_database_url,
             system_pool_size=self.system_pool_size,
             sync_queue_concurrency=self.sync_queue_concurrency,
+            database_explicit=self.database_explicit,
         )
 
     async def refresh_rollup(self, tenant_id: str, as_of: date) -> None:
@@ -1108,6 +1123,7 @@ class DbosWorkflowWorker:
     system_database_url: str
     system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
     sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
+    database_explicit: bool = True
 
     def runtime_config(self) -> DbosRuntimeConfig:
         return DbosRuntimeConfig(
@@ -1115,6 +1131,7 @@ class DbosWorkflowWorker:
             system_database_url=self.system_database_url,
             system_pool_size=self.system_pool_size,
             sync_queue_concurrency=self.sync_queue_concurrency,
+            database_explicit=self.database_explicit,
         )
 
     async def run(self) -> None:
@@ -1135,6 +1152,7 @@ class DbosWorkflowReadinessProbe:
     system_database_url: str
     system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
     sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
+    database_explicit: bool = True
     _launched: bool = field(default=False, init=False, compare=False)
 
     def runtime_config(self) -> DbosRuntimeConfig:
@@ -1143,11 +1161,14 @@ class DbosWorkflowReadinessProbe:
             system_database_url=self.system_database_url,
             system_pool_size=self.system_pool_size,
             sync_queue_concurrency=self.sync_queue_concurrency,
+            database_explicit=self.database_explicit,
         )
 
     async def check(self) -> bool:
         if self._launched:
             return True
+        # Before the probe's own connection: it would reach the database too.
+        _require_named_database(self.runtime_config())
         try:
             connection = await psycopg.AsyncConnection.connect(self.system_database_url)
             try:
@@ -1163,8 +1184,19 @@ class DbosWorkflowReadinessProbe:
         return True
 
 
+def _require_named_database(config: DbosRuntimeConfig) -> None:
+    if not config.database_explicit:
+        raise DbosDatabaseNotConfigured(
+            "DBOS would launch on the default database URL, which is the local stack's "
+            "own database: set OPENPROGRAM_DATABASE_URL (or "
+            "OPENPROGRAM_DBOS_SYSTEM_DATABASE_URL) to the database it should use"
+        )
+
+
 def configure_dbos_runtime(config: DbosRuntimeConfig) -> None:
     global _configured_runtime
+    # Every launch is configured first, so this is the one place all of them pass.
+    _require_named_database(config)
     if _configured_runtime == config:
         return
     DBOS.destroy(destroy_registry=False)

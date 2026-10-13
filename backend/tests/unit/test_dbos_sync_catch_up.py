@@ -444,6 +444,7 @@ def test_every_dbos_adapter_carries_the_settings_values_into_its_runtime_config(
         system_database_url=settings.resolved_dbos_system_database_url,
         system_pool_size=6,
         sync_queue_concurrency=2,
+        database_explicit=settings.dbos_database_explicit,
     )
     assert len(adapters) == 4
     for adapter in adapters:

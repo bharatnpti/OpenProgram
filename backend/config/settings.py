@@ -24,6 +24,11 @@ from core.domain.status import CheckInDefaults, CheckInSendSchedule, checkin_sen
 # It is public, so it must never protect a shared (non-local) deployment.
 DEFAULT_SECRET_KEY = "q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ="
 
+# Where a Settings with no database_url points: the database of the stack a developer
+# runs on this machine (docker-compose publishes it here). Named so the tests can tell
+# a test's own database from this one; see Settings.dbos_database_explicit.
+DEFAULT_DATABASE_URL = "postgresql://openprogram:openprogram@localhost:5432/openprogram"
+
 # The DBOS pool and sync-queue limits, named so the DBOS adapter's runtime config
 # defaults to exactly what the settings default to, without reading the settings.
 DEFAULT_DBOS_SYSTEM_POOL_SIZE = 10
@@ -54,7 +59,7 @@ class Settings(BaseSettings):
         "http://localhost:5175",
         "http://127.0.0.1:5175",
     )
-    database_url: str = "postgresql://openprogram:openprogram@localhost:5432/openprogram"
+    database_url: str = DEFAULT_DATABASE_URL
     # The one application pool each process (API, worker) shares between its
     # requests and every workflow step it runs. A caller waits up to the
     # timeout for a free connection; the pool never opens one past the max.
@@ -852,6 +857,24 @@ class Settings(BaseSettings):
     @property
     def resolved_dbos_system_database_url(self) -> str:
         return self.dbos_system_database_url or self.database_url
+
+    @property
+    def dbos_database_explicit(self) -> bool:
+        """Whether this process was told which database DBOS runs on.
+
+        A local process that fell back to the default URL would register its code as
+        the application version of whatever database sits at that address, and that
+        is the developer's own running stack: its scheduled runs wait for a version
+        no worker runs. DBOS refuses to launch then. Set through the environment,
+        a .env file or the constructor, the URL counts even when it spells the
+        default: a person named it. A deployed environment sets everything itself
+        and is not second-guessed here.
+        """
+        return (
+            self.environment != "local"
+            or self.dbos_system_database_url is not None
+            or "database_url" in self.model_fields_set
+        )
 
     @property
     def resolved_heartbeat_schedule_id(self) -> str:

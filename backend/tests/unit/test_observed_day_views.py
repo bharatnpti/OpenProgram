@@ -273,7 +273,14 @@ def _as(role: str) -> dict[str, str]:
 def client(settings: Settings) -> Iterator[TestClient]:
     app = create_app(
         settings=settings.model_copy(
-            update={"demo_mode": True, "issue_tracker_provider": "fake", "tenant_id": "demo"}
+            update={
+                "demo_mode": True,
+                "issue_tracker_provider": "fake",
+                "tenant_id": "demo",
+                # Saving the switch adds or removes the fill's schedule. With the default
+                # provider that is a launch of DBOS on the default database.
+                "workflow_provider": "fake",
+            }
         )
     )
     with TestClient(app) as test_client:

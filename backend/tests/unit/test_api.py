@@ -37,6 +37,10 @@ from infra.registry import ServiceRegistry
 from tests.contract.fakes import FakeIssueTracker
 from tests.fixtures.demo_graph import populate_demo_graph
 
+# A container-mode registry opens its Postgres pool on first use. These tests give it an
+# address nothing listens on: the settings' own default is the developer stack's database.
+UNREACHABLE_DATABASE_URL = "postgresql://x:x@127.0.0.1:1/x"
+
 
 def test_health_and_graph_routes(settings: Settings) -> None:
     app = create_app(settings=settings)
@@ -449,6 +453,7 @@ def test_admin_directory_sync_missing_slack_token_returns_424(settings: Settings
         settings=settings.model_copy(
             update={
                 "runtime_mode": "container",
+                "database_url": UNREACHABLE_DATABASE_URL,
                 "slack_bot_token": None,
             }
         )
@@ -2141,6 +2146,7 @@ def _container_slack_settings(settings: Settings) -> Settings:
     return settings.model_copy(
         update={
             "runtime_mode": "container",
+            "database_url": UNREACHABLE_DATABASE_URL,
             "chat_provider": "slack",
             "slack_bot_token": "xoxb-test",
             "slack_signing_secret": "signing-secret",
