@@ -1,0 +1,39 @@
+backend/api/routers/reports.py
+  s_5f08a60d42019a::t_f7163823cde696 3-7
+backend/core/application/authorization.py
+  s_5f08a60d42019a::t_4494540415da3c 130-133
+backend/tests/unit/test_authorization.py
+  s_5f08a60d42019a::t_b0e33b3b8c3116 142-143,145-148,150-152
+backend/tests/unit/test_day_reports.py
+  s_5f08a60d42019a::t_76a694c865159d 1347,1369-1394,1454,1473,1514
+frontend-v3/src/app/access.test.ts
+  s_5f08a60d42019a::t_c617b4462d5cd0 338,344-346,350-381
+frontend-v3/src/app/access.ts
+  s_5f08a60d42019a::t_285aadb4f9ec91 93-98,211,528-533
+frontend-v3/src/app/nav.ts
+  s_5f08a60d42019a::t_c2e9af1f229f6a 93,96,100-105,107
+frontend-v3/src/features/delivery/NodeBits.tsx
+  s_5f08a60d42019a::t_6250744199d191 6
+frontend-v3/src/features/overall/ReleaseScope.tsx
+  s_5f08a60d42019a::t_dae0ccc66d5277 7,131,135-136
+frontend-v3/src/features/project/ProjectHeader.tsx
+  s_5f08a60d42019a::t_87923dc4f4b674 5,18,42,64-71
+frontend-v3/src/features/reports/ReportsTabs.tsx
+  s_5f08a60d42019a::t_77a86f249402c6 9,12-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9e5e8386e1f39a18e2bab515b3b76651da6864f3",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
