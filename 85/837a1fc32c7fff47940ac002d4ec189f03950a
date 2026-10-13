@@ -1,0 +1,79 @@
+frontend-v3/src/pages/ProjectPage.tsx
+  s_5f08a60d42019a::t_43acd64a02048b 35
+  s_5f08a60d42019a::t_efe14060f49a75 29-30
+  s_5f08a60d42019a::t_5ef53281dd4fe7 12,153,155
+  s_5f08a60d42019a::t_04751f6914a2dd 1-3,5-6,8-9,13-28,32-33,40-41,74-152,154,156-202,207-240,243-280,282-303,305,308-346
+  s_5f08a60d42019a::t_304d4657dc1502 203-206
+frontend-v3/src/features/project/whatChanged.ts
+  s_5f08a60d42019a::t_5d8b1c7c13c296 36-37,56,60,168,178,198,200,206,222
+  s_5f08a60d42019a::t_304d4657dc1502 137-145,165
+  s_5f08a60d42019a::t_5ef53281dd4fe7 201,223-230
+  s_5f08a60d42019a::t_00c0cdcdf601a4 1-35,38-55,57-59,61-80,82-136,146-164,166-167,169-177,179-197,199,202-205,207-212,220-221,231-242
+  s_5f08a60d42019a::t_e4ee59460e00d5 81,213-219
+frontend-v3/src/features/project/sections.ts
+  s_5f08a60d42019a::t_53ee2aa1014edb 1-60,62-64
+  s_5f08a60d42019a::t_304d4657dc1502 61
+frontend-v3/src/features/overall/RisksSection.tsx
+  s_5f08a60d42019a::t_803fa9d178129d 103
+  s_5f08a60d42019a::t_48c703e4751667 1,25-26,30-44,50-51,57-62,64,78,114-120,124
+  s_5f08a60d42019a::t_998be9eade4963 27-28
+frontend-v3/src/features/project/ProjectSwitcher.tsx
+  s_5f08a60d42019a::t_2bc6bd7b88bb47 1-46,48-98,100-102,114-190,192-200,202-244
+  s_5f08a60d42019a::t_2825fc9dd09367 47
+  s_5f08a60d42019a::t_c4299ceb198423 99,103-113,191,201
+frontend-v3/src/features/project/workPods.test.ts
+  s_5f08a60d42019a::t_6c90d06d32e124 1-9,19-35
+  s_5f08a60d42019a::t_56c8647a96b5a3 10-18
+frontend-v3/src/features/project/sections.test.ts
+  s_5f08a60d42019a::t_43acd64a02048b 5
+  s_5f08a60d42019a::t_6f4587c05c1cc0 1-4,6-77
+frontend-v3/src/features/overall/AnswerCard.tsx
+  s_5f08a60d42019a::t_7a9f11d482006d 43-56,76-77,79-87,120
+frontend-v3/src/features/project/whatChanged.test.ts
+  s_5f08a60d42019a::t_e4ee59460e00d5 119-120,207
+  s_5f08a60d42019a::t_304d4657dc1502 9,104-108
+  s_5f08a60d42019a::t_5ef53281dd4fe7 162,170-175
+  s_5f08a60d42019a::t_4ccda09cb77f31 1-8,10-103,109-118,121-161,163-169,176-206,208-221
+frontend-v3/src/features/overall/TimelineSection.tsx
+  s_5f08a60d42019a::t_389955f64e6e97 2,6,34,38-47,106,124-130
+frontend-v3/src/features/project/WhatChanged.tsx
+  s_5f08a60d42019a::t_2c2527a88776ff 1-7,9-149
+  s_5f08a60d42019a::t_43acd64a02048b 8
+frontend-v3/src/features/project/ProjectHeader.tsx
+  s_5f08a60d42019a::t_59abcf42735540 1-75
+frontend-v3/src/index.css
+  s_5f08a60d42019a::t_e2666fefe82e30 204-208
+frontend-v3/src/features/project/ProjectWork.tsx
+  s_5f08a60d42019a::t_304d4657dc1502 52-58
+  s_5f08a60d42019a::t_22caf02f1395e8 40-41,134
+  s_5f08a60d42019a::t_efe14060f49a75 16
+  s_5f08a60d42019a::t_ee3fa58c7d530c 1-15,17-22,25-30,32-37,39,42-45,47-48,62-67,73-119,121-133,135-138
+  s_5f08a60d42019a::t_b0b1781eac6084 23-24,31,38,46,49-51,59-61,68-72,120
+frontend-v3/src/features/project/workPods.ts
+  s_5f08a60d42019a::t_33caaca113d069 1-38
+frontend-v3/src/app/Layout.tsx
+  s_5f08a60d42019a::t_b0b1781eac6084 3,66-70
+frontend-v3/src/features/overall/TimelineChart.tsx
+  s_5f08a60d42019a::t_389955f64e6e97 91,104-105,156,170,178,413-415
+frontend-v3/src/features/project/ScopeLine.tsx
+  s_5f08a60d42019a::t_aacca642941792 1-5,7-45
+  s_5f08a60d42019a::t_43acd64a02048b 6
+frontend-v3/src/features/project/scopeWords.ts
+  s_5f08a60d42019a::t_43acd64a02048b 1-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "85837a1fc32c7fff47940ac002d4ec189f03950a",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
