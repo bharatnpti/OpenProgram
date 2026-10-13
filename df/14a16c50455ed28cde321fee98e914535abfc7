@@ -1,0 +1,120 @@
+frontend-v3/src/features/overall/ImpactWaterfall.tsx
+  s_22b399281058a2::t_8fbe05817c4f8d 95,203-204,274-276,278-292
+  s_22b399281058a2::t_51c543420243aa 1-94,96-202,205-215,217-273,277,293-353
+  s_ed47025cfc8469::t_bfe88fc64dc8c6 216
+frontend-v3/src/features/overall/TimelineSection.tsx
+  s_22b399281058a2::t_8fbe05817c4f8d 105,127-129,167-169
+  s_22b399281058a2::t_f1563421a10839 1-104,106-126,130-166,170-261
+frontend-v3/src/features/overall/timeline.ts
+  s_22b399281058a2::t_3894cf5eb56224 27
+  s_22b399281058a2::t_20276024e2b9fc 321-322,330
+  s_22b399281058a2::t_6362195d6a5e5c 106-107,109
+  s_22b399281058a2::t_18b15b9e846e90 125-131
+  s_ed47025cfc8469::t_2e375c86207f0b 460-473
+  s_22b399281058a2::t_df059933aa0e6f 1-26,28-105,108,110-124,132-169,173-227,229-320,323-329,331-459,474-548,552-591,594-598,603-607
+  s_22b399281058a2::t_1d4573e7df202c 228
+  s_22b399281058a2::t_8fbe05817c4f8d 170-172,549-551,592-593,599-602
+frontend-v3/src/features/overall/waterfall.ts
+  s_22b399281058a2::t_31e6356d781d76 1-114,116-117,119-122,124-129,147-178,182-200,203-213
+  s_ed47025cfc8469::t_0ac333044a790f 123
+  s_22b399281058a2::t_8fbe05817c4f8d 201-202
+  s_22b399281058a2::t_159546a91c273c 115,118
+  s_ed47025cfc8469::t_786cd82bcd5ac7 130-146
+  s_22b399281058a2::t_1d4573e7df202c 179-181
+frontend-v3/src/features/overall/SlipChart.tsx
+  s_22b399281058a2::t_ab4d52689e36e5 2,21-26,28,37-44
+frontend-v3/src/app/access.test.ts
+  s_22b399281058a2::t_450c7a6b361ed3 121,128,141
+frontend-v3/src/features/delivery/PodPanel.tsx
+  s_22b399281058a2::t_f0d199b2149f77 42
+  s_22b399281058a2::t_85bd8987bbb6c0 107,110-111
+  s_22b399281058a2::t_b65a739e12c4b9 17,19
+frontend-v3/src/features/overall/AnswerCard.tsx
+  s_22b399281058a2::t_8fbe05817c4f8d 166-167
+  s_22b399281058a2::t_b70f71802cb2b2 143
+frontend-v3/src/features/delivery/DeliveryTimeline.tsx
+  s_22b399281058a2::t_f6a9fb21caa0e0 1-97
+frontend-v3/scripts/mock/timeline.mjs
+  s_22b399281058a2::t_b22196457aef07 713-728
+  s_22b399281058a2::t_8e9b7554b11eb7 570,624
+  s_22b399281058a2::t_c1871158adfbc9 35-36
+  s_22b399281058a2::t_119a2249304e78 633-634
+  s_22b399281058a2::t_3b34a792a80110 1-34,37-285,299-359,373-383,386-453,458-465,469-550,554-569,571-583,587-618,626-632,635-636,649-660,675-687,693-712,729-749,752-759,762-765,775-787,791-792,800-813,817,821-831,834-837,845-850
+  s_22b399281058a2::t_dae43f9cb2b21d 286-295
+  s_22b399281058a2::t_bd8d25e7a940c6 296-298,360-372,384-385,454-457,466-468,551-553,584-586,619-623,625,637-648,661-674,688-692,750-751,760-761,766-774,788-790,793-799,814-816,818-820,832-833,838-844
+frontend-v3/src/features/overall/BaselineSection.tsx
+  s_22b399281058a2::t_6a20c67c16f1ea 158
+  s_22b399281058a2::t_c19ad6dab59aa7 180-185
+frontend-v3/src/features/delivery/ProjectPanel.tsx
+  s_22b399281058a2::t_bb1dc86b25d5c9 79,81-82
+  s_22b399281058a2::t_142a9a4fa39099 11
+frontend-v3/src/features/overall/waterfall.test.ts
+  s_ed47025cfc8469::t_73a57057ede8e4 8,61-65,70-75
+  s_ed47025cfc8469::t_bfe88fc64dc8c6 66-69
+  s_22b399281058a2::t_882f70bc538ab6 52-57
+  s_22b399281058a2::t_759e1e50fe2ce3 1-7,9-51,58-60,76-117,122-123,128-136,144-201
+  s_22b399281058a2::t_0c34a27425e1f6 118-121,124-127,137-143
+frontend-v3/src/features/delivery/DeliveryStrips.tsx
+  s_22b399281058a2::t_9de22c9749d0e1 199
+frontend-v3/src/app/access.ts
+  s_22b399281058a2::t_730cd2eebb183d 94-97
+  s_22b399281058a2::t_450c7a6b361ed3 93,98-99,195
+frontend-v3/src/index.css
+  s_22b399281058a2::t_a2a9dde7a8e483 155-159
+frontend-v3/src/features/overall/overallWords.ts
+  s_22b399281058a2::t_b88e345bf5b37a 5
+frontend-v3/src/features/overall/TimelineChart.tsx
+  s_22b399281058a2::t_3c9fb4f61e6d70 521-529
+  s_22b399281058a2::t_07a6d35c657836 268
+  s_22b399281058a2::t_8fbe05817c4f8d 1-8,300,511-513,631-639,662-667,714-716,738-743,753-756,789-792,798-801,831-845
+  s_ed47025cfc8469::t_2e375c86207f0b 20,88-89
+  s_ed47025cfc8469::t_13bf115e4394db 86-87,93-108,127,222,550-551,553,555
+  s_ed47025cfc8469::t_049d3eda6adf2c 235-236
+  s_22b399281058a2::t_1d4573e7df202c 11,182
+  s_22b399281058a2::t_e3a4f1131ca2ce 9-10,12-19,21-85,90-92,109-126,128-181,184-221,223-234,237-267,269-299,301-319,321-510,514-520,530-549,552,554,556-630,640-661,668-713,717-737,744-752,757-788,793-797,802-830,846-878
+  s_22b399281058a2::t_b4c62ee731fdb4 183,320
+frontend-v3/src/features/overall/queries.ts
+  s_22b399281058a2::t_63c5425b8b6fc7 91-154
+  s_22b399281058a2::t_2fcaebc607f976 4
+  s_22b399281058a2::t_3ea209a53db929 155
+frontend-v3/src/pages/OverallPage.tsx
+  s_22b399281058a2::t_0c3d3b9cf2252d 1,17-18,23-26,36-37,63-64,88-89,91,93-114,116-120,129,133
+frontend-v3/src/features/overall/sections.ts
+  s_22b399281058a2::t_8fbe05817c4f8d 39
+  s_22b399281058a2::t_f3b58cedc2b25f 1-15,17-38,40-41
+frontend-v3/src/features/overall/timeline.test.ts
+  s_22b399281058a2::t_a693396d8775c4 1-10,12-115,123-168,170-238,241-261,268-304,307,312-358,375
+  s_22b399281058a2::t_9811054c89952e 116-122
+  s_22b399281058a2::t_a4aa4b4ca84603 239-240
+  s_22b399281058a2::t_9c19eb4edf67be 305-306,308-311
+  s_ed47025cfc8469::t_bfe88fc64dc8c6 11,359-374
+  s_22b399281058a2::t_0c34a27425e1f6 169,262-267
+frontend-v3/scripts/mock-api.mjs
+  s_22b399281058a2::t_bd8d25e7a940c6 39,268
+frontend-v3/src/features/reports/DeliveryDateDialog.tsx
+  s_22b399281058a2::t_2d7a30a4502960 14-17,24-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "df14a16c50455ed28cde321fee98e914535abfc7",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_ed47025cfc8469": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c3dacc8-00da-46b1-a2f5-ce44e164bb12",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
