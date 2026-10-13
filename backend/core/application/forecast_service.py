@@ -605,6 +605,19 @@ class ForecastService:
         records = await self._day_records(tenant_id, scope.project_id, day, only=scope)
         return next((record for record in records if record.scope == scope), None)
 
+    async def live_days(
+        self, tenant_id: str, project_id: str, day: date
+    ) -> dict[CommitmentScope, ForecastDayRecord]:
+        """Every scope of the project forecast for ``day``, computed now as forecast_day
+        computes it (the same delivery read, scope and seed) but without the breakdown:
+        what the timeline draws for today, so its band and the impact read's agree."""
+        view = await self.project_delivery(tenant_id, project_id, day)
+        computed_at = self._clock()
+        return {
+            item.scope: _record(tenant_id, item, day, computed_at)
+            for item in (view.project, *view.pods, *view.releases)
+        }
+
     async def kept_days(
         self, tenant_id: str, scope: CommitmentScope, start: date, end: date
     ) -> list[ForecastDayRecord]:

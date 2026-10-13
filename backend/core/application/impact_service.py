@@ -690,8 +690,9 @@ class DeliveryImpactService:
     ) -> list[ForecastDayRecord]:
         """The period's first row (the last on or before ``start``) and every row after it.
 
-        Today's is computed now, as every read of today is, unless ``live`` is False:
-        the timeline reads the kept rows only, today's as the hourly run last kept it.
+        Today's is computed now, as every read of today is (the timeline's rows compute
+        it the same way, ForecastService.live_days), unless ``live`` is False: the
+        timeline's markers read the kept rows only, today's as the hourly run kept it.
         """
         kept = await self._forecasts.kept_days(
             tenant_id, scope, start - timedelta(days=_ANCHOR_LOOKBACK_DAYS), as_of

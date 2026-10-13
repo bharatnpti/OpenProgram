@@ -9,15 +9,19 @@ row says:
   committed date, and the committed date's earlier values with the day each was set;
 - progress (done of total, by story points when every requirement has them) and
   the scope since planning;
-- the kept forecast's 50% to 85% band and verdict, and the team's latest date;
+- the forecast's 50% to 85% band and verdict, and the team's latest date;
 - the impact markers on the day each thing happened (DeliveryImpactService.
   timeline_markers): scope added with or without the change label, bugs, scope
   removed, reopened, closing late, blockers and the committed date's moves;
 - one sentence that speaks the row.
 
-Stored rows only: the kept forecast_days, the baselines, the snapshots, the
-committed date's changes, the facts and the blockers. Nothing is simulated on a
-read; today's band is the one the hourly run last kept.
+A past day reads stored rows only: the kept forecast_days, the baselines, the
+snapshots, the committed date's changes, the facts and the blockers. Today's
+band is live, as every read of today is (ForecastService.live_days: one delivery
+forecast of the project per read, no breakdown), so a row and the impact read's
+"now" (DeliveryImpactService, which computes today the same way) never disagree,
+whether or not the hourly run has kept today's row yet. The markers still read
+the kept rows: today's breakdown joins them when the hourly run keeps it.
 
 Who sees what is decided per row, on the levels the Delivery tree uses
 (NodeAccess): a whole row (``panel``), dates only (``dates``: span, ticks and
@@ -37,7 +41,7 @@ A developer reads no project's timeline: their own pod's row is on its pod panel
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta, tzinfo
 
@@ -214,11 +218,12 @@ class TimelineService:
         )
         # A pod's row is drawn against its project's committed date.
         project_target = await self._committed(tenant_id, whole_project, as_of)
+        live = await self._live(tenant_id, project_id, as_of)
         rows: list[TimelineRow] = []
         if reads:
             head = self._scope_access(principal, project_row=True, runs=False)
             if release is not None:
-                rows.append(await self._release_row(principal, release, project, head, as_of))
+                rows.append(await self._release_row(principal, release, project, head, as_of, live))
             else:
                 rows.append(
                     await self._row(
@@ -228,10 +233,13 @@ class TimelineService:
                         project_name=project.name,
                         access=head,
                         as_of=as_of,
+                        live=live,
                     )
                 )
                 for item in await self._forecasts.releases(tenant_id, project_id, as_of=as_of):
-                    rows.append(await self._release_row(principal, item, project, head, as_of))
+                    rows.append(
+                        await self._release_row(principal, item, project, head, as_of, live)
+                    )
         pods: list[TimelineRow] = []
         for pod in await self._forecasts.project_pods(tenant_id, project_id, as_of):
             access = await self._pod_access(principal, pod.id)
@@ -246,6 +254,7 @@ class TimelineService:
                     access=access,
                     as_of=as_of,
                     reference=project_target,
+                    live=live,
                 )
             )
         rows += sorted(pods, key=lambda row: worst_first(row.verdict, row.name))
@@ -278,6 +287,7 @@ class TimelineService:
                     project_name=project.name,
                     access=access,
                     as_of=as_of,
+                    live=await self._live(tenant_id, project.id, as_of),
                     reference=await self._committed(
                         tenant_id,
                         CommitmentScope(
@@ -346,6 +356,7 @@ class TimelineService:
         project: GraphNode,
         access: RowAccess,
         as_of: date,
+        live: Mapping[CommitmentScope, ForecastDayRecord],
     ) -> TimelineRow:
         return await self._row(
             principal,
@@ -356,8 +367,17 @@ class TimelineService:
             project_name=project.name,
             access=access,
             as_of=as_of,
+            live=live,
             release=release,
         )
+
+    async def _live(
+        self, tenant_id: str, project_id: str, as_of: date
+    ) -> Mapping[CommitmentScope, ForecastDayRecord]:
+        """Today's forecast of every scope of the project, computed now; none for a past day."""
+        if as_of < self._today():
+            return {}
+        return await self._forecasts.live_days(tenant_id, project_id, as_of)
 
     async def _row(
         self,
@@ -368,6 +388,7 @@ class TimelineService:
         project_name: str,
         access: RowAccess,
         as_of: date,
+        live: Mapping[CommitmentScope, ForecastDayRecord],
         reference: date | None = None,
         release: Release | None = None,
     ) -> TimelineRow:
@@ -376,6 +397,10 @@ class TimelineService:
         kept = await self._forecasts.kept_days(
             tenant_id, scope, as_of - timedelta(days=LOOKBACK_DAYS), as_of
         )
+        # Today is live, as the impact read's today is: a row kept earlier today gives way.
+        today = live.get(scope)
+        if today is not None:
+            kept = [row for row in kept if row.day < today.day] + [today]
         latest: ForecastDayRecord | None = kept[-1] if kept else None
         history = await self._changes(tenant_id, scope, as_of)
         committed = await self._committed(tenant_id, scope, as_of)
@@ -610,10 +635,10 @@ def _progress(
 def _verdict(
     latest: ForecastDayRecord | None, target: date | None, team: TeamForecast
 ) -> Verdict | None:
-    """The row's verdict: the kept day's, unless the date it was measured against has
-    changed since (a date set or moved after the hourly run kept the day). Then the kept
-    band is judged against today's date by the forecast's own rule, with the team's
-    dates as they stand: a comparison of stored dates, never a forecast run."""
+    """The row's verdict: its day's (kept, or today's computed now), unless the date it
+    was measured against has changed since (on a past day, a date set or moved after the
+    hourly run kept the day). Then the band is judged against the day's date by the
+    forecast's own rule, with the team's dates as they stand: a comparison, no forecast."""
     if latest is None:
         return None
     if target == latest.target_date:

@@ -15,11 +15,20 @@ why the date moved (`docs/lld/delivery-impact.md`) and the Jira changes
 | `GET /projects/{id}/timeline?release_id=&as_of=` | the project's row (or the release's), its releases, then its pods worst verdict first         | the project's readers; whoever sets a pod's date (a scrum master: the pods only)  |
 | `GET /pods/{id}/timeline?as_of=`                 | the pod's row for each project it works on, with that project's committed date as a reference | the pod's dates' gate (`GET /pods/{id}/delivery`), a developer's own pod included |
 
-Both read stored rows only and never run a forecast: the kept `forecast_days`
-row of the day (else the last one kept before it), `planning_baselines`,
-`requirement_snapshots`, `delivery_date_changes`, `issue_change` and issue facts,
-`developer_blockers`, and open `hygiene_findings`. A past day (`as_of`) reads
-that day's row and the markers up to it.
+A past day (`as_of`) reads stored rows only and runs no forecast: the kept
+`forecast_days` row of the day (else the last one kept before it),
+`planning_baselines`, `requirement_snapshots`, `delivery_date_changes`,
+`issue_change` and issue facts, `developer_blockers`, and open
+`hygiene_findings`, with the markers up to that day.
+
+Today is live, as every read of today is: one delivery forecast of the project
+per read (`ForecastService.live_days`, the same scope, seed and inputs as
+`forecast_day`, without the breakdown) gives every row its band, verdict and
+team's date, whether or not the hourly run has kept today's row yet, and a row
+kept earlier today gives way to it. The impact read computes its today the same
+way, so a row and the "Why the date moved" under it never show two different
+85% dates for now. The markers still read the kept rows: today's breakdown joins
+them once the hourly run keeps it.
 
 `TimelineService` (`core/application/timeline_service.py`) builds the rows;
 `core/domain/timeline.py` holds the pure rules: the axis (the earliest start to
@@ -32,11 +41,11 @@ sentence and the no-forecast reason.
   at the first kept forecast day and says so; with no committed date it runs
   open to the axis end.
 - **Committed history:** every committed date with the day it was set.
-- **Forecast:** the kept 50% and 85% dates, the verdict and the day they were
-  kept; else the reason there is none, from the row's own numbers. When the date
-  the kept day was measured against has changed since (a date set before the
-  next hourly run), the kept band is judged against today's date by the
-  forecast's own rule: a comparison, not a forecast run.
+- **Forecast:** the 50% and 85% dates, the verdict and the day they are for
+  (today's live, else the kept day's); else the reason there is none, from the
+  row's own numbers. When the date a past day was measured against changed later
+  that day, its band is judged against that day's date by the forecast's own
+  rule: a comparison, not a forecast run.
 - **Team's date:** the latest ETA or due date of the open requirements, its key,
   and how many have none.
 - **Progress and scope:** done of total (story points when every requirement

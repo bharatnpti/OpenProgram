@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -92,8 +92,8 @@ async def test_a_product_owner_reads_the_project_row_then_the_pods_worst_first()
         (date(2026, 11, 20), date(2026, 9, 20)),
         (date(2026, 11, 27), date(2026, 10, 7)),
     ]
-    # Today has no kept row yet: the band is the one kept last, on Friday.
-    assert project.forecast_on == FRIDAY
+    # Today is live, as every read of today is: the band is the one computed now.
+    assert project.forecast_on == TODAY
     assert project.p50 is not None and project.p85 is not None
     assert project.done is not None and project.total is not None and project.unit
     assert project.at_baseline is not None and project.in_scope is not None
@@ -132,22 +132,85 @@ async def test_the_project_row_marks_what_happened_on_the_day_it_happened() -> N
     assert "the committed date moved once, 20 Nov → 27 Nov" in sentence
 
 
-async def test_the_timeline_reads_kept_rows_only_and_never_runs_a_forecast() -> None:
+async def test_a_past_day_runs_no_forecast_and_today_one_per_project() -> None:
     registry, _store = await _reconstructed()
     service = registry.timeline_service()
     forecasts = service._forecasts
+    delivery = forecasts.project_delivery
+    calls: list[date] = []
 
     async def refuse(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("a forecast was simulated on a timeline read")
+        raise AssertionError("a forecast with its breakdown was run on a timeline read")
 
-    forecasts.project_delivery = refuse  # type: ignore[method-assign]
+    async def counted(tenant_id: str, project_id: str, as_of: date) -> object:
+        calls.append(as_of)
+        return await delivery(tenant_id, project_id, as_of)
+
+    forecasts.project_delivery = counted  # type: ignore[method-assign,assignment]
     forecasts.forecast_day = refuse  # type: ignore[method-assign]
     forecasts.scope_delivery = refuse  # type: ignore[method-assign]
 
-    view = await service.project_timeline(_principal(Role.MGR), "checkout", as_of=TODAY)
-    pod = await service.pod_timeline(_principal(Role.MGR), "pod-pay", as_of=TODAY)
+    # A past day reads the kept rows alone.
+    past = await service.project_timeline(_principal(Role.MGR), "checkout", as_of=FRIDAY)
+    pod = await service.pod_timeline(_principal(Role.MGR), "pod-pay", as_of=FRIDAY)
+    assert past.rows and pod.rows and calls == []
 
-    assert view.rows and pod.rows
+    # Today: one delivery forecast of the project for every row, never one per row.
+    today = await service.project_timeline(_principal(Role.MGR), "checkout", as_of=TODAY)
+    assert len(today.rows) == 3 and calls == [TODAY]
+    await service.pod_timeline(_principal(Role.MGR), "pod-pay", as_of=TODAY)
+    assert calls == [TODAY, TODAY]
+
+
+async def test_a_rows_now_is_the_impact_reads_now_whether_or_not_today_was_kept() -> None:
+    registry, _store = await _reconstructed()
+    timeline = registry.timeline_service()
+    impact = registry.delivery_impact_service()
+    manager = _principal(Role.MGR)
+    week = ImpactPeriod(kind=PeriodKind.LAST_7_DAYS)
+
+    async def both() -> dict[str, tuple[object, object, object, object]]:
+        view = await timeline.project_timeline(manager, "checkout", as_of=TODAY)
+        found = {}
+        for scope in (PROJECT, PAY):
+            row = next(row for row in view.rows if row.row_id == f"{scope.kind.value}:{scope.id}")
+            end = (
+                await impact.impact(
+                    TENANT,
+                    scope,
+                    period=week,
+                    measure=Measure.P85,
+                    as_of=TODAY,
+                    access=await impact.access(manager, scope),
+                )
+            ).end
+            assert end is not None and row.forecast_on == end.day == TODAY
+            found[scope.id] = (row.p50, row.p85, end.p50, end.p85)
+        return found
+
+    # Nothing kept today yet (the reconstruction stops on Friday): both compute it now.
+    live = await registry.forecast_service().forecast_day(TENANT, PROJECT, TODAY)
+    assert live is not None and live.p85 is not None
+    missing = await both()
+    for p50, p85, end_p50, end_p85 in missing.values():
+        assert (p50, p85) == (end_p50, end_p85)
+    assert missing["checkout"][:2] == (live.p50, live.p85)
+
+    # A row kept earlier today that the live forecast has moved past: both still say now.
+    kept = registry.forecast_day_repository()
+    friday = (await kept.list_between(TENANT, PROJECT, FRIDAY, FRIDAY))[0]
+    stale = replace(
+        friday,
+        day=TODAY,
+        p50=live.p50 - timedelta(days=30) if live.p50 else None,
+        p85=live.p85 - timedelta(days=30),
+        computed_at=datetime(2026, 10, 12, 6, 50, tzinfo=UTC),
+    )
+    await kept.save([stale])
+    assert (await kept.list_between(TENANT, PROJECT, TODAY, TODAY))[0].p85 == stale.p85
+    older = await both()
+    assert older == missing
+    assert older["checkout"][1] != stale.p85
 
 
 async def test_a_manager_reads_the_blockers_opened_and_closed_with_what_they_wait_on() -> None:
@@ -269,7 +332,7 @@ async def test_an_addition_without_the_label_is_ringed_while_jira_hygiene_has_it
     assert all(item.hygiene is None for marker in row.markers for item in marker.items)
 
 
-async def test_a_date_set_after_the_day_was_kept_is_judged_against_the_kept_band() -> None:
+async def test_a_date_set_after_a_past_day_was_kept_is_judged_against_its_band() -> None:
     registry, _store = await _reconstructed()
     service = registry.timeline_service()
     manager = _principal(Role.MGR)
@@ -280,20 +343,20 @@ async def test_a_date_set_after_the_day_was_kept_is_judged_against_the_kept_band
                 tenant_id=TENANT,
                 scope=PROJECT,
                 target_date=target,
-                changed_at=datetime(2026, 10, 12, 8, 0, tzinfo=UTC),
+                changed_at=datetime(2026, 10, 9, 20, 0, tzinfo=UTC),
                 changed_by="dev-mina",
                 note="",
             )
         )
-        return (await service.project_timeline(manager, "checkout", as_of=TODAY)).rows[0]
+        return (await service.project_timeline(manager, "checkout", as_of=FRIDAY)).rows[0]
 
-    before = (await service.project_timeline(manager, "checkout", as_of=TODAY)).rows[0]
+    before = (await service.project_timeline(manager, "checkout", as_of=FRIDAY)).rows[0]
     kept = (await registry.forecast_day_repository().list_between(TENANT, PROJECT, FRIDAY, FRIDAY))[
         0
     ]
     assert before.verdict is kept.verdict and kept.target_date == date(2026, 11, 27)
 
-    # Today has no kept row yet: Friday's band, judged against the date set this morning.
+    # Friday read back: its kept band, judged against the date set that evening.
     late = await moved_to(date(2027, 12, 31))
     assert late.committed == date(2027, 12, 31)
     assert late.p85 == kept.p85 and late.verdict is Verdict.ON_TRACK  # type: ignore[attr-defined]
@@ -472,7 +535,7 @@ async def test_the_endpoints_read_as_the_service_and_refuse_in_words() -> None:
     assert head["baseline"] == {"day": PLANNED.isoformat(), "reconstructed": False}
     assert head["committed"]["date"] == "2026-11-27"
     assert [tick["date"] for tick in head["committed"]["history"]] == ["2026-11-20", "2026-11-27"]
-    assert head["forecast"]["on"] == FRIDAY.isoformat()
+    assert head["forecast"]["on"] == TODAY.isoformat()
     assert head["progress"]["unit"] == "requirements"
     assert head["scope"]["now"] - head["scope"]["at_baseline"] == 2
     assert {marker["kind"] for marker in head["markers"]} >= {
