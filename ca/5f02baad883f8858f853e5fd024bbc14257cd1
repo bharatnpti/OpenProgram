@@ -1,0 +1,25 @@
+backend/core/domain/timeline.py
+  s_22b399281058a2::t_ca95f6113055af 152-160,163-169
+backend/core/application/impact_service.py
+  s_22b399281058a2::t_1058e6963d2cd8 904-911
+backend/tests/unit/test_timeline.py
+  s_22b399281058a2::t_7ef23c15d550f7 448-456
+backend/core/application/timeline_service.py
+  s_22b399281058a2::t_5c9ed0e0665c86 386-387
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ca5f02baad883f8858f853e5fd024bbc14257cd1",
+  "prompts": {},
+  "sessions": {
+    "s_22b399281058a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "efba9aa5-ab8c-40a3-9bee-261e51515f5c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
