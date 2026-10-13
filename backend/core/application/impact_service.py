@@ -57,7 +57,6 @@ from core.domain.forecast import (
 )
 from core.domain.graph import EntityRef, FactEvent, GraphNode, NodeKind
 from core.domain.impact import (
-    Driver,
     Item,
     KeptDay,
     Measure,
@@ -67,20 +66,17 @@ from core.domain.impact import (
     Shift,
     attribution_from_payload,
     key_order,
-    rounding_folded,
     scope_group,
     summed,
     working_days_moved,
 )
 from core.domain.impact_words import (
-    DRIVER_LABELS,
-    PACE,
+    TEAM_SPEED,
     answer_line,
+    cause_note,
+    causes,
+    dates_line,
     day_line,
-    group_words,
-    measure_words,
-    moved_words,
-    throughput_words,
 )
 from core.ports.forecast import CommitmentRepository
 from core.ports.repositories import GraphRepository, StatusRepository, TimeSeriesRepository
@@ -465,6 +461,8 @@ class DeliveryImpactService:
         groups = {key: added.group for key, added in data.added.items()}
         committed = await self._committed_changes(tenant_id, scope, resolved.start, as_of, data)
         late = _late(requirements.open, as_of, resolved.baseline) if full else []
+        end = _end(data.rows, attribution, first=False)
+        committed_now = end.committed if end is not None else None
         summary = (
             answer_line(
                 attribution,
@@ -472,9 +470,12 @@ class DeliveryImpactService:
                 measure=measure,
                 change_label=data.rule.change_label,
                 period_words=resolved.words,
+                committed=committed_now,
             )
             if attribution is not None and full
-            else _dates_summary(attribution, measure, resolved.words)
+            else dates_line(
+                attribution, measure=measure, period_words=resolved.words, committed=committed_now
+            )
         )
         return ImpactView(
             scope=scope,
@@ -487,7 +488,7 @@ class DeliveryImpactService:
             change_label=data.rule.change_label,
             baseline_day=resolved.baseline.planned_on if resolved.baseline else None,
             start=_end(data.rows, attribution, first=True),
-            end=_end(data.rows, attribution, first=False),
+            end=end,
             moved_working_days=(
                 attribution.moved.of(measure)
                 if attribution is not None and attribution.moved
@@ -639,7 +640,7 @@ class DeliveryImpactService:
         live: bool = True,
     ) -> _PeriodData:
         rows = await self._rows(tenant_id, scope, start, as_of, live=live)
-        attribution = rounding_folded(
+        attribution = (
             summed(
                 [
                     KeptDay(
@@ -1148,30 +1149,24 @@ def _end(
 
 def _period_notes(attribution: PeriodAttribution | None, reason: str | None) -> list[str]:
     if attribution is None:
-        return ["No forecast was kept for this period yet."]
+        return ["No likely date was kept for this period yet."]
     notes: list[str] = []
     if attribution.to_p85 is None:
-        notes.append(f"No forecast yet: {reason}" if reason else "No forecast yet.")
+        notes.append(f"No likely date yet: {reason}" if reason else "No likely date yet.")
     if attribution.forecast_began is not None:
         notes.append(
-            f"The forecast had too little history before {_short(attribution.forecast_began)}; "
-            "the move is read from that day."
+            f"There was too little history for a likely date before "
+            f"{_short(attribution.forecast_began)}, so the move is read from that day."
         )
     if attribution.unknown_days:
         days = ", ".join(_short(day) for day in attribution.unknown_days[:5])
         more = len(attribution.unknown_days) - 5
         notes.append(
-            "Why the forecast moved is not known for "
+            "Why the date moved on "
             + (f"{days} and {more} more days" if more > 0 else days)
-            + ": no breakdown was kept."
+            + " is not known; it is counted under team speed."
         )
     return notes
-
-
-def _dates_summary(attribution: PeriodAttribution | None, measure: Measure, words: str) -> str:
-    if attribution is None or attribution.moved is None:
-        return f"No forecast to compare {words}."
-    return f"The {measure_words(measure)} {moved_words(attribution.moved.of(measure))} {words}."
 
 
 def _drivers(
@@ -1181,91 +1176,36 @@ def _drivers(
     full: bool,
     late: Sequence[LateView],
 ) -> tuple[ImpactDriverView, ...]:
-    """The waterfall's bars: pace, scope added by group, and every other driver; worst first."""
+    """The bars: at most three causes -- scope added, scope removed, team speed -- each
+    with its subline and work items, the latest-pushing first (impact_words.causes)."""
     if attribution is None or attribution.moved is None:
         return ()
+    groups = {key: added.group for key, added in data.added.items()}
     found: list[ImpactDriverView] = []
-    pace = attribution.driver(Driver.TIME_PASSED) + attribution.driver(Driver.WORK_FINISHED)
-    if not _negligible(pace, measure):
-        note = f"{len(attribution.finished)} finished"
-        if late:
-            note += "; " + ", ".join(item.key for item in late[:3]) + " late"
+    for cause in causes(attribution):
+        behind = [*cause.items, *cause.reopened]
+        if _negligible(cause.shift, measure) and not behind and not cause.re_estimated:
+            continue
+        note = cause_note(cause, groups, change_label=data.rule.change_label) if full else ""
+        if full and cause.kind == TEAM_SPEED and late:
+            keys = [item.key for item in late[:3]]
+            note += f"; {_and(keys)} {'is' if len(keys) == 1 else 'are'} late"
         found.append(
             _driver_view(
-                PACE,
+                cause.kind,
                 None,
-                pace,
+                cause.shift,
                 measure,
-                _items(attribution.finished, data, measure) if full else (),
-                note if full else "pace",
-                len(attribution.finished),
+                _items(behind, data, measure) if full else (),
+                note,
+                len(behind),
             )
-        )
-    found += _added_drivers(attribution, data, measure, full)
-    for driver, items in (
-        (Driver.SCOPE_REMOVED, attribution.removed),
-        (Driver.REOPENED, attribution.reopened),
-    ):
-        shift = attribution.driver(driver)
-        if _negligible(shift, measure) and not items:
-            continue
-        found.append(
-            _driver_view(
-                driver.value,
-                None,
-                shift,
-                measure,
-                _items(items, data, measure) if full else (),
-                f"{len(items)} {_noun(len(items))} {DRIVER_LABELS[driver].split()[-1]}"
-                if full
-                else DRIVER_LABELS[driver],
-                len(items),
-            )
-        )
-    for driver in (Driver.RE_ESTIMATED, Driver.THROUGHPUT, Driver.ROUNDING, Driver.NOT_ATTRIBUTED):
-        shift = attribution.driver(driver)
-        if _negligible(shift, measure):
-            continue
-        note = throughput_words(attribution) if driver is Driver.THROUGHPUT and full else ""
-        found.append(
-            _driver_view(driver.value, None, shift, measure, (), note or DRIVER_LABELS[driver], 0)
         )
     return tuple(sorted(found, key=lambda view: -view.working_days))
 
 
-def _added_drivers(
-    attribution: PeriodAttribution, data: _PeriodData, measure: Measure, full: bool
-) -> list[ImpactDriverView]:
-    """Scope added, one bar per group: change requests, without the label, bugs, moved in."""
-    by_group: dict[ScopeGroup, list[Item]] = {}
-    for item in attribution.added:
-        added = data.added.get(item.key)
-        group = added.group if added is not None else ScopeGroup.BEFORE_PLANNING
-        by_group.setdefault(group, []).append(item)
-    found: list[ImpactDriverView] = []
-    for group in ScopeGroup:
-        items = by_group.get(group, [])
-        if not items:
-            continue
-        shift = Shift(
-            p50=round(sum(item.share.p50 for item in items), 2),
-            p85=round(sum(item.share.p85 for item in items), 2),
-        )
-        words = group_words(group, data.rule.change_label, len(items))
-        found.append(
-            _driver_view(
-                Driver.SCOPE_ADDED.value,
-                group,
-                shift,
-                measure,
-                _items(items, data, measure) if full else (),
-                f"{len(items)} {_noun(len(items))} added, {words}"
-                if full
-                else DRIVER_LABELS[Driver.SCOPE_ADDED],
-                len(items),
-            )
-        )
-    return found
+def _and(words: Sequence[str]) -> str:
+    return words[0] if len(words) == 1 else f"{', '.join(words[:-1])} and {words[-1]}"
 
 
 def _driver_view(

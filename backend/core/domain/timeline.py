@@ -16,7 +16,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from core.domain.forecast import Verdict
-from core.domain.impact import POINTS_UNIT, working_days_moved
+from core.domain.impact import POINTS_UNIT, Measure
+from core.domain.impact_words import likely_words
 
 #: The verdicts, worst first: an off-track pod is read before one on track.
 VERDICT_ORDER: Mapping[Verdict | None, int] = {
@@ -83,16 +84,15 @@ class SentenceParts:
 
 
 def row_sentence(parts: SentenceParts) -> str:
-    """The row in one sentence, for the picture's text alternative and the table.
+    """The row in one sentence, for the picture's text alternative and the table, in the
+    words of Why the date moved (impact_words.likely_words).
 
-    "Checkout Revamp: 8 of 22 done; the 85% date, 2 Dec, is 10 working days
-    after the committed 18 Nov; 4 requirements added since planning, 2 without
-    the CR label."
+    "Checkout Revamp: likely by 2 Dec, 2 weeks after the committed 18 Nov; 8 of 22
+    done; 4 requirements added since planning, 2 without the CR label."
     """
-    clauses: list[str] = []
+    clauses: list[str] = [_dates(parts)]
     if parts.done is not None and parts.total is not None:
         clauses.append(_progress(parts))
-    clauses.append(_dates(parts))
     moved = _committed_moves(parts.committed_history)
     if moved:
         clauses.append(moved)
@@ -115,17 +115,10 @@ def _progress(parts: SentenceParts) -> str:
 def _dates(parts: SentenceParts) -> str:
     committed = parts.committed
     if parts.p85 is None:
-        reason = parts.forecast_reason or "no forecast yet"
+        reason = parts.forecast_reason or "no likely date yet"
         tail = f", committed {_short(committed)}" if committed else ", no committed date"
         return f"{_lower_first(reason)}{tail}"
-    if committed is None:
-        return f"the 85% date is {_short(parts.p85)}, with no committed date"
-    gap = working_days_moved(committed, parts.p85)
-    if gap == 0:
-        return f"the 85% date is the committed date, {_short(committed)}"
-    days = f"{abs(gap)} working {'day' if abs(gap) == 1 else 'days'}"
-    side = "after" if gap > 0 else "before"
-    return f"the 85% date, {_short(parts.p85)}, is {days} {side} the committed {_short(committed)}"
+    return _lower_first(likely_words(parts.p85, committed, Measure.P85))
 
 
 def _committed_moves(history: Sequence[date]) -> str | None:
@@ -157,16 +150,18 @@ def no_forecast_reason(
     remaining: float | None = None,
 ) -> str:
     """Why a kept row has no band, from its own numbers, as the history forecast says it:
-    'No forecast yet: 4 of 10 working days of history'."""
+    'No likely date yet: 4 of 10 working days of history'."""
     if sample_days is None or needed_days is None:
-        return "No forecast kept yet"
+        return "No likely date kept yet"
     if remaining is not None and remaining <= 0:
         return "Nothing left to finish"
     if sample_days < needed_days:
-        return f"No forecast yet: {sample_days} of {needed_days} working days of history"
+        return f"No likely date yet: {sample_days} of {needed_days} working days of history"
     if completed is not None and completed <= 0:
-        return f"No forecast: nothing reached production in the last {sample_days} working days"
-    return "No forecast kept for this day"
+        return (
+            f"No likely date yet: nothing reached production in the last {sample_days} working days"
+        )
+    return "No likely date kept for this day"
 
 
 def _unit(unit: str, count: float) -> str:

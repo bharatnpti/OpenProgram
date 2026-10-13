@@ -528,14 +528,9 @@ class TimelineService:
             [
                 day
                 for row in rows
-                for day in (
-                    row.committed,
-                    *(tick.target for tick in row.committed_history),
-                    row.p85,
-                    row.team_date,
-                    row.jira_release_date,
-                    row.reference,
-                )
+                # Only what the picture draws: the committed date and the likely finish,
+                # so the axis ends a little after the latest of them (decision D78).
+                for day in (row.committed, row.p85)
             ],
             as_of,
         )

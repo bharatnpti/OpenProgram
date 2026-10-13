@@ -107,7 +107,7 @@ STEP_GUIDANCE = (
     "'show me what moved X' -- gets one step per project, release or pod it names for "
     "what moved its forecast over the period asked about (since planning unless it names "
     "another): each driver in working days and the requirements behind it, and the "
-    "committed date's moves; and, when slower finishing leads, a step for the open "
+    "committed date's moves; and, when team speed pushed it later, a step for the open "
     "blockers of the pods involved. A question about what blocks or holds "
     "something up, or about risk, gets a step of its own for the open blockers of each pod "
     "involved, or of every pod -- what is blocked, whose blocker it is, for how many days, "

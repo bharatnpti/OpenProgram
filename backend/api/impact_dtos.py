@@ -76,8 +76,8 @@ class ImpactItemResponse(BaseModel):
 class ImpactDriverResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    #: pace, scope_added (one per group), scope_removed, reopened, re_estimated,
-    #: throughput, rounding or not_attributed.
+    #: One of the three causes a leader reads: scope_added, scope_removed or team_speed
+    #: (core/domain/impact_words.py); group is None and each item carries its own.
     kind: str
     group: ScopeGroup | None
     working_days: float

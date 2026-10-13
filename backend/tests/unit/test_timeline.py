@@ -594,10 +594,10 @@ def test_the_axis_spans_the_earliest_start_to_past_the_last_date() -> None:
 
 
 def test_a_row_without_a_band_says_why_from_its_kept_numbers() -> None:
-    assert no_forecast_reason(None, None) == "No forecast kept yet"
-    assert no_forecast_reason(4, 10) == "No forecast yet: 4 of 10 working days of history"
+    assert no_forecast_reason(None, None) == "No likely date kept yet"
+    assert no_forecast_reason(4, 10) == "No likely date yet: 4 of 10 working days of history"
     assert no_forecast_reason(20, 10, completed=0, remaining=5) == (
-        "No forecast: nothing reached production in the last 20 working days"
+        "No likely date yet: nothing reached production in the last 20 working days"
     )
     assert no_forecast_reason(20, 10, completed=3, remaining=0) == "Nothing left to finish"
 
@@ -637,18 +637,17 @@ def test_a_row_reads_as_one_sentence() -> None:
         SentenceParts(name="Data Pod", done=5, total=5, verdict=Verdict.DONE, planned=True)
     )
 
+    # Where it stands first, in Why the date moved's words: no "85%", no working-day gaps.
     assert whole == (
-        "Checkout Revamp: 8 of 22 done; the 85% date, 2 Dec, is 10 working days after the "
-        "committed 18 Nov; the committed date moved once, 4 Nov → 18 Nov; 4 requirements "
-        "added since planning, 2 without the CR label."
+        "Checkout Revamp: likely by 2 Dec, 2 weeks after the committed 18 Nov; 8 of 22 done; "
+        "the committed date moved once, 4 Nov → 18 Nov; 4 requirements added since planning, "
+        "2 without the CR label."
     )
-    assert dates == (
-        "Storefront Pod: the 85% date, 13 Nov, is 3 working days before the committed 18 Nov."
-    )
+    assert dates == "Storefront Pod: likely by 13 Nov, 5 days before the committed 18 Nov."
     assert waiting == (
-        "Identity Pod: 2 of 8 done; no forecast yet: 4 of 10 working days of history, "
-        "no committed date; planning is not marked complete yet."
+        "Identity Pod: no likely date yet: 4 of 10 working days of history, no committed "
+        "date; 2 of 8 done; planning is not marked complete yet."
     )
-    assert points.startswith("Payments Pod: 13 of 40 story points done;")
+    assert "13 of 40 story points done;" in points
     assert "nothing added since planning" in points
-    assert done.startswith("Data Pod: all 5 requirements done;")
+    assert "all 5 requirements done;" in done

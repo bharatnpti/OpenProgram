@@ -1,8 +1,20 @@
-"""Why the date moved, in words: the drivers a leader reads, worst first.
+"""Why the date moved, in words a leader reads in five seconds (decision D78).
 
-Time passed and work finished read together as **pace**. Scope added is said
-by its groups (change requests, additions without the change label, bugs,
-moved in). Every part names work items, never people.
+Where the date stands comes first ("Likely by 19 Mar, 3 months after the
+committed 15 Dec."), then why it moved, in at most three causes:
+
+- **scope added**: requirements added after planning (with or without the
+  change label, bugs, moved in), reopened, and re-estimated larger;
+- **scope removed**: requirements removed, and re-estimated smaller;
+- **team speed**: how fast the team finishes -- the time passed and the work
+  finished, the speed of the recent history the forecast reads, and the
+  forecast's rounding -- read as one.
+
+The same causes and words serve the Overall sentence and bars, the timeline's
+row sentence, the day report's line and Ora's delivery_impact. No word of how
+the forecast is computed reaches a leader: never "throughput", "window",
+"replay", "p50" or "p85"; the 85% date is "likely by", the 50% date "likely
+around". Every cause names work items, never people.
 """
 
 from __future__ import annotations
@@ -13,37 +25,92 @@ from dataclasses import dataclass
 from datetime import date
 
 from core.domain.impact import (
-    POINTS_UNIT,
     Driver,
     Item,
     Measure,
     PeriodAttribution,
+    Reestimate,
     ScopeGroup,
+    Shift,
     key_order,
 )
 
-#: How many keys a part names before it counts the rest.
+#: How many keys a cause names before it counts the rest.
 MAX_KEYS_NAMED = 3
 MINUS = "−"
 
-#: Each driver as the waterfall's bar reads it.
-DRIVER_LABELS: Mapping[Driver, str] = {
-    # What is left of the forecast's rounding after it joins the largest driver: its hint.
-    Driver.ROUNDING: "rounding",
-    Driver.TIME_PASSED: "time passed",
-    Driver.WORK_FINISHED: "work finished",
-    Driver.SCOPE_ADDED: "scope added",
-    Driver.SCOPE_REMOVED: "scope removed",
-    Driver.REOPENED: "reopened",
-    Driver.RE_ESTIMATED: "re-estimated",
-    Driver.THROUGHPUT: "throughput",
-    Driver.NOT_ATTRIBUTED: "days with no breakdown kept",
+#: The three causes a leader reads, and their names on the bars.
+SCOPE_ADDED = "scope_added"
+SCOPE_REMOVED = "scope_removed"
+TEAM_SPEED = "team_speed"
+CAUSE_LABELS: Mapping[str, str] = {
+    SCOPE_ADDED: "Scope added",
+    SCOPE_REMOVED: "Scope removed",
+    TEAM_SPEED: "Team speed",
 }
+#: The drivers team speed reads as one: how fast the team finishes, the recent
+#: history's speed, the forecast's rounding, and days whose part is not known.
+TEAM_SPEED_DRIVERS: tuple[Driver, ...] = (
+    Driver.TIME_PASSED,
+    Driver.WORK_FINISHED,
+    Driver.THROUGHPUT,
+    Driver.ROUNDING,
+    Driver.NOT_ATTRIBUTED,
+)
+#: A cause of less than this on the measure read is not said in a sentence.
+SAID_FROM = 0.5
 
-#: What leaders read: pace stands for time passed and work finished together.
-PACE = "pace"
-#: A rounding remainder too large to fold into another driver, in a sentence.
-OTHER_WORDS = "other (rounding)"
+
+@dataclass(frozen=True, kw_only=True)
+class Cause:
+    """One of the three causes, on both measures, with the work items behind it."""
+
+    kind: str
+    shift: Shift
+    #: Added and reopened (scope added), removed (scope removed), finished (team speed).
+    items: tuple[Item, ...] = ()
+    reopened: tuple[Item, ...] = ()
+    re_estimated: tuple[Reestimate, ...] = ()
+
+
+def causes(period: PeriodAttribution) -> list[Cause]:
+    """The period's drivers as the three causes; one with no shift and no items is left out.
+
+    Re-estimates join scope added when they pushed the 85% date later, scope removed
+    when they pulled it in. The causes add up to the move exactly.
+    """
+    re_estimated = period.driver(Driver.RE_ESTIMATED)
+    added = period.driver(Driver.SCOPE_ADDED) + period.driver(Driver.REOPENED)
+    removed = period.driver(Driver.SCOPE_REMOVED)
+    larger = re_estimated.p85 >= 0
+    if larger:
+        added = added + re_estimated
+    else:
+        removed = removed + re_estimated
+    team = Shift()
+    for driver in TEAM_SPEED_DRIVERS:
+        team = team + period.driver(driver)
+    found = [
+        Cause(
+            kind=SCOPE_ADDED,
+            shift=added,
+            items=period.added,
+            reopened=period.reopened,
+            re_estimated=period.re_estimated if larger else (),
+        ),
+        Cause(
+            kind=SCOPE_REMOVED,
+            shift=removed,
+            items=period.removed,
+            re_estimated=() if larger else period.re_estimated,
+        ),
+        Cause(kind=TEAM_SPEED, shift=team, items=period.finished),
+    ]
+    return [
+        cause
+        for cause in found
+        if not cause.shift.zero or cause.items or cause.reopened or cause.re_estimated
+    ]
 
 
 def group_words(group: ScopeGroup, change_label: str, count: int = 1) -> str:
@@ -79,102 +146,106 @@ def moved_words(value: float) -> str:
 
 
 def measure_words(measure: Measure) -> str:
-    return "85% date" if measure is Measure.P85 else "50% date"
+    """The date a measure is, in a leader's words: "likely by" (85%), "likely around" (50%)."""
+    return "likely by" if measure is Measure.P85 else "likely around"
 
 
-@dataclass(frozen=True, kw_only=True)
-class Part:
-    """One driver as a leader reads it: its working days and what it was."""
+def likely_words(likely: date | None, committed: date | None, measure: Measure) -> str:
+    """Where the date stands: 'Likely by 19 Mar, 3 months after the committed 15 Dec'."""
+    if likely is None:
+        return "No likely date yet"
+    said = f"{measure_words(measure).capitalize()} {_short_day(likely)}"
+    if committed is None:
+        return f"{said}; no committed date yet"
+    gap = (likely - committed).days
+    if gap == 0:
+        return f"{said}, on the committed date"
+    side = "after" if gap > 0 else "before"
+    return f"{said}, {span_words(abs(gap))} {side} the committed {_short_day(committed)}"
 
-    kind: str
-    value: float
-    words: str
+
+def span_words(days: int) -> str:
+    """Calendar days as a leader says them: '5 days', '3 weeks', '3 months'."""
+    if days < 14:
+        return f"{days} {'day' if days == 1 else 'days'}"
+    if days < 60:
+        weeks = round(days / 7)
+        return f"{weeks} {'week' if weeks == 1 else 'weeks'}"
+    months = round(days / 30.44)
+    return f"{months} {'month' if months == 1 else 'months'}"
 
 
-def parts(
-    period: PeriodAttribution,
+def cause_note(
+    cause: Cause,
     groups: Mapping[str, ScopeGroup],
     *,
-    measure: Measure,
     change_label: str,
     one_day: bool = False,
-) -> list[Part]:
-    """The period's drivers, pace first combined, worst (latest) first; zero ones left out.
+) -> str:
+    """A cause's subline: '1 change request, 1 without the CR label', '2 requirements
+    finished'; for one day, its keys: 'CHK-20, without the CR label'."""
+    if cause.kind == SCOPE_ADDED:
+        said = _added_words(cause.items, groups, change_label, one_day)
+        if cause.reopened:
+            count = _keys(cause.reopened) if one_day else str(len(cause.reopened))
+            said.append(f"{count} reopened")
+        if cause.re_estimated:
+            said.append(_estimate_words(cause.re_estimated, "larger", one_day))
+        return "; ".join(said) if one_day else ", ".join(said)
+    if cause.kind == SCOPE_REMOVED:
+        said = []
+        if cause.items:
+            said.append(
+                f"{_keys(cause.items)} removed"
+                if one_day
+                else f"{len(cause.items)} {_noun(len(cause.items))} removed"
+            )
+        if cause.re_estimated:
+            said.append(_estimate_words(cause.re_estimated, "smaller", one_day))
+        return ", ".join(said)
+    if not cause.items:
+        return "nothing finished"
+    if one_day:
+        return f"{_keys(cause.items)} finished"
+    return f"{len(cause.items)} {_noun(len(cause.items))} finished"
 
-    ``groups`` gives each added key's group. ``one_day`` words pace as a day
-    does ("nothing finished") rather than as a period does ("slower finishing").
-    """
-    found: list[Part] = []
-    pace = period.driver(Driver.TIME_PASSED).of(measure) + period.driver(Driver.WORK_FINISHED).of(
-        measure
+
+def cause_phrase(
+    cause: Cause,
+    measure: Measure,
+    *,
+    groups: Mapping[str, ScopeGroup],
+    change_label: str,
+    with_unit: bool,
+    one_day: bool = False,
+) -> str:
+    """One cause in a sentence: 'added scope pushed it back 24 days', 'the team finishing
+    faster pulled it in 80'; for one day with its keys: 'added scope (CHK-20, without the
+    CR label) pushed it back 2 days', 'nothing finished pushed it back 1'."""
+    value = cause.shift.of(measure)
+    count = _number(abs(value))
+    unit = f" {'day' if count == '1' else 'days'}" if with_unit else ""
+    verb = f"pushed it back {count}{unit}" if value > 0 else f"pulled it in {count}{unit}"
+    if cause.kind == TEAM_SPEED:
+        if one_day:
+            subject = "nothing finished" if not cause.items else f"finishing {_keys(cause.items)}"
+        else:
+            subject = "slower finishing" if value > 0 else "the team finishing faster"
+        return f"{subject} {verb}"
+    subject = "added scope" if cause.kind == SCOPE_ADDED else "removed scope"
+    if one_day:
+        note = cause_note(cause, groups, change_label=change_label, one_day=True)
+        if note:
+            subject = f"{subject} ({note})"
+    return f"{subject} {verb}"
+
+
+def said_causes(period: PeriodAttribution, measure: Measure) -> list[Cause]:
+    """The causes a sentence says: half a working day or more, the latest-pushing first."""
+    return sorted(
+        (cause for cause in causes(period) if abs(cause.shift.of(measure)) >= SAID_FROM),
+        key=lambda cause: -cause.shift.of(measure),
     )
-    if abs(pace) >= 0.5:
-        found.append(Part(kind=PACE, value=pace, words=_pace_words(period, pace, one_day)))
-    added = period.driver(Driver.SCOPE_ADDED).of(measure)
-    if abs(added) >= 0.5:
-        found.append(
-            Part(
-                kind=Driver.SCOPE_ADDED.value,
-                value=added,
-                words=_added_words(period.added, groups, change_label, one_day),
-            )
-        )
-    for driver, items, verb in (
-        (Driver.SCOPE_REMOVED, period.removed, "removed"),
-        (Driver.REOPENED, period.reopened, "reopened"),
-    ):
-        value = period.driver(driver).of(measure)
-        if abs(value) >= 0.5:
-            found.append(
-                Part(kind=driver.value, value=value, words=_keys_words(items, verb, period.unit))
-            )
-    value = period.driver(Driver.RE_ESTIMATED).of(measure)
-    if abs(value) >= 0.5:
-        found.append(
-            Part(
-                kind=Driver.RE_ESTIMATED.value,
-                value=value,
-                words=_reestimate_words(period),
-            )
-        )
-    for driver in (Driver.THROUGHPUT, Driver.ROUNDING, Driver.NOT_ATTRIBUTED):
-        value = period.driver(driver).of(measure)
-        if abs(value) >= 0.5:
-            words = (
-                throughput_words(period)
-                if driver is Driver.THROUGHPUT
-                else OTHER_WORDS
-                if driver is Driver.ROUNDING
-                else DRIVER_LABELS[driver]
-            )
-            found.append(Part(kind=driver.value, value=value, words=words))
-    return sorted(found, key=lambda part: -part.value)
-
-
-def throughput_words(period: PeriodAttribution) -> str:
-    """'throughput (9 Oct joined the window with 0 finished; 18 Sep left it with 3; the
-    average fell from 0.6 to 0.5 a day)'."""
-    points = " points" if period.unit == POINTS_UNIT else ""
-    said: list[str] = []
-    joined, left = period.throughput_joined, period.throughput_left
-    if joined:
-        said.append(
-            f"{_window_days(joined)} joined the window with "
-            f"{_number(sum(value for _day, value in joined))}{points} finished"
-        )
-    if left:
-        said.append(
-            f"{_window_days(left)} left it with {_number(sum(value for _day, value in left))}"
-        )
-    before, after = period.average_before, period.average_after
-    if before is not None and after is not None and round(before, 1) != round(after, 1):
-        trend = "fell" if after < before else "rose"
-        said.append(f"the average {trend} from {before:.1f} to {after:.1f} a day")
-    return f"throughput ({'; '.join(said)})" if said else "throughput"
-
-
-def _window_days(samples: Sequence[tuple[date, float]]) -> str:
-    return _short_day(samples[0][0]) if len(samples) == 1 else f"{len(samples)} days"
 
 
 def answer_line(
@@ -184,21 +255,39 @@ def answer_line(
     measure: Measure,
     change_label: str,
     period_words: str,
+    committed: date | None,
 ) -> str:
-    """'The 85% date moved 9 working days later since planning: +6 from 4 requirements
-    added (2 without the CR label), +3 from slower finishing.'"""
+    """'Likely by 19 Mar, 3 months after the committed 15 Dec. Since planning (5 Oct) it
+    moved 54 working days earlier: added scope pushed it back 24 days, the team finishing
+    faster pulled it in 78.'"""
+    likely = period.to_p85 if measure is Measure.P85 else period.to_p50
+    stands = likely_words(likely, committed, measure) + "."
     moved = period.moved
-    name = measure_words(measure)
     if moved is None:
-        return f"No forecast to compare {period_words}: the {name} is not known at both ends."
-    value = moved.of(measure)
-    line = f"The {name} {moved_words(value)} {period_words}"
-    listed = parts(period, groups, measure=measure, change_label=change_label)
-    if not listed:
-        return line + "."
-    return (
-        line + ": " + ", ".join(f"{signed(part.value)} from {part.words}" for part in listed) + "."
-    )
+        return f"{stands} No likely date {period_words} to compare with."
+    line = f"{stands} {_capital(period_words)} it {moved_words(moved.of(measure))}"
+    listed = [
+        cause_phrase(cause, measure, groups=groups, change_label=change_label, with_unit=index == 0)
+        for index, cause in enumerate(said_causes(period, measure))
+    ]
+    return line + (": " + ", ".join(listed) if listed else "") + "."
+
+
+def dates_line(
+    period: PeriodAttribution | None,
+    *,
+    measure: Measure,
+    period_words: str,
+    committed: date | None,
+) -> str:
+    """For a reader of the dates only: where it stands and how far it moved, no causes."""
+    if period is None:
+        return f"No likely date {period_words} to compare with."
+    likely = period.to_p85 if measure is Measure.P85 else period.to_p50
+    stands = likely_words(likely, committed, measure) + "."
+    if period.moved is None:
+        return f"{stands} No likely date {period_words} to compare with."
+    return f"{stands} {_capital(period_words)} it {moved_words(period.moved.of(measure))}."
 
 
 def day_line(
@@ -207,66 +296,58 @@ def day_line(
     *,
     change_label: str,
 ) -> str | None:
-    """The day report's line, when the 85% date moved since the previous report:
-    'The 85% date moved 3 working days later: +2 scope added (CHK-20, without the CR
-    label), +1 nothing finished.'"""
+    """The day report's line, when the likely date moved since the previous report:
+    'The likely date moved 3 working days later: added scope (CHK-20, without the CR
+    label) pushed it back 2 days, nothing finished pushed it back 1.'"""
     moved = period.moved
-    if moved is None or abs(moved.p85) < 0.5:
+    if moved is None or abs(moved.p85) < SAID_FROM:
         return None
-    line = f"The 85% date {moved_words(moved.p85)}"
-    listed = parts(period, groups, measure=Measure.P85, change_label=change_label, one_day=True)
-    if not listed:
-        return line + "."
-    return line + ": " + ", ".join(f"{signed(part.value)} {part.words}" for part in listed) + "."
-
-
-def _pace_words(period: PeriodAttribution, pace: float, one_day: bool) -> str:
-    count = len(period.finished)
-    if one_day:
-        if count == 0:
-            return "nothing finished"
-        return f"{_keys(period.finished)} finished"
-    trend = "slower finishing" if pace > 0 else "faster finishing"
-    return f"{trend} ({count or 'nothing'} finished)"
+    line = f"The likely date {moved_words(moved.p85)}"
+    listed = [
+        cause_phrase(
+            cause,
+            Measure.P85,
+            groups=groups,
+            change_label=change_label,
+            with_unit=index == 0,
+            one_day=True,
+        )
+        for index, cause in enumerate(said_causes(period, Measure.P85))
+    ]
+    return line + (": " + ", ".join(listed) if listed else "") + "."
 
 
 def _added_words(
     items: Sequence[Item], groups: Mapping[str, ScopeGroup], change_label: str, one_day: bool
-) -> str:
-    """'scope added (CHK-20, without the CR label)' for a day; '4 requirements added
-    (2 change requests, 2 without the CR label)' for a period."""
+) -> list[str]:
+    """'1 change request', '1 without the CR label' for a period; 'CHK-20, without the CR
+    label' for a day."""
     by_group: dict[ScopeGroup, list[Item]] = {}
     for item in items:
         by_group.setdefault(groups.get(item.key, ScopeGroup.BEFORE_PLANNING), []).append(item)
     order = [group for group in ScopeGroup if group in by_group]
     if one_day:
-        listed = "; ".join(
+        return [
             f"{_keys(by_group[group])}, {group_words(group, change_label, len(by_group[group]))}"
             for group in order
-        )
-        return f"scope added ({listed})" if listed else "scope added"
-    noun = "requirement" if len(items) == 1 else "requirements"
+        ]
     counts = Counter({group: len(found) for group, found in by_group.items()})
-    details = ", ".join(
-        f"{counts[group]} {group_words(group, change_label, counts[group])}" for group in order
-    )
-    return f"{len(items)} {noun} added ({details})" if details else f"{len(items)} {noun} added"
+    return [f"{counts[group]} {group_words(group, change_label, counts[group])}" for group in order]
 
 
-def _keys_words(items: Sequence[Item], verb: str, unit: str | None) -> str:
-    if not items:
-        return verb
-    if len(items) <= MAX_KEYS_NAMED:
-        return f"{_keys(items)} {verb}"
-    return f"{len(items)} requirements {verb}"
+def _estimate_words(items: Sequence[Reestimate], size: str, one_day: bool) -> str:
+    if one_day:
+        keys = _joined(sorted((item.key for item in items), key=key_order)[:MAX_KEYS_NAMED])
+        return f"{keys} re-estimated {size}"
+    return f"{len(items)} re-estimated {size}"
 
 
-def _reestimate_words(period: PeriodAttribution) -> str:
-    listed = [
-        f"{item.key} {_number(item.before or 0)} → {_number(item.after or 0)} points"
-        for item in period.re_estimated[:MAX_KEYS_NAMED]
-    ]
-    return "re-estimates (" + ", ".join(listed) + ")" if listed else "re-estimates"
+def _noun(count: int) -> str:
+    return "requirement" if count == 1 else "requirements"
+
+
+def _capital(text: str) -> str:
+    return text[:1].upper() + text[1:] if text else text
 
 
 def _keys(items: Sequence[Item]) -> str:

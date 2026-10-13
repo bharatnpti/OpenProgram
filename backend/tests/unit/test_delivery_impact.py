@@ -383,12 +383,16 @@ async def test_since_planning_the_drivers_add_up_and_the_additions_are_grouped()
     )
     assert view.start.p85 and view.end.p85
     assert view.moved_working_days == working_days_moved(view.start.p85, view.end.p85)
-    added = {
-        driver.group: [item.key for item in driver.items]
-        for driver in view.drivers
-        if driver.kind == Driver.SCOPE_ADDED.value
+    # At most three causes: one bar for scope added, its items each with their group.
+    assert {driver.kind for driver in view.drivers} <= {
+        "scope_added",
+        "scope_removed",
+        "team_speed",
     }
-    assert added == {ScopeGroup.CHANGE_REQUEST: ["CHK-20"], ScopeGroup.NO_LABEL: ["CHK-21"]}
+    (scope,) = [driver for driver in view.drivers if driver.kind == Driver.SCOPE_ADDED.value]
+    added = {item.key: item.group for item in scope.items}
+    assert added == {"CHK-20": ScopeGroup.CHANGE_REQUEST, "CHK-21": ScopeGroup.NO_LABEL}
+    assert scope.group is None and scope.note == "1 change request, 1 without the CR label"
     items = {
         item.key: item
         for driver in view.drivers
@@ -400,13 +404,18 @@ async def test_since_planning_the_drivers_add_up_and_the_additions_are_grouped()
     assert items["CHK-20"].day == date(2026, 10, 6)
     # The additions pushed the date out; finishing pulled it back; worst first.
     assert sum(d.working_days for d in view.drivers if d.kind == "scope_added") > 0
-    pace = next(driver for driver in view.drivers if driver.kind == "pace")
-    assert [item.key for item in pace.items] == ["OLD-5", "OLD-6", "OLD-7"]
-    assert pace.working_days < 0
+    team = next(driver for driver in view.drivers if driver.kind == "team_speed")
+    assert [item.key for item in team.items] == ["OLD-5", "OLD-6", "OLD-7"]
+    assert team.working_days < 0
     assert list(view.drivers) == sorted(view.drivers, key=lambda driver: -driver.working_days)
     assert all(driver.working_days != 0 or driver.items for driver in view.drivers)
-    assert view.summary.startswith("The 85% date ")
-    assert "since planning (1 Oct)" in view.summary
+    # Where the date stands, then why, in a leader's words.
+    assert view.summary.startswith("Likely by 12 Nov, 2 weeks before the committed 27 Nov. ")
+    assert "Since planning (1 Oct) it " in view.summary
+    assert "added scope pushed it back 7 days" in view.summary
+    assert not any(
+        word in view.summary.lower() for word in ("85%", "throughput", "window", "replay", "pace")
+    )
     assert view.reconstructed_days > 0
     assert view.link == "/reports/checkout/overall?row=project:checkout#timeline"
 
@@ -460,8 +469,8 @@ async def test_evidence_is_the_late_and_the_undated_never_a_share() -> None:
     )
     assert set(view.evidence.undated) == {"CHK-2", "CHK-3", "CHK-20", "CHK-21", "OLD-8"}
     assert "late" not in {driver.kind for driver in view.drivers}
-    pace = next(driver for driver in view.drivers if driver.kind == "pace")
-    assert pace.note == "2 finished; CHK-4 late"
+    team = next(driver for driver in view.drivers if driver.kind == "team_speed")
+    assert team.note == "2 requirements finished; CHK-4 is late"
 
 
 async def test_the_markers_are_per_day_and_kind_and_carry_the_change_label() -> None:
@@ -611,8 +620,9 @@ async def test_the_day_report_says_why_the_85_date_moved_since_the_last_one() ->
 
     # OLD-7 finished today: the date came in, which is said, but never as a threat.
     assert line is not None and not line.leads
-    assert line.text.startswith("The 85% date moved 5 working days earlier: ")
-    assert "OLD-7 finished" in line.text
+    assert line.text == (
+        "The likely date moved 5 working days earlier: finishing OLD-7 pulled it in 5 days."
+    )
     changed = next(
         group
         for section in report.sections
@@ -638,9 +648,12 @@ async def test_an_unlabelled_addition_that_moved_the_date_out_leads_the_day() ->
     )
 
     assert added is not None and added.leads
-    assert added.text.startswith("The 85% date moved 7 working days later: ")
-    assert "+3 scope added (CHK-21, without the CR label)" in added.text
-    assert labelled is not None and "scope added (CHK-20, change request)" in labelled.text
+    assert added.text == (
+        "The likely date moved 7 working days later: nothing finished pushed it back 4 days, "
+        "added scope (CHK-21, without the CR label) pushed it back 3."
+    )
+    assert labelled is not None
+    assert "added scope (CHK-20, change request) pushed it back 4 days" in labelled.text
 
 
 async def test_no_line_without_a_previous_report_or_a_forecast() -> None:
@@ -734,8 +747,15 @@ async def test_ora_reads_what_moved_the_date_since_planning_with_markers_and_lin
     }
     assert payload["period"] == "since_baseline" and payload["planning_complete_on"] == "2026-10-01"
     assert payload["from"]["day"] == "2026-10-01" and payload["to"]["day"] == "2026-10-12"
-    groups = {driver.get("group") for driver in payload["drivers"]}
+    groups = {
+        item.get("group") for driver in payload["drivers"] for item in driver.get("items", [])
+    }
     assert {"change_request", "no_label"} <= groups
+    assert {driver["kind"] for driver in payload["drivers"]} <= {
+        "scope_added",
+        "scope_removed",
+        "team_speed",
+    }
     assert payload["committed_changes"][0]["by"] == "Mina Patel"
     assert payload["evidence"]["late"][0]["key"] == "CHK-4"
     assert payload["link"] == "/reports/checkout/overall?row=project:checkout#timeline"
@@ -788,11 +808,11 @@ async def test_the_change_label_is_the_tenants_own_word() -> None:
         access=FULL,
     )
 
-    groups = {driver.group for driver in view.drivers if driver.kind == "scope_added"}
+    (scope,) = [driver for driver in view.drivers if driver.kind == "scope_added"]
     # CHK-20 carries "CR", not this tenant's "AGREED": both additions are now unlabelled.
-    assert groups == {ScopeGroup.NO_LABEL}
+    assert {item.group for item in scope.items} == {ScopeGroup.NO_LABEL}
     assert view.change_label == "AGREED"
-    assert "without the AGREED label" in view.summary
+    assert scope.note == "2 without the AGREED label"
 
 
 async def test_who_added_it_is_the_author_of_the_change_that_brought_it_in() -> None:
@@ -927,8 +947,9 @@ async def test_ora_answers_what_moved_the_checkout_date_through_the_tool_loop() 
     assert view.tools_used == ("delivery_impact",)
     assert "delivery_impact" in {tool.name for tool in llm.requests[0].tools}
     result = json.loads(llm.requests[1].tool_results[0].content)
-    assert result["summary"].startswith("The 85% date did not move since planning (1 Oct): ")
-    assert "2 requirements added (1 change request, 1 without the CR label)" in result["summary"]
+    assert "Since planning (1 Oct) it did not move: added scope pushed it back" in result["summary"]
+    scope = next(driver for driver in result["drivers"] if driver["kind"] == "scope_added")
+    assert scope["note"] == "1 change request, 1 without the CR label"
     assert view.references == ("checkout",)
 
 

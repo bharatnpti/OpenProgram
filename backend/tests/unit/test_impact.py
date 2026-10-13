@@ -15,25 +15,32 @@ from core.domain.forecast import history_forecast
 from core.domain.impact import (
     DAY_DRIVERS,
     Driver,
-    DriverTotal,
     KeptDay,
     Measure,
     NotTakenApart,
-    PeriodAttribution,
     PlanningRule,
     ScopeDay,
     ScopeGroup,
-    Shift,
     add_working_days,
     attribution_from_payload,
     attribution_payload,
     decompose,
-    rounding_folded,
     scope_group,
     summed,
     working_days_moved,
 )
-from core.domain.impact_words import answer_line, day_line, moved_words, parts, signed
+from core.domain.impact_words import (
+    SCOPE_ADDED,
+    SCOPE_REMOVED,
+    TEAM_SPEED,
+    answer_line,
+    causes,
+    day_line,
+    likely_words,
+    moved_words,
+    signed,
+    span_words,
+)
 
 S = DeliveryStage
 THURSDAY = date(2026, 10, 8)
@@ -403,11 +410,15 @@ def test_without_a_baseline_an_addition_is_before_planning_unless_labelled() -> 
 # --- The words --------------------------------------------------------------------------
 
 
-def test_the_words_read_a_move_and_its_drivers_worst_first() -> None:
+JARGON = ("throughput", "window", "replay", "rounding", "p50", "p85", "85%", "50%", "pace")
+
+
+def test_the_words_say_where_the_date_stands_then_at_most_three_causes() -> None:
     kept = _chain()
     period = summed(kept)
-    assert period is not None
+    assert period is not None and period.moved is not None and period.to_p85
     groups = {"CHK-20": ScopeGroup.NO_LABEL}
+    committed = period.to_p85 - timedelta(days=21)
 
     line = answer_line(
         period,
@@ -415,15 +426,46 @@ def test_the_words_read_a_move_and_its_drivers_worst_first() -> None:
         measure=Measure.P85,
         change_label="CR",
         period_words="since planning (7 Oct)",
+        committed=committed,
     )
 
-    assert line.startswith("The 85% date ")
-    assert "since planning (7 Oct)" in line
-    assert "+3 from 1 requirement added (1 without the CR label)" in line
+    stands, why = line.split(". ", 1)
+    likely, due = f"{period.to_p85.day} {period.to_p85:%b}", f"{committed.day} {committed:%b}"
+    assert stands == f"Likely by {likely}, 3 weeks after the committed {due}"
+    assert why.startswith("Since planning (7 Oct) it moved ")
+    assert "added scope pushed it back 3 days" in why
+    assert not any(word in line.lower() for word in JARGON)
+    # Three causes at most, adding up to the move; every driver sits in one of them.
+    found = causes(period)
+    assert {cause.kind for cause in found} <= {SCOPE_ADDED, SCOPE_REMOVED, TEAM_SPEED}
+    assert sum(cause.shift.p85 for cause in found) == pytest.approx(period.moved.p85)
+    team = next(cause for cause in found if cause.kind == TEAM_SPEED)
+    assert [item.key for item in team.items] == ["CHK-1"]
     assert signed(3) == "+3" and signed(-2) == "−2" and signed(0.5) == "+0.5"
     assert moved_words(1) == "moved 1 working day later"
     assert moved_words(-4) == "moved 4 working days earlier"
     assert moved_words(0) == "did not move"
+
+
+def test_the_likely_date_is_said_against_the_committed_date_in_plain_spans() -> None:
+    day = date(2027, 3, 19)
+    assert likely_words(day, date(2026, 12, 15), Measure.P85) == (
+        "Likely by 19 Mar, 3 months after the committed 15 Dec"
+    )
+    assert likely_words(day, date(2027, 3, 26), Measure.P50) == (
+        "Likely around 19 Mar, 7 days before the committed 26 Mar"
+    )
+    assert likely_words(day, day, Measure.P85) == "Likely by 19 Mar, on the committed date"
+    assert likely_words(day, None, Measure.P85) == "Likely by 19 Mar; no committed date yet"
+    assert likely_words(None, day, Measure.P85) == "No likely date yet"
+    assert [span_words(days) for days in (1, 13, 14, 59, 60, 94)] == [
+        "1 day",
+        "13 days",
+        "2 weeks",
+        "8 weeks",
+        "2 months",
+        "3 months",
+    ]
 
 
 def test_the_day_line_names_the_keys_and_is_silent_when_the_date_held() -> None:
@@ -434,95 +476,11 @@ def test_the_day_line_names_the_keys_and_is_silent_when_the_date_held() -> None:
     line = day_line(period, {"CHK-20": ScopeGroup.NO_LABEL}, change_label="CR")
 
     # Friday: CHK-1 finished.
-    assert line is not None and line.startswith("The 85% date moved 4 working days earlier: ")
-    assert "CHK-1 finished" in line
+    assert line is not None and line.startswith("The likely date moved 4 working days earlier: ")
+    assert "finishing CHK-1 pulled it in 4 days" in line
+    assert not any(word in line.lower() for word in JARGON)
     stood = summed(
         [kept[0], KeptDay(day=FRIDAY, p50=kept[0].p50, p85=kept[0].p85, attribution=None)]
     )
     assert stood is not None
     assert day_line(stood, {}, change_label="CR") is None
-
-
-# --- Rounding, as a leader reads it ------------------------------------------------------
-
-
-def _period(*drivers: tuple[Driver, float, float]) -> PeriodAttribution:
-    totals = tuple(DriverTotal(driver=d, shift=Shift(p50=p50, p85=p85)) for d, p50, p85 in drivers)
-    moved = Shift(
-        p50=sum(item.shift.p50 for item in totals), p85=sum(item.shift.p85 for item in totals)
-    )
-    return PeriodAttribution(
-        start=FRIDAY,
-        end=MONDAY,
-        from_p50=None,
-        from_p85=None,
-        to_p50=None,
-        to_p85=None,
-        moved=moved,
-        unit="requirements",
-        drivers=totals,
-    )
-
-
-def _shifts(period: PeriodAttribution | None) -> dict[Driver, tuple[float, float]]:
-    assert period is not None
-    return {
-        item.driver: (round(item.shift.p50, 6), round(item.shift.p85, 6)) for item in period.drivers
-    }
-
-
-def test_a_small_rounding_joins_the_largest_driver_read_as_one_total() -> None:
-    period = _period(
-        (Driver.ROUNDING, 0.6, 0.8),
-        (Driver.TIME_PASSED, 1, 2),
-        (Driver.WORK_FINISHED, -3, -4),
-        (Driver.SCOPE_ADDED, 6, 9),
-        (Driver.THROUGHPUT, -1, -1.5),
-    )
-
-    folded = rounding_folded(period)
-
-    # Pace (−2 on both) is the largest it can join; scope added is read per item.
-    assert _shifts(folded) == {
-        Driver.TIME_PASSED: (1.6, 2.8),
-        Driver.WORK_FINISHED: (-3, -4),
-        Driver.SCOPE_ADDED: (6, 9),
-        Driver.THROUGHPUT: (-1, -1.5),
-    }
-    assert folded is not None and folded.moved == period.moved
-    total = sum((item.shift for item in folded.drivers), Shift())
-    assert round(total.p85, 6) == round(period.moved.p85, 6)  # type: ignore[union-attr]
-    assert not any(
-        part.kind == Driver.ROUNDING.value
-        for part in parts(folded, {}, measure=Measure.P85, change_label="CR")
-    )
-
-
-def test_a_larger_rounding_stays_as_other_per_measure_and_nothing_says_replay() -> None:
-    period = _period(
-        (Driver.ROUNDING, 0.4, 2.0),
-        (Driver.WORK_FINISHED, -3, -4),
-        (Driver.THROUGHPUT, -1, -6),
-    )
-
-    folded = rounding_folded(period)
-
-    # 85%: 2 working days stay on their own; 50%: 0.4 joins pace (time passed, new).
-    assert _shifts(folded) == {
-        Driver.ROUNDING: (0, 2.0),
-        Driver.TIME_PASSED: (0.4, 0),
-        Driver.WORK_FINISHED: (-3, -4),
-        Driver.THROUGHPUT: (-1, -6),
-    }
-    assert folded is not None
-    words = {
-        part.kind: part.words for part in parts(folded, {}, measure=Measure.P85, change_label="CR")
-    }
-    assert words[Driver.ROUNDING.value] == "other (rounding)"
-    line = answer_line(
-        folded, {}, measure=Measure.P85, change_label="CR", period_words="in the last 7 days"
-    )
-    assert "+2 from other (rounding)" in line and "replay" not in line
-    # With nothing it can join, even a small remainder stays on its own.
-    alone = rounding_folded(_period((Driver.ROUNDING, 0.5, 0.5), (Driver.SCOPE_ADDED, 3, 4)))
-    assert _shifts(alone)[Driver.ROUNDING] == (0.5, 0.5)
