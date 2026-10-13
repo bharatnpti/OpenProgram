@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from datetime import time as time_of_day
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -1032,14 +1033,23 @@ def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
     assert tree.json()["root_id"] == "program-platform"
     assert heatmap.status_code == 200
     # An exec's heat tile opens the project it names: progress is aggregate, and
-    # its factors are the ones the program tree already gives the exec.
+    # its factors are the ones the program tree gives, with nobody in them (D87):
+    # no person's own status, and a blocker without its owner's words.
     assert project.status_code == 200
     assert project.json()["total_tasks"] == 4
     tree_project = next(
         node for node in tree.json()["nodes"] if node["id"] == "project-foundations"
     )
-    assert project.json()["factors"]
-    assert project.json()["factors"] == tree_project["factors"]
+
+    def person_status(factor: dict[str, Any]) -> bool:
+        return factor["kind"] == "status" and factor["source_ref"]["kind"] == "developer"
+
+    factors = project.json()["factors"]
+    assert not any(person_status(factor) for factor in factors)
+    assert [(f["kind"], f["source_ref"]) for f in factors] == [
+        (f["kind"], f["source_ref"]) for f in tree_project["factors"] if not person_status(f)
+    ]
+    assert all(f["description"] == "Open blocker." for f in factors if f["kind"] == "blocker")
     assert workstream.status_code == 200
     assert workstream.json()["workstream_id"] == "workstream-runtime-config-admin"
     # Pod check-ins and blockers are per-person and stay with SM and manager.

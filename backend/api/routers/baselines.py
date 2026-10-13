@@ -19,6 +19,7 @@ from api.baseline_dtos import (
     PlanningCompleteRequest,
 )
 from api.dependencies import get_baseline_service, get_current_principal
+from api.people_projection import PeopleWordsDep, for_reader
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.baseline_service import BaselineService
 from core.domain.auth import Principal
@@ -33,6 +34,7 @@ async def project_baselines(
     project_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[BaselineService, Depends(get_baseline_service)],
+    words: PeopleWordsDep,
     as_of: Annotated[date, Query(default_factory=date.today)],
     release_id: Annotated[str | None, Query(description="One release of the project.")] = None,
 ) -> PlanningBaselinesResponse:
@@ -45,7 +47,8 @@ async def project_baselines(
         )
     except GraphNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return PlanningBaselinesResponse.from_view(view)
+    # An executive reads who marked planning complete as their role (D87, D98).
+    return for_reader(PlanningBaselinesResponse.from_view(view), words)
 
 
 @router.post(

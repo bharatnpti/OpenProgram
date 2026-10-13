@@ -463,14 +463,19 @@ def test_api_the_person_acting_is_named_on_the_baseline(settings: Settings) -> N
         _seed(client)
         _one_requirement(client)
         assert client.post(
-            "/config/members", json={"id": "U1003", "name": "Mina Patel"}
+            "/config/members",
+            json={"id": "U1003", "name": "Mina Patel", "metadata": {"app_roles": "po"}},
         ).status_code in {200, 201}
         marked = client.post("/projects/checkout/baselines", json={}, headers=_as("po", "U1003"))
-        read = client.get("/projects/checkout/baselines", headers=_as("exec", "U1011"))
+        read = client.get("/projects/checkout/baselines", headers=_as("mgr", "U1001"))
+        exec_read = client.get("/projects/checkout/baselines", headers=_as("exec", "U1011"))
 
     assert marked.status_code == 201, marked.text
     assert (marked.json()["set_by"], marked.json()["set_by_name"]) == ("U1003", "Mina Patel")
     assert read.json()["active"]["set_by_name"] == "Mina Patel"
+    # An executive reads the role that marked it, never the person (D87, D98).
+    active = exec_read.json()["active"]
+    assert (active["set_by"], active["set_by_name"]) == ("the product owner", "the product owner")
 
 
 def test_api_nothing_to_freeze_is_said_in_words(settings: Settings) -> None:

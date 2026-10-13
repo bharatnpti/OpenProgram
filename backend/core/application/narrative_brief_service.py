@@ -16,6 +16,7 @@ from core.application.brief_facts import (
     project_status,
 )
 from core.application.brief_grounding import compose_brief, fallback_brief
+from core.application.people_words import PeopleWords, people_words
 from core.application.persona_views import NO_POD_ROW, PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.domain.brief import BriefKind, NarrativeBrief
@@ -120,6 +121,14 @@ class NarrativeBriefService:
         scope_name = await self._scope_name(tenant_id, kind, scope_id, as_of.date())
         title = _title_for(kind, scope_name)
         body = await self._compose_body(tenant_id, kind, scope_id, as_of, title, facts)
+        sources = facts.sources
+        if kind is BriefKind.EXEC:
+            # Executives read roles, teams and counts, never a person (D87): the
+            # brief is grounded on the named facts, then says each person as
+            # their role or team, and lists no person among its sources.
+            words = await self._people_words(tenant_id, as_of.date())
+            body = words.say(body)
+            sources = tuple(source for source in sources if not _person_source(source))
         brief = NarrativeBrief(
             tenant_id=tenant_id,
             kind=kind,
@@ -127,7 +136,7 @@ class NarrativeBriefService:
             title=title,
             body=body,
             generated_at=as_of,
-            sources=facts.sources,
+            sources=sources,
         )
         await self._brief_repository.record_brief(brief)
         return brief
@@ -361,6 +370,12 @@ class NarrativeBriefService:
             counts[blocker.developer_id] = counts.get(blocker.developer_id, 0) + 1
         return counts
 
+    async def _people_words(self, tenant_id: str, day: date) -> PeopleWords:
+        """Each member as an executive reads them: their role, else their team."""
+        nodes = await self._graph_repository.list_nodes(tenant_id, as_of=day)
+        edges = await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+        return people_words(nodes, edges, as_of=day)
+
     async def _scope_name(
         self,
         tenant_id: str,
@@ -372,6 +387,11 @@ class NarrativeBriefService:
             return "portfolio"
         node = await self._graph_repository.get_node(tenant_id, scope_id, as_of=as_of)
         return node.name if node is not None else scope_id
+
+
+def _person_source(source: str) -> bool:
+    """A source that is one person ("developer:<id>"), not a team or a work item."""
+    return source.startswith(f"{NodeKind.DEVELOPER.value}:")
 
 
 def _contained(tree: GraphTree) -> tuple[GraphNode, ...]:

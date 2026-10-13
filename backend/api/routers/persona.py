@@ -49,6 +49,7 @@ from api.dtos import (
     WorkstreamProgressResponse,
     WriteBackAdoptionResponse,
 )
+from api.people_projection import PeopleWordsDep, all_for_reader, for_reader
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.cross_person_service import (
     CrossPersonRequestService,
@@ -59,7 +60,7 @@ from core.application.flow_metrics_service import FlowMetricsService
 from core.application.person_names import PersonNames, person_name
 from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
-from core.application.portfolio_privacy import reads_people
+from core.application.portfolio_privacy import counted_progress, reads_people
 from core.application.pull_request_flow_service import FlowScopeInvalid, PullRequestFlowService
 from core.application.risk_service import RiskService
 from core.application.writeback_service import WriteBackService
@@ -175,14 +176,23 @@ async def project_progress(
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
+    words: PeopleWordsDep,
 ) -> ProjectProgressResponse:
+    """The project's colour, its tasks, and the factors behind the colour.
+
+    An executive reads it with nobody in it (D87): no person's own status among
+    the factors, a blocker as "Open blocker." on its work item, and every name
+    said as a role or a team.
+    """
     # Every project for its readers; for a scrum master, the projects their pods work on.
     await _ensure_project_read(scope, principal, project_id)
     try:
         view = await persona_service.project_progress(principal.tenant_id, project_id, as_of)
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return ProjectProgressResponse.from_view(view)
+    if words is not None:
+        view = counted_progress(view)
+    return for_reader(ProjectProgressResponse.from_view(view), words)
 
 
 @router.get("/workstreams/{workstream_id}/progress", response_model=WorkstreamProgressResponse)
@@ -395,15 +405,33 @@ async def portfolio_feed(
 async def narrative_briefs(
     principal: Annotated[Principal, Depends(get_current_principal)],
     repository: Annotated[NarrativeBriefRepository, Depends(get_narrative_brief_repository)],
+    words: PeopleWordsDep,
     kind: Annotated[BriefKind | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> NarrativeBriefsResponse:
-    # apiClient note: frontend client regen picks this up automatically.
+    """The latest briefs, newest first.
+
+    An executive reads every brief with each person said as their role or team,
+    and no person among its sources (D87): a pod's brief names its people to the
+    people who run pods, never to an executive. A brief written before the
+    executive brief stopped naming people reads the same way.
+    """
     _ensure_aggregate(principal)
     briefs = await repository.latest_briefs(principal.tenant_id, kind, limit)
-    return NarrativeBriefsResponse(
-        briefs=[NarrativeBriefResponse.from_domain(brief) for brief in briefs],
-    )
+    responses = [NarrativeBriefResponse.from_domain(brief) for brief in briefs]
+    if words is not None:
+        responses = [
+            response.model_copy(
+                update={"sources": [s for s in response.sources if not _person_source(s)]}
+            )
+            for response in all_for_reader(responses, words)
+        ]
+    return NarrativeBriefsResponse(briefs=responses)
+
+
+def _person_source(source: str) -> bool:
+    """A brief's source that is one person ("developer:<id>"), not a team or an item."""
+    return source.startswith(f"{NodeKind.DEVELOPER.value}:")
 
 
 @router.get("/persona/writeback-adoption", response_model=WriteBackAdoptionResponse)
@@ -517,6 +545,7 @@ async def project_risks(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[RiskService, Depends(get_risk_service)],
     person_names: Annotated[PersonNames, Depends(get_person_names)],
+    words: PeopleWordsDep,
 ) -> ProjectRisksResponse:
     _ensure_aggregate(principal)
     try:
@@ -524,12 +553,14 @@ async def project_risks(
         drift = await service.project_drift(principal.tenant_id, project_id, as_of)
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return ProjectRisksResponse(
+    response = ProjectRisksResponse(
         project_id=project_id,
         as_of=as_of,
         risks=await _risk_responses(principal.tenant_id, findings, person_names),
         drift=await _drift_responses(principal.tenant_id, drift, person_names),
     )
+    # An executive reads each owner as their role or team, and no one's own status (D87).
+    return for_reader(response, words)
 
 
 @router.get("/portfolio/risks", response_model=PortfolioRisksResponse)
@@ -538,15 +569,17 @@ async def portfolio_risks(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[RiskService, Depends(get_risk_service)],
     person_names: Annotated[PersonNames, Depends(get_person_names)],
+    words: PeopleWordsDep,
 ) -> PortfolioRisksResponse:
     _ensure_aggregate(principal)
     findings = await service.portfolio_risks(principal.tenant_id, as_of)
     drift = await service.portfolio_drift(principal.tenant_id, as_of)
-    return PortfolioRisksResponse(
+    response = PortfolioRisksResponse(
         as_of=as_of,
         risks=await _risk_responses(principal.tenant_id, findings, person_names),
         drift=await _drift_responses(principal.tenant_id, drift, person_names),
     )
+    return for_reader(response, words)
 
 
 async def _risk_responses(

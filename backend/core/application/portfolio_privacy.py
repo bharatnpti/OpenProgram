@@ -24,12 +24,17 @@ import hashlib
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import replace
+from typing import TYPE_CHECKING
 
 from core.application.attention import AttentionDay
 from core.application.authorization import AuthorizationPolicy, Capability
+from core.application.people_words import small_pods
 from core.domain.auth import Principal
 from core.domain.graph import NodeKind
 from core.domain.rollup import FactorKind, NodeStatus, RollupFactor
+
+if TYPE_CHECKING:
+    from core.application.persona_views import ProjectProgressView
 
 #: A blocker as a counts-only reader reads it: never in its owner's words.
 OPEN_BLOCKER = "Open blocker."
@@ -58,14 +63,56 @@ def counted_statuses(statuses: Iterable[NodeStatus]) -> list[NodeStatus]:
 
 
 def counted_day(day: AttentionDay) -> AttentionDay:
-    """The day with no person's name to print: reasons count people, never list them."""
+    """The day with no person's name to print: reasons count people, never list them.
+
+    A pod of fewer than ``SMALL_GROUP`` people gets no people counted on it at
+    all (D99): its people are counted in the project's line.
+    """
     graph = day.graph
     labels = {
         node_id: label
         for node_id, label in graph.labels.items()
         if graph.kinds.get(node_id) is not NodeKind.DEVELOPER
     }
-    return replace(day, graph=replace(graph, labels=labels))
+    sizes = {
+        node_id: len(graph.under(node_id, NodeKind.DEVELOPER))
+        for node_id, kind in graph.kinds.items()
+        if kind is NodeKind.POD
+    }
+    return replace(day, graph=replace(graph, labels=labels), small_pods=small_pods(sizes))
+
+
+def without_small_pod_people(
+    statuses: Iterable[NodeStatus], small: frozenset[str]
+) -> list[NodeStatus]:
+    """Each small pod's status without its people's own updates among its factors (D99).
+
+    So no line made from its factors ("1 missing update") counts its people;
+    its colour stays, and the project above still counts them.
+    """
+    return [
+        replace(status, factors=tuple(f for f in status.factors if not _own_update(f)))
+        if status.entity_ref.kind is NodeKind.POD and status.entity_ref.id in small
+        else status
+        for status in statuses
+    ]
+
+
+def counted_progress(view: ProjectProgressView) -> ProjectProgressView:
+    """A project's progress with nobody in its factors, for an executive (D87).
+
+    No person's own status is among them (an executive reads no one's
+    check-in: their counts are in the project's), a blocker is "Open blocker."
+    on its work item and a dependency another team's, as on the heat map. The
+    names of what the factors still cite are kept; nobody's else (a person a
+    blocker still cites is said as their role or team by the route).
+    """
+    factors = tuple(_counted(factor) for factor in view.factors if not _own_update(factor))
+    cited = {factor.source_ref.id for factor in factors} | {
+        factor.work_item_ref.id for factor in factors if factor.work_item_ref is not None
+    }
+    names = {node_id: name for node_id, name in view.source_names.items() if node_id in cited}
+    return replace(view, factors=factors, source_names=names)
 
 
 def own_cells_only(statuses: Sequence[NodeStatus], subject: str | None) -> list[NodeStatus]:
@@ -92,6 +139,11 @@ def _counted(factor: RollupFactor) -> RollupFactor:
     return factor
 
 
+def _own_update(factor: RollupFactor) -> bool:
+    """A person's own status among a team's factors."""
+    return factor.kind is FactorKind.STATUS and factor.source_ref.kind is NodeKind.DEVELOPER
+
+
 def _anonymous_id(description: str) -> str:
     """A blocker without an id is told apart by its words, which are not shown."""
     return "words:" + hashlib.sha256(description.encode()).hexdigest()[:16]
@@ -100,7 +152,9 @@ def _anonymous_id(description: str) -> str:
 __all__ = [
     "OPEN_BLOCKER",
     "counted_day",
+    "counted_progress",
     "counted_statuses",
     "own_cells_only",
     "reads_people",
+    "without_small_pod_people",
 ]

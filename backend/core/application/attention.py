@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, tzinfo
 from enum import StrEnum
 
+from core.application.people_words import SMALL_GROUP_LINE
 from core.application.rollup_service import NO_WORK_REASON
 from core.domain.graph import (
     EdgeKind,
@@ -236,6 +237,10 @@ class AttentionDay:
     owners: Mapping[str, str] = field(default_factory=dict)
     tracker: str = "the issue tracker"
     vcs: str = "Git"
+    #: Pods too small for this reader to count their people on (D99): their
+    #: people's updates count only in the project's line. Empty for anyone
+    #: who reads people (``portfolio_privacy.counted_day`` sets it).
+    small_pods: frozenset[str] = frozenset()
 
     @classmethod
     def build(
@@ -449,6 +454,8 @@ def cell_reasons(
 def _team_reasons(day: AttentionDay, status: NodeStatus) -> CellReasons:
     cell = status.entity_ref
     people = _people_of(day, cell)
+    if people and cell.kind is NodeKind.POD and cell.id in day.small_pods:
+        return _small_pod_reasons(day, status)
     if status.rag is Rag.UNKNOWN:
         if not people:
             noun = cell.kind.value
@@ -489,6 +496,25 @@ def _team_reasons(day: AttentionDay, status: NodeStatus) -> CellReasons:
     return CellReasons(
         reason=_short(day, drivers, cell, people),
         reasons=_lines(day, drivers, cell, people) + _dependency_lines(status),
+    )
+
+
+def _small_pod_reasons(day: AttentionDay, status: NodeStatus) -> CellReasons:
+    """A pod of fewer than five people, for a reader who counts none of them on it (D99).
+
+    No "2 of 3 haven't answered": its people's updates are counted with the
+    project's. What is on its work (blockers, blocked tasks, drift, dates) is
+    said as for any pod, and its colour stays.
+    """
+    cell = status.entity_ref
+    drivers = [driver for driver in _drivers(day, status) if driver.kind not in _PEOPLE_KINDS]
+    dependencies = _dependency_lines(status)
+    if not drivers:
+        reason = "No open blockers" if status.rag is Rag.GREEN else "Counted with the project"
+        return CellReasons(reason=reason, reasons=(SMALL_GROUP_LINE, *dependencies))
+    return CellReasons(
+        reason=_short(day, drivers, cell, ()),
+        reasons=(*_lines(day, drivers, cell, ()), SMALL_GROUP_LINE, *dependencies),
     )
 
 
@@ -1132,7 +1158,9 @@ def _signals(
             continue
         link = program
         if kind in _PEOPLE_KINDS and len(same) == 1:
-            link = _pod_link(same[0].pod_ids) or program
+            # One person's pod is pointed at only where it is large enough to count (D99).
+            pods = tuple(pod for pod in same[0].pod_ids if pod not in day.small_pods)
+            link = _pod_link(pods) or program
         found.append(
             AttentionSignal(
                 kind=kind.value,

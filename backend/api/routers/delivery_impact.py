@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from api.dependencies import get_current_principal, get_delivery_impact_service
 from api.impact_dtos import DeliveryImpactResponse
+from api.people_projection import PeopleWordsDep, for_reader
 from core.application.impact_service import DeliveryImpactService, ImpactPeriod, PeriodKind
 from core.domain.auth import Principal
 from core.domain.errors import AuthorizationDenied, GraphNotFound
@@ -31,6 +32,7 @@ async def delivery_impact(
     project_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DeliveryImpactService, Depends(get_delivery_impact_service)],
+    words: PeopleWordsDep,
     as_of: Annotated[date, Query(default_factory=date.today)],
     period: Annotated[PeriodKind, Query()] = PeriodKind.SINCE_BASELINE,
     from_day: Annotated[
@@ -77,4 +79,5 @@ async def delivery_impact(
         )
     except GraphNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return DeliveryImpactResponse.from_view(view)
+    # An executive reads who moved the committed date as their role (D87, D98).
+    return for_reader(DeliveryImpactResponse.from_view(view), words)

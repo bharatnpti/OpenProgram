@@ -15,8 +15,14 @@ from core.application.attention import (
 )
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
 from core.application.checkin_drift import CHECKIN_DRIFT_FACT_SOURCE
+from core.application.people_words import SMALL_GROUP_LINE
 from core.application.person_names import UNKNOWN_PERSON, member_names
-from core.application.portfolio_privacy import counted_day, counted_statuses, own_cells_only
+from core.application.portfolio_privacy import (
+    counted_day,
+    counted_statuses,
+    own_cells_only,
+    without_small_pod_people,
+)
 from core.application.rollup_service import (
     CONFIRMED_NO_BLOCKERS_REASON,
     NO_WORK_REASON,
@@ -1132,6 +1138,7 @@ class PersonaViewService:
         shown = [status for status in statuses if day.graph.shows(status.entity_ref)]
         if counts_only:
             shown = own_cells_only(shown, reader_id)
+            shown = without_small_pod_people(shown, day.small_pods)
         cells = await self._heatmap_cells(tenant_id, shown, tree, day, people_named=not counts_only)
         rows = tuple(dict.fromkeys(cell.row for cell in cells))
         columns = tuple(dict.fromkeys(cell.column for cell in cells))
@@ -1294,14 +1301,16 @@ class PersonaViewService:
                 _without_no_pod(status) if no_pod else status,
                 outside_teams=no_pod,
             )
-            cells.append(
-                replace(
-                    _heatmap_cell(status, context),
-                    name=node.name if (node := nodes.get(status.entity_ref.id)) else None,
-                    reason=reasons.reason,
-                    reasons=reasons.reasons,
-                )
+            cell = replace(
+                _heatmap_cell(status, context),
+                name=node.name if (node := nodes.get(status.entity_ref.id)) else None,
+                reason=reasons.reason,
+                reasons=reasons.reasons,
             )
+            if _small_pod_silent(status, day, context):
+                # Its people's updates were all it had to say: they count in the project (D99).
+                cell = replace(cell, why=SMALL_GROUP_LINE)
+            cells.append(cell)
         return tuple(cells)
 
     async def node_trend(
@@ -2317,6 +2326,14 @@ def _without_no_pod(status: NodeStatus) -> NodeStatus:
     return replace(
         status, factors=tuple(f for f in status.factors if f.kind is not FactorKind.NO_POD)
     )
+
+
+def _small_pod_silent(status: NodeStatus, day: AttentionDay, context: _ReasonContext) -> bool:
+    """A small pod (D99) not green whose factors, without its people, name no driver."""
+    ref = status.entity_ref
+    if ref.kind is not NodeKind.POD or ref.id not in day.small_pods or status.rag is Rag.GREEN:
+        return False
+    return _drivers_line(status, context) is None
 
 
 def _heatmap_cell(status: NodeStatus, context: _ReasonContext) -> HeatmapCellView:

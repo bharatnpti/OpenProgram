@@ -504,12 +504,15 @@ async def test_exec_brief_context_counts_status_cells_and_states_tickets_and_blo
         "SHOP-1 (Checkout form) is done in the tracker.",
         "SHOP-2 (Upgrade HTTP client) is merged in merge request 7 in web, ticket still open "
         "(In Progress in the tracker).",
-        "Ada Lind's check-in reported 1 blocker (waiting on Ben Okafor for SHOP-2), cleared. "
+        # The facts name people; the executive brief says each as their team (D87).
+        "Web Pod's check-in reported 1 blocker (waiting on Payments Pod for SHOP-2), cleared. "
         "No blocker is open now.",
         "One team member has an ETA adjustment of +1 day.",
     )
     assert "green" not in " ".join(structure.bullets)
     assert "UTC" not in brief.body
+    assert not any(name in brief.body for name in ("Ada", "Lind", "Ben", "Okafor"))
+    assert not any(source.startswith("developer:") for source in brief.sources)
 
 
 async def test_pod_brief_reads_only_its_own_members_and_issues() -> None:

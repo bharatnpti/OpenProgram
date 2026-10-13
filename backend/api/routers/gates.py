@@ -27,6 +27,7 @@ from api.dtos import (
     QuestionUpdateRequest,
     TrackedQuestionResponse,
 )
+from api.people_projection import PeopleWordsDep, for_reader
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.forecast_service import ForecastService
 from core.application.gate_service import GateService
@@ -106,6 +107,7 @@ async def gate_board(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[GateService, Depends(get_gate_service)],
     forecasts: Annotated[ForecastService, Depends(get_forecast_service)],
+    words: PeopleWordsDep,
     as_of: Annotated[date, Query(default_factory=date.today)],
     release_id: Annotated[str | None, Query()] = None,
 ) -> GateBoardResponse:
@@ -115,7 +117,8 @@ async def gate_board(
         view = await service.board(principal.tenant_id, project_id, as_of, release)
     except GraphNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return GateBoardResponse.from_view(view)
+    # An executive reads who asked and who was asked as a role or a team (D87, D98).
+    return for_reader(GateBoardResponse.from_view(view), words)
 
 
 @router.post("/projects/{project_id}/gates/scan", response_model=GateScanResponse)

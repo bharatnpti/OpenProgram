@@ -26,6 +26,7 @@ from api.dtos import (
     ObservedStatusResponse,
     RequirementsResponse,
 )
+from api.people_projection import PeopleWordsDep, for_reader
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.delivery_service import (
     DEFAULT_TIMELINE_DAYS,
@@ -47,6 +48,7 @@ async def project_requirements(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DeliveryService, Depends(get_delivery_service)],
     forecasts: Annotated[ForecastService, Depends(get_forecast_service)],
+    words: PeopleWordsDep,
     as_of: Annotated[date, Query(default_factory=date.today)],
     days: Annotated[
         int | None,
@@ -73,9 +75,11 @@ async def project_requirements(
         )
     except GraphNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return RequirementsResponse.from_view(
+    response = RequirementsResponse.from_view(
         view, timeline_days=timeline_days, forecast_needed_days=rule.min_sample_days
     )
+    # An executive reads each requirement's assignee as their team (D87, D98).
+    return for_reader(response, words)
 
 
 @router.get("/config/delivery/stages", response_model=DeliveryStagesResponse)
