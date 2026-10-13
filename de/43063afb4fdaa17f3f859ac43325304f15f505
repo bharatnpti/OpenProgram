@@ -1,0 +1,56 @@
+backend/api/impact_dtos.py
+  s_5f08a60d42019a::t_1eb19ab85df2b7 221-222,227-238,257-261
+frontend-v3/src/api/openapi.json
+  s_5f08a60d42019a::t_497e4f8e5ffdfe 20848-20895,20899-20910,27883-27930,27934-27945
+frontend-v2/src/api/generated.ts
+  s_5f08a60d42019a::t_31d2caa4cf3589 6147-6156,8883-8892
+frontend-v3/src/features/overall/timeline.test.ts
+  s_5f08a60d42019a::t_ecc9c77177895d 54-58
+backend/tests/unit/test_timeline.py
+  s_5f08a60d42019a::t_4309e461e6e232 242,247-249,253-258
+  s_5f08a60d42019a::t_b9c7580a96acd8 235-241,243-246,250-252,259-260,471-472
+frontend/src/api/generated.ts
+  s_5f08a60d42019a::t_e12c0db80e222d 6160-6169,8896-8905
+frontend-v2/src/api/openapi.json
+  s_5f08a60d42019a::t_e12c0db80e222d 20848-20895,20899-20910,27883-27930,27934-27945
+backend/core/application/impact_service.py
+  s_5f08a60d42019a::t_9103b830474510 293-306
+  s_5f08a60d42019a::t_4de56a297fe15b 835,848
+  s_5f08a60d42019a::t_a52a7ad8f1c244 62,1311-1312,1367,1374,1387-1390,1402,1405
+  s_5f08a60d42019a::t_25e08954677016 21-23,888,906
+  s_5f08a60d42019a::t_61442e16b4a62e 863,872-873,875
+  s_5f08a60d42019a::t_77b11c13a78dd0 1309-1310,1315-1331,1339-1366,1368-1373,1375-1386,1391-1401,1403-1404,1406,1411-1427,1434-1435,1439-1481
+  s_5f08a60d42019a::t_de96d858260f13 540,545
+  s_5f08a60d42019a::t_a54060c14bf7bb 1313-1314
+frontend/src/api/openapi.json
+  s_5f08a60d42019a::t_31d2caa4cf3589 20848-20895,20899-20910,27883-27930,27934-27945
+backend/api/timeline_dtos.py
+  s_5f08a60d42019a::t_1eb19ab85df2b7 124-135,157-161
+backend/tests/unit/test_delivery_impact.py
+  s_5f08a60d42019a::t_15920619104adb 507-573,578-585,587-662,667-702,710-739,741-769
+  s_5f08a60d42019a::t_eab2fea40889a4 574-577,586
+  s_5f08a60d42019a::t_cf2492507502b5 431,785,1038,1355
+  s_5f08a60d42019a::t_ddb5abd6ab986a 23,25,42,60,63,77,79,81,83-84,86,663-666,703-709,740
+frontend-v3/src/api/generated.ts
+  s_5f08a60d42019a::t_497e4f8e5ffdfe 6147-6156,8883-8892
+frontend-v3/scripts/mock/timeline.mjs
+  s_5f08a60d42019a::t_d477e0ac1d4205 98-120,768-769,771,777-779,787-788,796-803
+  s_5f08a60d42019a::t_e396895444d378 780-786,789-795
+  s_5f08a60d42019a::t_2169f85a6977cb 804-805
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "de43063afb4fdaa17f3f859ac43325304f15f505",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
