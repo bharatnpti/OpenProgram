@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -53,6 +53,7 @@ from core.application.sync_status_service import SyncStatusService
 from core.application.task_update_service import TaskUpdateService
 from core.application.timeline_service import TimelineService
 from core.application.writeback_service import WriteBackService
+from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestResolution
 from core.domain.errors import GraphNotFound, ProviderUnavailable
 from core.domain.graph import NodeKind
 from core.domain.inbound import InboundChatEvent, conversation_key
@@ -1323,26 +1324,13 @@ class ServiceRegistry:
         if checkin is not None and checkin.replied_at is not None:
             return ChatWebhookProcessResult(status="duplicate", message_id=message.message_id)
 
+        # The collector records the reply's cross-person requests the turn they
+        # are stated (its request recorder), before the reply's ack, which
+        # then says who was asked.
         outcome = await collector.handle_reply(
             replace(message, correlation_id=resolved_correlation_id),
             allow_reprocess=allow_reprocess,
         )
-        # A request is recorded the turn it is stated, while the check-in may
-        # still be asking something else, so every outcome can carry some.
-        if outcome.cross_person_requests:
-            assert checkin is not None
-            correlation = await self.status_repository().checkin_correlation_by_id(
-                message.tenant_id,
-                resolved_correlation_id,
-            )
-            await cross_person_service.record_from_checkin(
-                tenant_id=message.tenant_id,
-                requester_id=checkin.developer_id,
-                requester_chat_ref=correlation.chat_user_ref if correlation is not None else None,
-                source_correlation_id=resolved_correlation_id,
-                resolutions=outcome.cross_person_requests,
-                observed_at=message.received_at,
-            )
         return ChatWebhookProcessResult(status=outcome.kind, message_id=message.message_id)
 
     def chat_simulator_available(self) -> bool:
@@ -1789,6 +1777,7 @@ class ServiceRegistry:
             code_work_by_pod=self.profile_service().code_work_by_pod,
             vcs_name=self.provider_names().vcs,
             observed_day_reader=self.observed_day_reader(),
+            request_recorder=_LazyRequestRecorder(self.cross_person_request_service),
         )
 
     def provider_names(self) -> ProviderNames:
@@ -1925,6 +1914,36 @@ def _extract_event_id(payload: Mapping[str, object], message: InboundMessage) ->
     if isinstance(top_level, str) and top_level:
         return top_level
     return message.message_id
+
+
+@dataclass(frozen=True)
+class _LazyRequestRecorder:
+    """The collector's request recorder, building the request service only when used.
+
+    Most collectors (a fan-out, a nudge) never record a request, and the
+    service brings its own blocker settlement and rollup refresher.
+    """
+
+    build: Callable[[], CrossPersonRequestService]
+
+    async def record_from_checkin(
+        self,
+        *,
+        tenant_id: str,
+        requester_id: str,
+        requester_chat_ref: str | None,
+        source_correlation_id: str,
+        resolutions: Iterable[CrossPersonRequestResolution],
+        observed_at: datetime | None = None,
+    ) -> list[CrossPersonRequest]:
+        return await self.build().record_from_checkin(
+            tenant_id=tenant_id,
+            requester_id=requester_id,
+            requester_chat_ref=requester_chat_ref,
+            source_correlation_id=source_correlation_id,
+            resolutions=resolutions,
+            observed_at=observed_at,
+        )
 
 
 @dataclass(frozen=True)

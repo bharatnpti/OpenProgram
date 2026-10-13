@@ -17,6 +17,7 @@ from core.application.blocker_lifecycle import (
     BlockerLifecycleService,
     reconciliation_with_updates,
 )
+from core.application.checkin_ack_asks import AskAck, AskRouting, asks_note, named_as_given
 from core.application.checkin_drift import (
     COMMIT_FACT_SOURCE,
     DEVELOPER_ROLE,
@@ -109,9 +110,13 @@ from core.domain.blockers import (
 )
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.cross_person import (
+    CrossPersonDelivery,
     CrossPersonRequest,
     CrossPersonRequestResolution,
     CrossPersonRequestStatus,
+    is_repeat_of,
+    new_cross_person_request,
+    work_reference,
 )
 from core.domain.errors import ProviderUnavailable
 from core.domain.escalation import EscalationTarget
@@ -177,6 +182,8 @@ DEFAULT_ISSUE_TRACKER_NAME = "the issue tracker"
 CodeWorkByPod = Callable[[str, str, date], Awaitable[Mapping[str, bool]]]
 # How a status summary names the code host when the deployment does not say.
 DEFAULT_VCS_NAME = "Git"
+# Asked of a named person and not yet done: what a repeated ask refreshes.
+_STILL_ASKED = (CrossPersonRequestStatus.OPEN, CrossPersonRequestStatus.ACKNOWLEDGED)
 # The one ack a check-in gets for replies that carry no status (N22).
 NON_STATUS_ACK_TEXT = "Thanks. I'll keep the check-in open for your status update."
 # The one ack a check-in gets for a status reply that came after it closed (G9).
@@ -220,6 +227,25 @@ class StatusCollectorGraph(Protocol):
     async def ainvoke(self, input: StatusCollectorState) -> StatusCollectorState: ...
 
 
+class CheckinRequestRecorder(Protocol):
+    """Stores a check-in reply's cross-person requests and DMs each person asked.
+
+    ``CrossPersonRequestService.record_from_checkin``. The collector records
+    them itself so the reply's "Got it" ack can say who was asked.
+    """
+
+    async def record_from_checkin(
+        self,
+        *,
+        tenant_id: str,
+        requester_id: str,
+        requester_chat_ref: str | None,
+        source_correlation_id: str,
+        resolutions: Iterable[CrossPersonRequestResolution],
+        observed_at: datetime | None = None,
+    ) -> list[CrossPersonRequest]: ...
+
+
 @dataclass(frozen=True, kw_only=True)
 class ReplyOutcome:
     kind: Literal["processed", "clarifying", "ignored", "acknowledged"]
@@ -240,9 +266,31 @@ class _RequestLedger:
 
     recorded: tuple[CrossPersonRequest, ...] = ()
     resolutions: list[CrossPersonRequestResolution] = field(default_factory=list)
+    # Set once this reply's resolutions went to the request recorder, so the
+    # ack's own recording and the reply's outcome never record them twice.
+    stored: bool = False
 
     def outcome(self) -> tuple[CrossPersonRequestResolution, ...]:
         return tuple(self.resolutions)
+
+    def recorded_for(
+        self, mention: CrossPersonMention, counterpart_id: str | None
+    ) -> CrossPersonRequest | None:
+        """The stored request a mention stands for, matched as ``knows`` matches it."""
+        key = _request_key(mention.kind, mention.raw_name)
+        return next(
+            (
+                request
+                for request in self.recorded
+                if _request_key(request.kind.value, request.raw_name or "") == key
+                or (
+                    counterpart_id is not None
+                    and request.kind.value == mention.kind
+                    and request.counterpart_id == counterpart_id
+                )
+            ),
+            None,
+        )
 
     def unsettled(self) -> list[CrossPersonRequest]:
         """Recorded requests still waiting for their person after this reply."""
@@ -311,8 +359,13 @@ class StatusCollector:
         code_work_by_pod: CodeWorkByPod | None = None,
         vcs_name: str = DEFAULT_VCS_NAME,
         observed_day_reader: ObservedDayReader | None = None,
+        request_recorder: CheckinRequestRecorder | None = None,
     ) -> None:
         self._issue_tracker = issue_tracker
+        # Records each reply's cross-person requests (and DMs who they ask)
+        # before the reply's ack, which then names who was asked. Without one
+        # the caller records what ReplyOutcome.cross_person_requests carries.
+        self._request_recorder = request_recorder
         # A member's checked profile per pod says whether their review is code
         # work there (ProfileService.code_work_by_pod); without one, app roles do.
         self._code_work_by_pod = code_work_by_pod
@@ -478,7 +531,12 @@ class StatusCollector:
             await self._send_non_status_ack(checkin=checkin, message=message)
             span.set_attribute("openprogram.reply_classification", "non_status")
             span.set_attribute("openprogram.has_blocker", False)
-            return ReplyOutcome(kind="acknowledged", cross_person_requests=requests.outcome())
+            return ReplyOutcome(
+                kind="acknowledged",
+                cross_person_requests=await self._record_requests(
+                    checkin, requests, message.received_at
+                ),
+            )
 
         clarification_count = await self._status_repository.checkin_clarification_count(
             checkin.tenant_id,
@@ -505,7 +563,12 @@ class StatusCollector:
                 "openprogram.has_blocker",
                 bool(decision.signals and decision.signals.blockers),
             )
-            return replace(insufficient_outcome, cross_person_requests=requests.outcome())
+            return replace(
+                insufficient_outcome,
+                cross_person_requests=await self._record_requests(
+                    checkin, requests, message.received_at
+                ),
+            )
 
         signals = decision.signals or await self._parser.parse_reply(
             tenant_id=message.tenant_id,
@@ -552,7 +615,12 @@ class StatusCollector:
                 "openprogram.has_blocker",
                 bool(required_details_outcome.status and required_details_outcome.status.blockers),
             )
-            return replace(required_details_outcome, cross_person_requests=requests.outcome())
+            return replace(
+                required_details_outcome,
+                cross_person_requests=await self._record_requests(
+                    checkin, requests, message.received_at
+                ),
+            )
         final_signals = merged
         # At the follow-up limit the note names a required detail still missing,
         # and is left out when every one was given (N30).
@@ -597,7 +665,9 @@ class StatusCollector:
             return ReplyOutcome(
                 kind="clarifying",
                 status=person_partial_status,
-                cross_person_requests=requests.outcome(),
+                cross_person_requests=await self._record_requests(
+                    checkin, requests, message.received_at
+                ),
             )
         late_outcome, reconciliation = await self._maybe_late_clarification(
             checkin=checkin,
@@ -613,7 +683,12 @@ class StatusCollector:
                 "openprogram.has_blocker",
                 bool(late_outcome.status and late_outcome.status.blockers),
             )
-            return replace(late_outcome, cross_person_requests=requests.outcome())
+            return replace(
+                late_outcome,
+                cross_person_requests=await self._record_requests(
+                    checkin, requests, message.received_at
+                ),
+            )
         consent_question = await self._maybe_ask_write_back_consent(
             checkin=checkin,
             message=message,
@@ -623,7 +698,12 @@ class StatusCollector:
         )
         if consent_question is not None:
             span.set_attribute("openprogram.reply_classification", "awaiting_consent")
-            return replace(consent_question, cross_person_requests=requests.outcome())
+            return replace(
+                consent_question,
+                cross_person_requests=await self._record_requests(
+                    checkin, requests, message.received_at
+                ),
+            )
         status = await self._finalize_checkin_reply(
             checkin=checkin,
             replied_at=message.received_at,
@@ -634,13 +714,16 @@ class StatusCollector:
             ),
             signals=final_signals,
             reconciliation=reconciliation,
+            requests=requests,
         )
         span.set_attribute("openprogram.reply_classification", "status_update")
         span.set_attribute("openprogram.has_blocker", bool(status.blockers))
         return ReplyOutcome(
             kind="processed",
             status=status,
-            cross_person_requests=requests.outcome(),
+            cross_person_requests=await self._record_requests(
+                checkin, requests, message.received_at
+            ),
         )
 
     async def _reply_handled_before_reading(
@@ -2720,6 +2803,143 @@ class StatusCollector:
             )
         )
 
+    async def _record_requests(
+        self,
+        checkin: CheckIn,
+        requests: _RequestLedger,
+        observed_at: datetime,
+        *,
+        best_effort: bool = False,
+    ) -> tuple[CrossPersonRequestResolution, ...]:
+        """Record this reply's requests once, DMing each person asked; return them.
+
+        Every outcome carries them, recorded or not. With a request recorder
+        they are recorded here, the turn they are stated, and before the ack
+        when the reply is final, so the ack can say who was asked. Without one
+        the caller records what the outcome carries. ``best_effort`` is the
+        final reply's recording: the check-in is on record already, so a
+        failure is logged and the ack still goes out, saying only what was
+        stored.
+        """
+        resolutions = requests.outcome()
+        if self._request_recorder is None or requests.stored or not resolutions:
+            return resolutions
+        requests.stored = True
+        try:
+            correlation = await self._status_repository.checkin_correlation_by_id(
+                checkin.tenant_id, checkin.correlation_id
+            )
+            await self._request_recorder.record_from_checkin(
+                tenant_id=checkin.tenant_id,
+                requester_id=checkin.developer_id,
+                requester_chat_ref=correlation.chat_user_ref if correlation is not None else None,
+                source_correlation_id=checkin.correlation_id,
+                resolutions=resolutions,
+                observed_at=observed_at,
+            )
+        except Exception as error:
+            if not best_effort:
+                raise
+            _logger.warning(
+                "checkin_requests_record_failed",
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+                error=type(error).__name__,
+            )
+        return resolutions
+
+    async def _ask_acks(
+        self, checkin: CheckIn, signals: CheckInSignals, chat_ref: str | None
+    ) -> tuple[AskAck, ...]:
+        """What became of each ask this check-in made of others, for its ack.
+
+        Read from the stored requests after their DMs were attempted, never
+        from what was meant to happen (``_asked_requests``). Best-effort:
+        without them the ack goes out as before.
+        """
+        repository = self._cross_person_repository
+        if repository is None:
+            return ()
+        try:
+            raised = await repository.list_for_requester(checkin.tenant_id, checkin.developer_id)
+            if not signals.requests and not any(
+                request.source_correlation_id == checkin.correlation_id for request in raised
+            ):
+                return ()
+            members = await self._members.active_members(checkin.tenant_id)
+            oneself = {checkin.developer_id, *([chat_ref] if chat_ref else [])}
+            acks = [
+                await self._ask_ack(checkin, request, members, oneself)
+                for request in _asked_requests(checkin, signals, raised, members, oneself)
+            ]
+        except Exception:  # pragma: no cover - defensive; the ack is best-effort
+            _logger.warning(
+                "checkin_ack_asks_failed",
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+            )
+            return ()
+        return tuple(ack for ack in acks if ack is not None)
+
+    async def _ask_ack(
+        self,
+        checkin: CheckIn,
+        request: CrossPersonRequest,
+        members: Sequence[MemberContact],
+        oneself: set[str],
+    ) -> AskAck | None:
+        """One stored request as the ack names it; None when there is nobody to name.
+
+        A request on oneself asks nobody, and a closed one was settled (and its
+        requester told) before this ack.
+        """
+        if request.status in {
+            CrossPersonRequestStatus.RESOLVED,
+            CrossPersonRequestStatus.DISMISSED,
+        }:
+            return None
+        kind = request.kind.value
+        reference = work_reference(request.note) or (
+            request.task_ref.id if request.task_ref is not None else None
+        )
+        if request.counterpart_id is None:
+            candidates = members_for_mention(_mention_of(request), members)
+            return AskAck(
+                routing=AskRouting.AMBIGUOUS if len(candidates) > 1 else AskRouting.NOT_FOUND,
+                kind=kind,
+                name=named_as_given(request.raw_name or ""),
+                reference=reference,
+            )
+        if request.counterpart_id in oneself:
+            return None
+        member = next(
+            (member for member in members if member.chat_id == request.counterpart_id), None
+        )
+        names = {member.chat_id: member.name} if member is not None else {}
+        name = person_name(names, request.counterpart_id, request.counterpart_display_name)
+        if request.notified:
+            # Older than this check-in: a repeat, which asked nobody again.
+            if request.source_correlation_id != checkin.correlation_id:
+                return AskAck(
+                    routing=AskRouting.ALREADY_OPEN,
+                    kind=kind,
+                    name=name,
+                    reference=reference,
+                    since=await self._local_date_for_developer(
+                        checkin.tenant_id, checkin.developer_id, request.created_at
+                    ),
+                )
+            return AskAck(routing=AskRouting.ASKED, kind=kind, name=name, reference=reference)
+        if member is not None and not member.chat_linked:
+            routing = AskRouting.NO_CHAT_ID
+        elif request.delivery is CrossPersonDelivery.RETRYING:
+            routing = AskRouting.NOT_REACHED
+        else:
+            routing = AskRouting.NOT_SENT
+        return AskAck(routing=routing, kind=kind, name=name, reference=reference)
+
     async def _settle_waiting_requests(
         self,
         checkin: CheckIn,
@@ -2832,11 +3052,14 @@ class StatusCollector:
         signals: CheckInSignals,
         reconciliation: BlockerReconciliation,
         closing: bool = False,
+        requests: _RequestLedger | None = None,
     ) -> DeveloperStatus:
         """Record the check-in's reply, status and facts, write back, and ack once.
 
         ``closing`` is the close-out: a write-back question still open is closed
         with the check-in (its proposals expire) and no new one is asked.
+        ``requests`` are this reply's cross-person requests: recorded, and their
+        people DMed, before the ack, so the ack can say who was asked.
         """
         final_signals = _signals_with_open_blockers(signals, reconciliation)
         updated = CheckIn(
@@ -2883,6 +3106,8 @@ class StatusCollector:
         await self._record_task_updates(updated, status)
         written = await self._maybe_write_back(updated, final_signals, closing=closing)
         status = await self._with_tracker_updates(status, written)
+        if requests is not None:
+            await self._record_requests(updated, requests, replied_at, best_effort=True)
         # Send exactly one "Got it" ack per accepted reply. Gated on the
         # record_checkin_reply_once success above, so a durable retry or a
         # duplicate delivery (which returns early) never double-acks (C3).
@@ -2901,8 +3126,10 @@ class StatusCollector:
         The ack goes to the developer themselves, so a concise recorded-summary
         (state + first blocker) is fine; we never echo the raw reply text. A
         low-confidence parse adds a correction hint so the developer can fix a
-        misread; a confident parse gets the plain ack. Best-effort: a send
-        failure must never lose the already-recorded check-in.
+        misread; a confident parse gets the plain ack. It names who the
+        check-in asked for something, or why an ask reached nobody
+        (``_ask_acks``). Best-effort: a send failure must never lose the
+        already-recorded check-in.
         """
         if not self._checkin_ack_enabled:
             return
@@ -2921,6 +3148,7 @@ class StatusCollector:
             max_chars=self._outbound_dm_max_chars,
             applied=applied,
             held=await self._open_merge_request_holds(checkin, applied),
+            asks=await self._ask_acks(checkin, signals, correlation.chat_user_ref),
         )
         try:
             await self._chat_provider.send_dm(
@@ -3327,7 +3555,12 @@ class StatusCollector:
                 correlation_id=checkin.correlation_id,
                 message_id=message.message_id,
             )
-            return ReplyOutcome(kind="ignored", cross_person_requests=requests.outcome())
+            return ReplyOutcome(
+                kind="ignored",
+                cross_person_requests=await self._record_requests(
+                    checkin, requests, message.received_at
+                ),
+            )
         signals = decision.signals or await self._parser.parse_reply(
             tenant_id=message.tenant_id,
             developer_id=checkin.developer_id,
@@ -3366,6 +3599,7 @@ class StatusCollector:
             raw_reply=raw_reply,
             signals=merged,
             reconciliation=reconciliation,
+            requests=requests,
         )
         _logger.info(
             "late_update_recorded",
@@ -3377,7 +3611,9 @@ class StatusCollector:
         return ReplyOutcome(
             kind="processed",
             status=status,
-            cross_person_requests=requests.outcome(),
+            cross_person_requests=await self._record_requests(
+                checkin, requests, message.received_at
+            ),
         )
 
     async def _finalize_late_update(
@@ -3388,6 +3624,7 @@ class StatusCollector:
         raw_reply: str,
         signals: CheckInSignals,
         reconciliation: BlockerReconciliation,
+        requests: _RequestLedger | None = None,
     ) -> DeveloperStatus:
         """Record a late update as the check-in's reply, once, with its day's status (G9).
 
@@ -3430,7 +3667,9 @@ class StatusCollector:
         await self._record_task_updates(updated, status)
         written = await self._late_update_write_back(updated, final_signals)
         status = await self._with_tracker_updates(status, written)
-        await self._send_late_update_ack(checkin=updated, applied=written)
+        if requests is not None:
+            await self._record_requests(updated, requests, received_at, best_effort=True)
+        await self._send_late_update_ack(checkin=updated, signals=final_signals, applied=written)
         return status
 
     async def _late_update_write_back(
@@ -3462,13 +3701,13 @@ class StatusCollector:
         return await self._maybe_write_back(checkin, signals)
 
     async def _send_late_update_ack(
-        self, *, checkin: CheckIn, applied: Sequence[WriteBackAudit]
+        self, *, checkin: CheckIn, signals: CheckInSignals, applied: Sequence[WriteBackAudit]
     ) -> None:
         """DM the one ack of a late update (G9), naming any tracker update it made.
 
         Sent once: only the write that recorded the late update gets here, and
         the provider's send-once key is the check-in's. Best-effort, like the
-        on-time ack.
+        on-time ack, and like it names who the reply asked for something.
         """
         if not self._checkin_ack_enabled:
             return
@@ -3482,6 +3721,7 @@ class StatusCollector:
             max_chars=self._outbound_dm_max_chars,
             applied=applied,
             held=await self._open_merge_request_holds(checkin, applied),
+            asks=await self._ask_acks(checkin, signals, correlation.chat_user_ref),
         )
         try:
             await self._chat_provider.send_dm(
@@ -4312,16 +4552,19 @@ def _compose_checkin_ack_text(
     max_chars: int = OUTBOUND_DM_MAX_CHARS,
     applied: Sequence[WriteBackAudit] = (),
     held: Sequence[OpenMergeRequestHold] = (),
+    asks: Sequence[AskAck] = (),
 ) -> str:
     """Deterministic "Got it" ack for a finalized check-in reply.
 
     A confident parse gets the plain ack. A low-confidence parse restates the
     recorded status (state + first blocker, never the raw reply) and invites a
-    correction. Tracker updates OpenProgram just applied are named (issue key
-    and state only), so the person knows they need not make them, and so is a
-    ``done`` held back by an open merge request (issue key, its state and the
-    request), so they know why the tracker did not move. Every branch stays
-    within ``max_chars`` with a safe fallback.
+    correction. Who the check-in asked for something comes next ("I've asked
+    Noah Weber to review storefront-web !2 ..."), or why an ask reached
+    nobody (``asks_note``). Tracker updates OpenProgram just applied are named
+    (issue key and state only), so the person knows they need not make them,
+    and so is a ``done`` held back by an open merge request (issue key, its
+    state and the request), so they know why the tracker did not move. Every
+    branch stays within ``max_chars`` with a safe fallback.
     """
     if signals.parser_confident:
         text = _CHECKIN_ACK_PLAIN
@@ -4330,6 +4573,7 @@ def _compose_checkin_ack_text(
         text = f"Got it \U0001f44d I recorded this as {recorded} — reply 'fix' if that's wrong."
         if len(text) > max_chars:
             return _cap_outbound_dm_text(_CHECKIN_ACK_LOW_CONFIDENCE_FALLBACK, max_chars)
+    text = _with_asks_note(text, asks, max_chars)
     for note in (
         _applied_write_back_note(applied),
         *_open_merge_request_notes(held),
@@ -4345,13 +4589,20 @@ def _compose_late_update_ack_text(
     max_chars: int,
     applied: Sequence[WriteBackAudit] = (),
     held: Sequence[OpenMergeRequestHold] = (),
+    asks: Sequence[AskAck] = (),
 ) -> str:
-    """The one ack of a late update (G9), naming tracker updates made or held back."""
-    text = LATE_UPDATE_ACK_TEXT
+    """The one ack of a late update (G9), naming who it asked and tracker updates."""
+    text = _with_asks_note(LATE_UPDATE_ACK_TEXT, asks, max_chars)
     for note in (_applied_write_back_note(applied), *_open_merge_request_notes(held)):
         if note is not None and len(f"{text} {note}") <= max_chars:
             text = f"{text} {note}"
     return _cap_outbound_dm_text(text, max_chars)
+
+
+def _with_asks_note(text: str, asks: Sequence[AskAck], max_chars: int) -> str:
+    """``text`` followed by what became of the reply's asks, as far as it fits."""
+    note = asks_note(asks, max_chars - len(text) - 1)
+    return f"{text} {note}" if note is not None else text
 
 
 def open_merge_request_note(hold: OpenMergeRequestHold) -> str:
@@ -4917,6 +5168,70 @@ def _open_resolution(
         counterpart_display_name=member.name,
         counterpart_email=member.email,
         request_id=request_id,
+    )
+
+
+def _asked_requests(
+    checkin: CheckIn,
+    signals: CheckInSignals,
+    raised: Sequence[CrossPersonRequest],
+    members: Sequence[MemberContact],
+    oneself: set[str],
+) -> list[CrossPersonRequest]:
+    """The stored requests that stand for this check-in's asks, in the order it stated them.
+
+    Each ask is the check-in's own request for it, else the open request of an
+    earlier check-in it repeated (``_repeated_request``); then any request of
+    the check-in no ask names any more. Each request once.
+    """
+    own = tuple(
+        request for request in raised if request.source_correlation_id == checkin.correlation_id
+    )
+    earlier = [
+        request
+        for request in raised
+        if request.status in _STILL_ASKED
+        and request.source_correlation_id != checkin.correlation_id
+    ]
+    ledger = _RequestLedger(recorded=own)
+    found: dict[str, CrossPersonRequest] = {}
+    for mention in signals.requests:
+        matches = members_for_mention(mention, members)
+        member = matches[0] if len(matches) == 1 else None
+        request = ledger.recorded_for(mention, member.chat_id if member else None)
+        if request is None and member is not None and member.chat_id not in oneself:
+            request = _repeated_request(checkin, mention, member, earlier)
+        if request is not None:
+            found.setdefault(request.id, request)
+    for request in sorted(own, key=lambda item: (item.created_at, item.id)):
+        found.setdefault(request.id, request)
+    return list(found.values())
+
+
+def _repeated_request(
+    checkin: CheckIn,
+    mention: CrossPersonMention,
+    member: MemberContact,
+    earlier: Sequence[CrossPersonRequest],
+) -> CrossPersonRequest | None:
+    """The earlier open request a mention repeated, as the recording found it.
+
+    ``CrossPersonRequestService._refresh_repeat`` refreshes the first open
+    request of the requester that the new ask repeats, so the same
+    comparison over the same requests names the one it refreshed.
+    """
+    probe = new_cross_person_request(
+        tenant_id=checkin.tenant_id,
+        id=f"ack-probe-{checkin.correlation_id}",
+        requester_id=checkin.developer_id,
+        requester_chat_ref=None,
+        source_correlation_id=checkin.correlation_id,
+        resolution=_open_resolution(mention, member),
+        created_at=checkin.asked_at,
+    )
+    return next(
+        (request for request in earlier if is_repeat_of(probe, request, vague_matches=True)),
+        None,
     )
 
 
