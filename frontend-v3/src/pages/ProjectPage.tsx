@@ -6,7 +6,7 @@ import { ApiError, apiClient } from "../api/client";
 import { useOwnTree, usePods, usePrograms, useProjects, useWorkstreams } from "../app/directory";
 import { projectPath } from "../app/links";
 import { useRole } from "../app/role";
-import { useDayWords, useViewingDate } from "../app/viewingDate";
+import { PastDaySaidContext, useDayWords, useViewingDate } from "../app/viewingDate";
 import { PanelState } from "../components/PanelState";
 import { useAssistantSubject } from "../features/assistant/assistantContext";
 import { setBy } from "../features/delivery/factors";
@@ -240,69 +240,73 @@ function ProjectView({
   useHashLanding(drawn.length > 0);
 
   return (
-    <div className="op-viz">
-      <ProjectHeader
-        projectId={projectId}
-        name={name}
-        project={project}
-        programName={programName}
-        scope={forecast ? scope : undefined}
-        health={executive ? null : health}
-        names={!executive}
-        choice={choice}
-      />
-      <ReleaseScope
-        projectId={projectId}
-        releaseId={releaseId}
-        onChange={(next) =>
-          setSearch(
-            (current) => {
-              // The row picked belongs to the old scope; the viewing day is the shell's.
-              const params = new URLSearchParams(current);
-              params.delete("row");
-              if (next) params.set("release", next);
-              else params.delete("release");
-              return params;
-            },
-            { replace: true },
-          )
-        }
-      />
-      {asked && !releaseId ? (
-        <p className={`${releases.readable ? "-mt-5" : ""} mb-8 text-[13px] text-grey-secondary`}>
-          The release in the link no longer exists, so this shows the whole project.
-        </p>
-      ) : null}
-      {asOf ? (
-        <p className="mb-8 rounded-2xl bg-grey-fill px-4 py-3 text-[13px] text-grey-body">
-          {pastDayWords(access.overall, label ?? "")} Gate sign-offs and questions are not kept per
-          day: they show how they stand now, for the requirements of that day.
-          {readiness ? " Release readiness shows how it stands now." : ""}
-        </p>
-      ) : null}
-      {anchors.length > 0 ? (
-        <nav
-          aria-label="On this page"
-          className="sticky z-20 -mx-1 mb-8 flex gap-1 overflow-x-auto bg-(--op-viz-surface) px-1 py-2 [scrollbar-width:none] max-md:[mask-image:linear-gradient(to_right,black_calc(100%-28px),transparent)]"
-          style={{ top: "var(--op-header-h, 64px)" }}
-        >
-          {anchors.map((item) => (
-            <a
-              key={item.id}
-              href={`#${item.id}`}
-              className="flex-none rounded-full border border-grey-border px-3 py-1.5 text-[13px] font-bold text-grey-body no-underline hover:bg-grey-fill hover:text-ink"
-            >
-              {item.label}
-            </a>
+    // A past day is said once, in the paragraph below: no section says it again.
+    <PastDaySaidContext.Provider value={asOf !== null}>
+      <div className="op-viz">
+        <ProjectHeader
+          projectId={projectId}
+          name={name}
+          project={project}
+          programName={programName}
+          scope={forecast ? scope : undefined}
+          health={executive ? null : health}
+          names={!executive}
+          choice={choice}
+        />
+        <ReleaseScope
+          projectId={projectId}
+          releaseId={releaseId}
+          onChange={(next) =>
+            setSearch(
+              (current) => {
+                // The row picked belongs to the old scope; the viewing day is the shell's.
+                const params = new URLSearchParams(current);
+                params.delete("row");
+                if (next) params.set("release", next);
+                else params.delete("release");
+                return params;
+              },
+              { replace: true },
+            )
+          }
+        />
+        {asked && !releaseId ? (
+          <p className={`${releases.readable ? "-mt-5" : ""} mb-8 text-[13px] text-grey-secondary`}>
+            The release in the link no longer exists, so this shows the whole project.
+          </p>
+        ) : null}
+        {asOf ? (
+          <p className="mb-8 rounded-2xl bg-grey-fill px-4 py-3 text-[13px] text-grey-body">
+            {pastDayWords(access.overall, label ?? "")} Gate sign-offs and questions are not kept
+            per day: they show how they stand now, for the requirements of that day.
+            {readiness ? " Release readiness shows how it stands now." : ""} Go back to today to
+            make changes.
+          </p>
+        ) : null}
+        {anchors.length > 0 ? (
+          <nav
+            aria-label="On this page"
+            className="sticky z-20 -mx-1 mb-8 flex gap-1 overflow-x-auto bg-(--op-viz-surface) px-1 py-2 [scrollbar-width:none] max-md:[mask-image:linear-gradient(to_right,black_calc(100%-28px),transparent)]"
+            style={{ top: "var(--op-header-h, 64px)" }}
+          >
+            {anchors.map((item) => (
+              <a
+                key={item.id}
+                href={`#${item.id}`}
+                className="flex-none rounded-full border border-grey-border px-3 py-1.5 text-[13px] font-bold text-grey-body no-underline hover:bg-grey-fill hover:text-ink"
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
+        ) : null}
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-10 max-sm:gap-8">
+          {drawn.map(({ key, element }) => (
+            <Fragment key={key}>{element}</Fragment>
           ))}
-        </nav>
-      ) : null}
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-10 max-sm:gap-8">
-        {drawn.map(({ key, element }) => (
-          <Fragment key={key}>{element}</Fragment>
-        ))}
+        </div>
       </div>
-    </div>
+    </PastDaySaidContext.Provider>
   );
 }
 

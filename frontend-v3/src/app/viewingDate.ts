@@ -47,6 +47,23 @@ export function useReadOnly(): { readOnly: boolean; reason: string | null } {
     : { readOnly: false, reason: null };
 }
 
+/**
+ * True inside a page that says once, at its top, that a past day is shown (the
+ * Project page): its sections then draw nothing in place of a change that is
+ * off, so the same line is never said once per section.
+ */
+export const PastDaySaidContext = createContext(false);
+
+/**
+ * The line a control that is off says while a past day is shown: `reason`,
+ * unless the page already said it at its top (`PastDaySaidContext`); null on today.
+ */
+export function usePastDayLine(): string | null {
+  const { readOnly, reason } = useReadOnly();
+  const said = useContext(PastDaySaidContext);
+  return readOnly && !said ? reason : null;
+}
+
 /** "today", or "on Mon 28 Sept" while this screen shows a past day: for "Check-ins today". */
 export function useDayWords(): string {
   const context = useContext(ViewingDateContext);

@@ -10,7 +10,7 @@ import type {
   ReadinessFindingResponse,
 } from "../../api/schema";
 import { useRole } from "../../app/role";
-import { useReadOnly } from "../../app/viewingDate";
+import { usePastDayLine, useReadOnly } from "../../app/viewingDate";
 import { ConfirmDialog } from "../../components/Dialogs";
 import { PanelState, SectionHeader } from "../../components/PanelState";
 import { Pill } from "../../components/ui/Pill";
@@ -72,7 +72,8 @@ export function ReadinessSection({
   answered?: boolean;
 }) {
   const { access } = useRole();
-  const { readOnly, reason } = useReadOnly();
+  const { readOnly } = useReadOnly();
+  const pastDay = usePastDayLine();
   const { readable, query } = useReadiness(projectId, releaseId || undefined);
   const refresh = useRefresh(projectId);
   const run = useMutation({
@@ -106,8 +107,8 @@ export function ReadinessSection({
             <Pill size="sm" variant="ghost" disabled={run.isPending} onClick={() => run.mutate()}>
               {run.isPending ? "Checking…" : "Run check now"}
             </Pill>
-          ) : data?.can_run && readOnly && reason ? (
-            <Locked>{reason}</Locked>
+          ) : data?.can_run && pastDay ? (
+            <Locked>{pastDay}</Locked>
           ) : undefined
         }
       />

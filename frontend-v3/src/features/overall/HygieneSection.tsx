@@ -9,7 +9,7 @@ import type {
   HygieneRuleRowDto,
 } from "../../api/schema";
 import { useRole } from "../../app/role";
-import { useReadOnly } from "../../app/viewingDate";
+import { usePastDayLine, useReadOnly } from "../../app/viewingDate";
 import { PanelState, SectionHeader } from "../../components/PanelState";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
@@ -62,7 +62,8 @@ export function HygieneSection({
   releaseId?: string;
 }) {
   const { access } = useRole();
-  const { readOnly, reason } = useReadOnly();
+  const { readOnly } = useReadOnly();
+  const pastDay = usePastDayLine();
   const [podId, setPodId] = useState("");
   const { readable, query } = useHygiene(projectId, releaseId || undefined, podId || undefined);
   const refresh = useRefresh(projectId);
@@ -100,8 +101,8 @@ export function HygieneSection({
             <Pill size="sm" variant="ghost" disabled={run.isPending} onClick={() => run.mutate()}>
               {run.isPending ? "Checking…" : "Check now"}
             </Pill>
-          ) : data?.can_run && readOnly && reason ? (
-            <Locked>{reason}</Locked>
+          ) : data?.can_run && pastDay ? (
+            <Locked>{pastDay}</Locked>
           ) : undefined
         }
       />
