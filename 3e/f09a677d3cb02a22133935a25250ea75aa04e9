@@ -1,0 +1,136 @@
+frontend-v3/src/pages/ScopePage.tsx
+  s_5f08a60d42019a::t_053513cd658392 1-75
+frontend-v3/src/app/nav.test.ts
+  s_5f08a60d42019a::t_88421184086e19 55,57-59
+  s_5f08a60d42019a::t_1882a556967554 1-54,56,60-65
+frontend-v3/src/app/titles.test.ts
+  s_5f08a60d42019a::t_007c59c63aceb5 4,13-31,34,36-37,39,44,48-49,51-52,56,59-63
+frontend-v3/src/pages/CheckinPage.tsx
+  s_5f08a60d42019a::t_d842ede74171fa 1-34
+frontend-v3/src/features/project/projectChoice.ts
+  s_5f08a60d42019a::t_9be59e34be067f 1-160
+frontend-v3/src/components/shell/paletteRows.test.ts
+  s_5f08a60d42019a::t_279755ba8f45ab 78,81-82,134-135,183,188,191,218-219,241-242,244-245,253-257
+  s_5f08a60d42019a::t_f2fa0a0a4e90c7 79,251-252
+frontend-v3/src/lib/viewingDate.test.ts
+  s_5f08a60d42019a::t_bb83768fcd7b61 127-128
+frontend-v3/src/pages/RequestsPage.tsx
+  s_5f08a60d42019a::t_982e812da3b0aa 1-21
+frontend-v3/src/pages/SignalsPage.tsx
+  s_5f08a60d42019a::t_2b26791512c196 1,5,15-16,21,23-27,35
+  s_5f08a60d42019a::t_f2fa0a0a4e90c7 69-73
+  s_5f08a60d42019a::t_0533c288aa1a8e 131
+frontend-v3/src/app/links.ts
+  s_5f08a60d42019a::t_a009478a31bdee 1-46
+frontend-v3/src/pages/CoordinationPage.tsx
+  s_5f08a60d42019a::t_976be5aa429c36 15,71,163
+  s_5f08a60d42019a::t_ff6eeac9a71236 23-29
+frontend-v3/src/app/access.ts
+  s_5f08a60d42019a::t_5ad4bc74dc2392 89,91-92
+  s_5f08a60d42019a::t_34c89811ea5591 1-7,9,13
+  s_5f08a60d42019a::t_8ac7b7847196a6 11,319
+  s_5f08a60d42019a::t_85e9e1982bffa8 180-195,197-201,204
+  s_5f08a60d42019a::t_8f6715391d55ad 284-301,307,310-316,318,320,328,344-357,368,372-373,380,391-392,394-425,427-450,454-455,457,459-464,467-486,493-503,506-507,513-514,516-544,548-556,560,562-565,569-573,575,577,581,583-586,588-626,639,668-671,682-687,689-691
+  s_5f08a60d42019a::t_694f208c118ed8 304
+  s_5f08a60d42019a::t_b9e750213a18b4 358-367,369-371,374-379,381-390
+  s_5f08a60d42019a::t_7ecccbf84ea6c0 56-74
+  s_5f08a60d42019a::t_a13e531ad69ee7 451-453,456,458
+  s_5f08a60d42019a::t_f2fa0a0a4e90c7 426
+  s_5f08a60d42019a::t_fd5593edd5394d 465-466
+frontend-v3/src/features/reports/ReportsTabs.tsx
+  s_5f08a60d42019a::t_f0258e3c01cdf5 1-34
+frontend-v3/src/components/shell/CommandPalette.tsx
+  s_5f08a60d42019a::t_cbbf9ca3781fb6 144-152
+frontend-v3/src/app/Layout.tsx
+  s_5f08a60d42019a::t_e7ea964176a811 1-3,14-15,22-26,31,33-34,36-49,68-83,85,119-155,161-231
+frontend-v3/src/features/project/useProjectOptions.ts
+  s_5f08a60d42019a::t_f2fa0a0a4e90c7 80-83
+  s_5f08a60d42019a::t_02adc1c0159ae6 1-79,84-91
+frontend-v3/src/features/assistant/persona.test.ts
+  s_5f08a60d42019a::t_d743a5fd0874d2 50-57,99,102-108,110-112,134-139
+  s_5f08a60d42019a::t_f2fa0a0a4e90c7 121-122
+frontend-v3/src/app/links.test.ts
+  s_5f08a60d42019a::t_b6ae82799688b2 1-7,12-17,22-28
+  s_5f08a60d42019a::t_f2fa0a0a4e90c7 8-11,18-21
+frontend-v3/src/pages/BriefsPage.tsx
+  s_5f08a60d42019a::t_3484206ad6b23a 1-16
+frontend-v3/src/pages/RisksPage.tsx
+  s_5f08a60d42019a::t_a6508f8e9a7b07 1-30
+frontend-v3/src/features/admin/EntitiesTab.tsx
+  s_5f08a60d42019a::t_d4ee52c711f250 8,355
+frontend-v3/src/pages/ReportsHomePage.tsx
+  s_5f08a60d42019a::t_82b7cae12fd1b7 6,13,18-20,45-46,54,84,90,93
+frontend-v3/src/app/RouteGuard.tsx
+  s_5f08a60d42019a::t_c0dff495505f1f 9,19-25,33-34,39,44,46,48-50
+frontend-v3/src/app/titles.ts
+  s_5f08a60d42019a::t_23cc5f83571432 2,9-15,17-19,30-33,36-38,41-42,44-45,48
+frontend-v3/src/App.tsx
+  s_5f08a60d42019a::t_a5f5d2718c4108 2,15-21,23,25,27-28,31-41,43-45,48-52,84-92,94,96,98-100
+frontend-v3/src/pages/PortfolioPage.tsx
+  s_5f08a60d42019a::t_39f93834d6cb8b 1-4,6,8-9,11,16-18,23-27,38-40,55-70
+  s_5f08a60d42019a::t_fbeb69202b04ee 5,7,10,12-15,19-22,31-37,41-54,71-74
+  s_5f08a60d42019a::t_f2fa0a0a4e90c7 28-30
+frontend-v3/src/features/reports/ReportsHeader.tsx
+  s_5f08a60d42019a::t_82b7cae12fd1b7 1,4,7-10,34,42-47
+frontend-v3/src/pages/PodPage.tsx
+  s_5f08a60d42019a::t_5d2152598e35d2 1-65,69-126,130-150,154-170
+  s_5f08a60d42019a::t_f2fa0a0a4e90c7 66-68,127-129,151-153
+frontend-v3/src/pages/ProjectPage.tsx
+  s_5f08a60d42019a::t_b4e637eb4923f0 1-69
+frontend-v3/src/pages/FlowPage.tsx
+  s_5f08a60d42019a::t_5fac34f7052bfe 1-20
+frontend-v3/src/app/nav.ts
+  s_5f08a60d42019a::t_062955d0798def 1-6,17-30,32,34-40,47-60,63-82,86-88,90-91,93-102
+  s_5f08a60d42019a::t_f2fa0a0a4e90c7 41-46
+frontend-v3/src/pages/PeoplePage.tsx
+  s_5f08a60d42019a::t_efaa36f8456bf7 1-73
+frontend-v3/src/pages/OverallPage.tsx
+  s_5f08a60d42019a::t_9586fdef85c100 2,41
+frontend-v3/src/lib/viewingDate.ts
+  s_5f08a60d42019a::t_600ce72eb81d31 169-170,172-175
+frontend-v3/src/features/admin/LinksTab.tsx
+  s_5f08a60d42019a::t_d4ee52c711f250 7,295,350,415,651
+frontend-v3/src/features/project/projectChoice.test.ts
+  s_5f08a60d42019a::t_f40ec02d393fe8 1-47,49-78,83-111,116,121,126-131
+  s_5f08a60d42019a::t_30798e54e60885 48
+  s_5f08a60d42019a::t_f2fa0a0a4e90c7 79-82,112-115,117-120,122-125
+frontend-v3/src/features/assistant/persona.ts
+  s_5f08a60d42019a::t_5f15953411fe83 65,70-92,124-128,140-169,171-173,180,182-184,186-189
+frontend-v3/src/features/assistant/ChatView.tsx
+  s_5f08a60d42019a::t_6d8142cd5ada2f 50
+  s_5f08a60d42019a::t_5f15953411fe83 56
+frontend-v3/src/features/delivery/ProgramPanel.tsx
+  s_5f08a60d42019a::t_f2fa0a0a4e90c7 104-106
+  s_5f08a60d42019a::t_bf7dcbbb5e71a8 6,88
+frontend-v3/src/app/access.test.ts
+  s_5f08a60d42019a::t_f2fa0a0a4e90c7 104,328-331,481,488,498-499
+  s_5f08a60d42019a::t_b9b9f6b936e89b 7-8,20,24-25,29-31,33-37,39-41,43-103,105-111,214-221,223-226,274-277,279-327,332-336,338-348,351-358,360,362-365,370-373,376,378-381,386-388,390-392,394-398,400,402-406,418-439,441,447-457,461-462,464-471,473,484,491-497,500-524,529-530,539,543,546,548,552,558-562,565-567,577,579-580,585-589
+frontend-v3/src/features/delivery/DeliveryTimeline.tsx
+  s_5f08a60d42019a::t_0f753b757f9e59 4,91
+frontend-v3/src/features/delivery/NodeBits.tsx
+  s_5f08a60d42019a::t_8c5982ff3007e5 6,142-146,150,155-162,200,213
+frontend-v3/src/features/delivery/ProjectNamesPanel.tsx
+  s_5f08a60d42019a::t_f7720ba1f5b14e 4,45
+frontend-v3/src/features/delivery/ownTree.test.ts
+  s_5f08a60d42019a::t_30f7ca8e4e3604 6,113
+frontend-v3/src/features/delivery/ownTree.ts
+  s_5f08a60d42019a::t_28cf540cd4d8c9 7,124
+frontend-v3/src/features/signals/PrFlowSection.tsx
+  s_5f08a60d42019a::t_a598bb100005d9 366
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3ef09a677d3cb02a22133935a25250ea75aa04e9",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
