@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 
 import type { DirectoryItemResponse, Rag, RollupFactorDto } from "../../api/schema";
 import { Panel, RagBadge, RagDot, Row } from "../../components/ui/Bits";
-import { dailyPath, nodePath, projectPath } from "../../app/links";
+import { nodePath } from "../../app/links";
 import type { ReadState } from "../../lib/readState";
 import { cn } from "../../lib/utils";
 import { reasonsNote, reasonRows, sourcesLine } from "./factors";
@@ -138,31 +138,6 @@ export type OwnPanel = {
   /** Where it sits, above its heading. */
   trail?: ReactNode;
 };
-
-/**
- * The project's day report, which every role has, and, off the Project page,
- * the project's own page (`page`).
- */
-export function ReportLinks({ projectId, page = true }: { projectId: string; page?: boolean }) {
-  return (
-    <>
-      <Link
-        to={dailyPath(projectId)}
-        className="inline-flex h-9 items-center rounded-full bg-ink px-4 text-[13px] font-bold text-white no-underline"
-      >
-        Daily report
-      </Link>
-      {page ? (
-        <Link
-          to={projectPath(projectId)}
-          className="inline-flex h-9 items-center rounded-full border border-ink px-4 text-[13px] font-bold text-ink no-underline"
-        >
-          Project page
-        </Link>
-      ) : null}
-    </>
-  );
-}
 
 /**
  * Where a node sits, above its heading: "Digital Platform Program › Checkout

@@ -91,6 +91,12 @@ export type Access = {
   /** Check-in: the built-in chat's thread beside the form, on a local tenant only. */
   checkin: { chat: boolean };
   /**
+   * Reports: `daily` is each project's day report, for every role but an
+   * executive on their own (D103: it is an action list that names each owner;
+   * they read the Project page, and Reports opens on the briefs for them).
+   */
+  reports: { daily: boolean };
+  /**
    * The assistant (POST /ask), floating on every tab: the aggregate readers
    * the endpoint answers (scrum master, product owner, manager, executive,
    * admin). Not a developer.
@@ -202,6 +208,7 @@ export function accessOf({ lens, chatEnabled }: Lens): Access {
       admin: can.canManageConfig,
     },
     checkin: { chat: chatEnabled },
+    reports: { daily: has("admin", "mgr", "po", "sm", "dev") },
     assistant: can.canReadAggregate,
     delivery: portfolio
       ? {
@@ -518,6 +525,12 @@ function roleRedirect(
     case "checkin":
       return null;
     case "reports":
+      if (!access.reports.daily) {
+        // No day report for an executive (D103): a project's opens its Project page,
+        // as a sent report's link did when it was Overall; Reports opens on the briefs.
+        if (id === "briefs") return null;
+        return go(id ? projectPath(id) : "/reports/briefs");
+      }
       // Briefs are the aggregate readers'; a developer's Reports is the day reports.
       return id === "briefs" && !access.coordination.briefs ? go("/reports") : null;
     case "projects":

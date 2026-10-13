@@ -335,14 +335,48 @@ test("a sent impact link lands on the Project page at the same row and anchor, f
   assert.equal(to("po", "/reports/project-checkout/overall"), "/projects/project-checkout");
 });
 
-test("the day report's link opens its own page for every role, so none is redirected", () => {
+test("the day report's link opens its own page for every role but the executive", () => {
   for (const link of [
     "/reports/project-checkout/daily?report=rep-1",
     "/reports/project-checkout/daily?report=rep-1&asOf=2026-10-02",
     "/reports/project-checkout/daily",
   ]) {
-    for (const role of ROLES) assert.equal(to(role, link), "(shown)", `${role} ${link}`);
+    for (const role of ROLES.filter((one) => one !== "exec")) {
+      assert.equal(to(role, link), "(shown)", `${role} ${link}`);
+    }
   }
+});
+
+test("an executive has no Daily view (D103): a report's link opens its project, Reports the briefs", () => {
+  assert.equal(access("exec").reports.daily, false);
+  for (const role of ["dev", "sm", "po", "mgr", "admin"] as const) {
+    assert.equal(access(role).reports.daily, true, role);
+  }
+  // An executive who also holds another role reads the report as that role.
+  assert.equal(accessOf({ lens: ["exec", "po"], chatEnabled: false }).reports.daily, true);
+  // A sent report's link: its project's page, the viewing day kept, the report's pick dropped.
+  assert.equal(
+    to("exec", "/reports/project-checkout/daily?report=rep-1"),
+    "/projects/project-checkout",
+  );
+  assert.equal(
+    to("exec", "/reports/project-checkout/daily?report=rep-1&asOf=2026-10-02"),
+    "/projects/project-checkout?asOf=2026-10-02",
+  );
+  // The addresses from before the sidebar that led to a day report.
+  assert.equal(to("exec", "/reports/project-checkout"), "/projects/project-checkout");
+  assert.equal(to("exec", "/projects/project-checkout/daily"), "/projects/project-checkout");
+  assert.equal(to("exec", "/reports"), "/reports/briefs");
+  assert.equal(to("exec", "/reports/briefs?brief=exec"), "(shown)");
+  // The sidebar's and the palette's Reports open on the briefs.
+  const reports = shownGroups(access("exec"))
+    .flatMap((group) => group.items)
+    .find((item) => item.page === "reports");
+  assert.equal(reports?.to, "/reports/briefs");
+  const managers = shownGroups(access("mgr"))
+    .flatMap((group) => group.items)
+    .find((item) => item.page === "reports");
+  assert.equal(managers?.to, "/reports");
 });
 
 test("an old address that lands on a page the role lacks goes on to the closest it has", () => {

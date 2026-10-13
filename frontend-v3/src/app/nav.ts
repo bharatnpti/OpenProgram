@@ -90,14 +90,20 @@ export const NAV: NavItem[] = NAV_GROUPS.flatMap((group) => group.items);
  * The groups this role is offered, each with only its offered pages; a group
  * with none is left out. No struck-through item for the rest.
  */
-export function shownGroups(access: Pick<Access, "pages">): NavGroup[] {
+export function shownGroups(access: Pick<Access, "pages" | "reports">): NavGroup[] {
   return NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => access.pages[item.page]),
+    items: group.items.filter((item) => access.pages[item.page]).map((item) => shown(item, access)),
   })).filter((group) => group.items.length > 0);
 }
 
+/** An item as this role reads it: Reports without day reports is the briefs (D103). */
+function shown(item: NavItem, access: Pick<Access, "reports">): NavItem {
+  if (item.page !== "reports" || access.reports.daily) return item;
+  return { ...item, to: "/reports/briefs", hint: "Briefs written from the day's facts" };
+}
+
 /** The destinations this role is offered, flat: the palette's screens. */
-export function shownNav(access: Pick<Access, "pages">): NavItem[] {
+export function shownNav(access: Pick<Access, "pages" | "reports">): NavItem[] {
   return shownGroups(access).flatMap((group) => group.items);
 }

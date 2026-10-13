@@ -6,11 +6,11 @@ import { cn } from "../../lib/utils";
 /**
  * Reports' two tabs: Daily (the day reports) and Briefs, for the roles that
  * read briefs. Overall is no longer here: it is the Project page. A role with
- * one tab gets no tab row.
+ * one tab (a developer's day reports, an executive's briefs, D103) gets no tab row.
  */
 export function ReportsTabs() {
-  const { coordination } = useRole().access;
-  if (!coordination.briefs) return null;
+  const { coordination, reports } = useRole().access;
+  if (!coordination.briefs || !reports.daily) return null;
   const tab = (to: string, label: string) => (
     <NavLink
       to={to}

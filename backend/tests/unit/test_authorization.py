@@ -139,12 +139,17 @@ def test_every_role_can_read_its_own_work() -> None:
         assert policy.can(principal, Capability.READ_DIRECTORY), role
 
 
-def test_every_role_reads_the_day_reports() -> None:
-    """A day report is what its readers are sent, so everyone may read it.
+def test_every_role_but_the_executive_reads_the_day_reports() -> None:
+    """A day report is what its readers are sent, so its team may read it.
 
-    Sending and setting up stay with the scrum master, manager and admin.
+    Not an executive on their own (D103): the report is an action list that
+    names each owner, and an executive reads no person's name in the console;
+    an executive who also holds another role reads it as that role. Sending
+    and setting up stay with the scrum master, manager and admin.
     """
-    assert _roles_allowed(Capability.READ_DAY_REPORTS) == frozenset(Role)
+    assert _roles_allowed(Capability.READ_DAY_REPORTS) == frozenset(Role) - {Role.EXEC}
+    both = Principal(tenant_id="demo", subject="x", roles=frozenset({Role.EXEC, Role.PO}))
+    assert AuthorizationPolicy().can(both, Capability.READ_DAY_REPORTS)
 
 
 def test_a_principal_with_no_role_can_read_nothing() -> None:

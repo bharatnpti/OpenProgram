@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 
 import type { DirectoryItemResponse, ScopeDeliveryResponse } from "../../api/schema";
 import { dailyPath } from "../../app/links";
+import { useRole } from "../../app/role";
 import { verdictChip } from "../../components/ui/dateStripWords";
 import { RagChip } from "../../components/ui/RagChip";
 import { PERSON_KEY_WORDS } from "../../lib/words";
@@ -14,7 +15,7 @@ import { ProjectSwitcher } from "./ProjectSwitcher";
  * name, which opens the switcher, the date verdict as its one pill (D92), the
  * day report, then one line of who owns it and one of today's health in words
  * ("Today: CHK-102 blocked"), never as a second colour. An executive gets
- * neither line: no names (D87).
+ * neither line, and no day report link: no names (D87, D103).
  */
 export function ProjectHeader({
   projectId,
@@ -38,6 +39,7 @@ export function ProjectHeader({
   names: boolean;
   choice: { options: ProjectOption[]; programs: { id: string; name: string }[]; recent: string[] };
 }) {
+  const daily = useRole().access.reports.daily;
   const pill = scope ? verdictChip(scope) : null;
   const people = names
     ? (project?.people ?? [])
@@ -59,12 +61,14 @@ export function ProjectHeader({
             {pill.label}
           </RagChip>
         ) : null}
-        <Link
-          to={dailyPath(projectId)}
-          className="ml-auto inline-flex h-9 items-center rounded-full border border-ink px-4 text-[13px] font-bold text-ink no-underline hover:bg-grey-fill"
-        >
-          Daily report
-        </Link>
+        {daily ? (
+          <Link
+            to={dailyPath(projectId)}
+            className="ml-auto inline-flex h-9 items-center rounded-full border border-ink px-4 text-[13px] font-bold text-ink no-underline hover:bg-grey-fill"
+          >
+            Daily report
+          </Link>
+        ) : null}
       </div>
       {people.length > 0 ? (
         <p className="text-[13.5px] text-grey-body">{people.join(" · ")}</p>
