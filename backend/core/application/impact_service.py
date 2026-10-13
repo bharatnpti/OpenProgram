@@ -67,6 +67,7 @@ from core.domain.impact import (
     Shift,
     attribution_from_payload,
     key_order,
+    rounding_folded,
     scope_group,
     summed,
     working_days_moved,
@@ -638,7 +639,7 @@ class DeliveryImpactService:
         live: bool = True,
     ) -> _PeriodData:
         rows = await self._rows(tenant_id, scope, start, as_of, live=live)
-        attribution = (
+        attribution = rounding_folded(
             summed(
                 [
                     KeptDay(

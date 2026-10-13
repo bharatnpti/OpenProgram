@@ -52,8 +52,16 @@ test("the bars run worst first, each from where the one before ended, to the mov
   assert.equal(falls.bars[1].note, "0 finished");
   // A note that only repeats the bar's name is left out.
   assert.equal(
-    waterfall([driver("rounding", 1, 1, { note: "replay rounding" })], "p85", "CR").bars[0].note,
+    waterfall([driver("throughput", 1, 1, { note: "throughput" })], "p85", "CR").bars[0].note,
     "",
+  );
+  // What is left of the rounding is "Other", with the hint the server gives it.
+  assert.deepEqual(
+    waterfall([driver("rounding", 2, 2, { note: "rounding" })], "p85", "CR").bars.map((bar) => [
+      bar.label,
+      bar.note,
+    ]),
+    [["Other", "rounding"]],
   );
   assert.equal(falls.max, 9);
   assert.equal(falls.min, 0);
@@ -61,7 +69,7 @@ test("the bars run worst first, each from where the one before ended, to the mov
 });
 
 test("a bar's note never says the bar's name twice", () => {
-  assert.equal(barNote("Replay rounding", "replay rounding"), "");
+  assert.equal(barNote("Pace", "pace"), "");
   assert.equal(
     barNote(
       "Throughput",

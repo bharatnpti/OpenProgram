@@ -28,7 +28,8 @@ MINUS = "−"
 
 #: Each driver as the waterfall's bar reads it.
 DRIVER_LABELS: Mapping[Driver, str] = {
-    Driver.ROUNDING: "replay rounding",
+    # What is left of the forecast's rounding after it joins the largest driver: its hint.
+    Driver.ROUNDING: "rounding",
     Driver.TIME_PASSED: "time passed",
     Driver.WORK_FINISHED: "work finished",
     Driver.SCOPE_ADDED: "scope added",
@@ -41,6 +42,8 @@ DRIVER_LABELS: Mapping[Driver, str] = {
 
 #: What leaders read: pace stands for time passed and work finished together.
 PACE = "pace"
+#: A rounding remainder too large to fold into another driver, in a sentence.
+OTHER_WORDS = "other (rounding)"
 
 
 def group_words(group: ScopeGroup, change_label: str, count: int = 1) -> str:
@@ -138,7 +141,11 @@ def parts(
         value = period.driver(driver).of(measure)
         if abs(value) >= 0.5:
             words = (
-                throughput_words(period) if driver is Driver.THROUGHPUT else DRIVER_LABELS[driver]
+                throughput_words(period)
+                if driver is Driver.THROUGHPUT
+                else OTHER_WORDS
+                if driver is Driver.ROUNDING
+                else DRIVER_LABELS[driver]
             )
             found.append(Part(kind=driver.value, value=value, words=words))
     return sorted(found, key=lambda part: -part.value)

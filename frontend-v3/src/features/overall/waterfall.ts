@@ -67,7 +67,8 @@ export function driverLabel(driver: Pick<Driver, "kind" | "group">, changeLabel:
       reopened: "Reopened",
       re_estimated: "Re-estimated",
       throughput: "Throughput",
-      rounding: "Replay rounding",
+      // What is left of the forecast's rounding (the server folds a small one away).
+      rounding: "Other",
       not_attributed: "Days with no breakdown kept",
     }[driver.kind] ?? driver.kind
   );
@@ -129,7 +130,7 @@ export function waterfall(drivers: Driver[], measure: Measure, changeLabel: stri
 
 /**
  * A bar's note under its name, without saying the name twice: a note that only
- * repeats it ("replay rounding") is left out; one that opens with it
+ * repeats it ("throughput") is left out; one that opens with it
  * ("throughput (5 days joined the window …)") keeps what is in the brackets;
  * one that ends with it ("2 requirements added, without the CR label" under
  * "Scope added: without the CR label") keeps what comes before.

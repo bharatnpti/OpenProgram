@@ -15,21 +15,25 @@ from core.domain.forecast import history_forecast
 from core.domain.impact import (
     DAY_DRIVERS,
     Driver,
+    DriverTotal,
     KeptDay,
     Measure,
     NotTakenApart,
+    PeriodAttribution,
     PlanningRule,
     ScopeDay,
     ScopeGroup,
+    Shift,
     add_working_days,
     attribution_from_payload,
     attribution_payload,
     decompose,
+    rounding_folded,
     scope_group,
     summed,
     working_days_moved,
 )
-from core.domain.impact_words import answer_line, day_line, moved_words, signed
+from core.domain.impact_words import answer_line, day_line, moved_words, parts, signed
 
 S = DeliveryStage
 THURSDAY = date(2026, 10, 8)
@@ -437,3 +441,88 @@ def test_the_day_line_names_the_keys_and_is_silent_when_the_date_held() -> None:
     )
     assert stood is not None
     assert day_line(stood, {}, change_label="CR") is None
+
+
+# --- Rounding, as a leader reads it ------------------------------------------------------
+
+
+def _period(*drivers: tuple[Driver, float, float]) -> PeriodAttribution:
+    totals = tuple(DriverTotal(driver=d, shift=Shift(p50=p50, p85=p85)) for d, p50, p85 in drivers)
+    moved = Shift(
+        p50=sum(item.shift.p50 for item in totals), p85=sum(item.shift.p85 for item in totals)
+    )
+    return PeriodAttribution(
+        start=FRIDAY,
+        end=MONDAY,
+        from_p50=None,
+        from_p85=None,
+        to_p50=None,
+        to_p85=None,
+        moved=moved,
+        unit="requirements",
+        drivers=totals,
+    )
+
+
+def _shifts(period: PeriodAttribution | None) -> dict[Driver, tuple[float, float]]:
+    assert period is not None
+    return {
+        item.driver: (round(item.shift.p50, 6), round(item.shift.p85, 6)) for item in period.drivers
+    }
+
+
+def test_a_small_rounding_joins_the_largest_driver_read_as_one_total() -> None:
+    period = _period(
+        (Driver.ROUNDING, 0.6, 0.8),
+        (Driver.TIME_PASSED, 1, 2),
+        (Driver.WORK_FINISHED, -3, -4),
+        (Driver.SCOPE_ADDED, 6, 9),
+        (Driver.THROUGHPUT, -1, -1.5),
+    )
+
+    folded = rounding_folded(period)
+
+    # Pace (−2 on both) is the largest it can join; scope added is read per item.
+    assert _shifts(folded) == {
+        Driver.TIME_PASSED: (1.6, 2.8),
+        Driver.WORK_FINISHED: (-3, -4),
+        Driver.SCOPE_ADDED: (6, 9),
+        Driver.THROUGHPUT: (-1, -1.5),
+    }
+    assert folded is not None and folded.moved == period.moved
+    total = sum((item.shift for item in folded.drivers), Shift())
+    assert round(total.p85, 6) == round(period.moved.p85, 6)  # type: ignore[union-attr]
+    assert not any(
+        part.kind == Driver.ROUNDING.value
+        for part in parts(folded, {}, measure=Measure.P85, change_label="CR")
+    )
+
+
+def test_a_larger_rounding_stays_as_other_per_measure_and_nothing_says_replay() -> None:
+    period = _period(
+        (Driver.ROUNDING, 0.4, 2.0),
+        (Driver.WORK_FINISHED, -3, -4),
+        (Driver.THROUGHPUT, -1, -6),
+    )
+
+    folded = rounding_folded(period)
+
+    # 85%: 2 working days stay on their own; 50%: 0.4 joins pace (time passed, new).
+    assert _shifts(folded) == {
+        Driver.ROUNDING: (0, 2.0),
+        Driver.TIME_PASSED: (0.4, 0),
+        Driver.WORK_FINISHED: (-3, -4),
+        Driver.THROUGHPUT: (-1, -6),
+    }
+    assert folded is not None
+    words = {
+        part.kind: part.words for part in parts(folded, {}, measure=Measure.P85, change_label="CR")
+    }
+    assert words[Driver.ROUNDING.value] == "other (rounding)"
+    line = answer_line(
+        folded, {}, measure=Measure.P85, change_label="CR", period_words="in the last 7 days"
+    )
+    assert "+2 from other (rounding)" in line and "replay" not in line
+    # With nothing it can join, even a small remainder stays on its own.
+    alone = rounding_folded(_period((Driver.ROUNDING, 0.5, 0.5), (Driver.SCOPE_ADDED, 3, 4)))
+    assert _shifts(alone)[Driver.ROUNDING] == (0.5, 0.5)

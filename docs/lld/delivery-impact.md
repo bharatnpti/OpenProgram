@@ -72,6 +72,12 @@ share) and the window's change. Keys, titles, types, numbers and dates only.
 - Drivers: pace, scope added per group, scope removed, reopened, re-estimated,
   throughput, rounding, not attributed; each with working days on the measure,
   both dates' values, and up to 10 items.
+- Rounding is no driver a leader reads (`rounding_folded`, per measure): a
+  remainder of at most 1 working day joins the largest driver read as one total
+  (pace on time passed, scope removed, reopened, re-estimated, throughput, not
+  attributed; never scope added, which is read per item); a larger one, or one
+  with nothing to join, stays as `rounding`, said "other (rounding)". The read,
+  the day report line and Ora all take the folded period, so they agree.
 - The committed date lane (`delivery_date_changes`: from, to, on, by, note, and
   the additions within 2 working days before it), the team's date lane (the
   latest ETA or due date at both ends, each move with its cause), evidence
