@@ -343,6 +343,13 @@ function sentence(row) {
     parts.push(words.charAt(0).toLowerCase() + words.slice(1));
   }
   if (row.progress) parts.push(`${row.progress.done} of ${row.progress.total} done`);
+  // The team's own date, in the server's words (impact_words.team_date_words).
+  if (row.team.date || row.team.undated > 0) {
+    const undated = row.team.undated;
+    parts.push(
+      `team's own date: ${row.team.date ? short(row.team.date) : "none given"}${undated ? ` · ${undated} ${undated === 1 ? "has" : "have"} no date` : ""}`,
+    );
+  }
   const dated = row.committed.history.map((tick) => tick.date);
   const moves = dated.filter((day, i) => i > 0 && day !== dated[i - 1]).length;
   if (moves > 0) {

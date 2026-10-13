@@ -60,6 +60,23 @@ TEAM_SPEED_DRIVERS: tuple[Driver, ...] = (
 #: A cause of less than this on the measure read is not said in a sentence.
 SAID_FROM = 0.5
 
+#: The team's own date, said one way everywhere: the row, the table, the sentences,
+#: the day report and Ora (never "the team's latest date" or "team says").
+TEAM_DATE_NAME = "team's own date"
+TEAM_DATE_MEANING = (
+    "The latest finish date the team gave (ETA or due date) across the open requirements"
+)
+
+
+def team_date_words(latest: date | None, undated: int) -> str:
+    """'team's own date: 4 Dec · 5 have no date'; empty when there is nothing to say."""
+    if latest is None and undated <= 0:
+        return ""
+    said = f"{TEAM_DATE_NAME}: {_short_day(latest) if latest else 'none given'}"
+    if undated > 0:
+        said += f" · {undated} {'has' if undated == 1 else 'have'} no date"
+    return said
+
 
 @dataclass(frozen=True, kw_only=True)
 class Cause:

@@ -925,6 +925,11 @@ async def test_ora_is_told_what_is_not_known_first_and_the_three_dates_apart() -
     assert set(today["dates"]) == {"committed_date", "likely_date", "team_date"}
     assert "Only a person moves it" in today["dates"]["committed_date"]
     assert "neither the committed date nor the likely date" in today["dates"]["team_date"]
+    assert today["dates"]["team_date"].startswith(
+        "The team's own date: the latest finish date the team gave (ETA or due date) "
+        "across the open requirements."
+    )
+    assert "say it as 'team's own date'" in ASK_TOOL_GUIDANCE
     assert {"team_date_then", "team_date_now"} <= set(today["team_date"])
     assert "p85" not in json.dumps(today["now"]) and "from" not in today
     # And the guidance says to lead with it and keep the dates apart.

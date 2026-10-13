@@ -40,6 +40,7 @@ from core.domain.impact_words import (
     moved_words,
     signed,
     span_words,
+    team_date_words,
 )
 
 S = DeliveryStage
@@ -484,3 +485,11 @@ def test_the_day_line_names_the_keys_and_is_silent_when_the_date_held() -> None:
     )
     assert stood is not None
     assert day_line(stood, {}, change_label="CR") is None
+
+
+def test_the_teams_own_date_is_said_one_way() -> None:
+    assert team_date_words(date(2026, 12, 4), 5) == "team's own date: 4 Dec · 5 have no date"
+    assert team_date_words(date(2026, 12, 4), 1) == "team's own date: 4 Dec · 1 has no date"
+    assert team_date_words(date(2026, 12, 4), 0) == "team's own date: 4 Dec"
+    assert team_date_words(None, 3) == "team's own date: none given · 3 have no date"
+    assert team_date_words(None, 0) == ""

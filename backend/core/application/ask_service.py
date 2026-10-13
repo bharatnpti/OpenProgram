@@ -133,8 +133,10 @@ ASK_TOOL_GUIDANCE = (
     "working days (scope added, scope removed, team speed) and the requirements behind "
     "them -- then the committed date's moves with who and why, and the team's date. Keep "
     "the three dates apart, as its dates field defines them: the committed date (only a "
-    "person moves it), the likely date (the forecast's, likely_by) and the team's date "
-    "(the team's own latest ETA). A team's date or a likely date that moved is never "
+    "person moves it), the likely date (the forecast's, likely_by) and the team's own "
+    "date (the latest finish date the team gave, ETA or due date, across the open "
+    "requirements; say it as 'team's own date'). A team's own date or a likely date that "
+    "moved is never "
     "'the project's date moved'. Say 'likely by' for the date, never '85%', 'p85', "
     "'throughput' or 'window'. Never explain a move from colours, briefs or the "
     "forecast's dates alone, and never add up or rank what people added: an item's "
@@ -1385,7 +1387,8 @@ class DeliveryForecastTool:
         "today unless as_of names an earlier one: the committed date and how often it "
         "moved, history's 50% and 85% likely finish dates (forecast_p50, forecast_p85), "
         "the verdict against the date and what it rests on, whether there is enough "
-        "history to forecast, the team's latest ETA or due date, the open requirements "
+        "history to forecast, the team's own date (the latest ETA or due date the team gave), "
+        "the open requirements "
         "with no ETA or due date (open_without_date, and their keys in "
         "open_without_date_keys), and the reasons in "
         "Delivery's own words. A project comes with its pods' and releases' verdicts, a "
@@ -1563,7 +1566,7 @@ class DeliveryImpactTool:
         "causes with their working days and the requirements behind them -- scope added "
         "(change requests carrying the change label, additions without it, bugs, moved "
         "in, reopened), scope removed, and team speed (how fast the team finishes) -- plus "
-        "each move of the committed date with who and why, the team's latest date and what "
+        "each move of the committed date with who and why, the team's own date and what "
         "moved it, requirements open past their date and those with no date, and the "
         "timeline's markers. Use it for 'why did X's date "
         "move', 'what changed or delayed X since planning', 'what scope was added' and "
@@ -3608,8 +3611,8 @@ IMPACT_DATES: Mapping[str, str] = {
         "causes in drivers; nobody sets it."
     ),
     "team_date": (
-        "The latest ETA or due date the team gave on its open requirements: the team's "
-        "own estimate, neither the committed date nor the likely date."
+        "The team's own date: the latest finish date the team gave (ETA or due date) "
+        "across the open requirements. It is neither the committed date nor the likely date."
     ),
 }
 

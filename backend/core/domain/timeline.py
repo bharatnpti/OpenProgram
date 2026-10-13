@@ -17,7 +17,7 @@ from datetime import date, timedelta
 
 from core.domain.forecast import Verdict
 from core.domain.impact import POINTS_UNIT, Measure
-from core.domain.impact_words import likely_words
+from core.domain.impact_words import likely_words, team_date_words
 
 #: The verdicts, worst first: an off-track pod is read before one on track.
 VERDICT_ORDER: Mapping[Verdict | None, int] = {
@@ -73,6 +73,9 @@ class SentenceParts:
     p85: date | None = None
     #: Why there is no forecast, in the server's words ("4 of 10 working days of history").
     forecast_reason: str | None = None
+    #: The team's own date and how many open requirements have no date.
+    team_date: date | None = None
+    team_undated: int = 0
     committed: date | None = None
     #: The committed dates in order, the current one last.
     committed_history: Sequence[date] = ()
@@ -93,6 +96,9 @@ def row_sentence(parts: SentenceParts) -> str:
     clauses: list[str] = [_dates(parts)]
     if parts.done is not None and parts.total is not None:
         clauses.append(_progress(parts))
+    team = team_date_words(parts.team_date, parts.team_undated)
+    if team:
+        clauses.append(team)
     moved = _committed_moves(parts.committed_history)
     if moved:
         clauses.append(moved)

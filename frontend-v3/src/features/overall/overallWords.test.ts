@@ -65,7 +65,7 @@ test("a date that has gone by is told so, one that has not is left alone", () =>
 test("the team's dates line agrees with its count and flags a past date", () => {
   assert.equal(
     teamDatesLine({ dated: 1, undated: 3, latest_key: "INS-4" }, true),
-    "latest of 1 dated item (INS-4), past its date · 3 without a date",
+    "latest of 1 dated item (INS-4), past its date · 3 have no date",
   );
   assert.equal(
     teamDatesLine({ dated: 4, undated: 0, latest_key: null }, false),
@@ -159,7 +159,7 @@ test("at risk on a history that forecasts says where the two dates fall", () => 
   assert.doesNotMatch(cause?.because ?? "", /ETA or due date/);
 });
 
-test("off track names the forecast or the team's latest date, whichever decided it", () => {
+test("off track names the forecast or the team's own date, whichever decided it", () => {
   assert.match(
     verdictCause(
       scope({
@@ -173,7 +173,7 @@ test("off track names the forecast or the team's latest date, whichever decided 
     verdictCause(
       scope({ verdict: "off_track", team: { latest: "2027-01-08", latest_key: "CHK-9" } }),
     )?.because ?? "",
-    /^Off track because the team's latest date, .*8 Jan \(CHK-9\), is after the delivery date\.$/,
+    /^Off track because the team's own date, .*8 Jan \(CHK-9\), is after the delivery date\.$/,
   );
 });
 

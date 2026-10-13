@@ -9,7 +9,7 @@ row says:
   committed date, and the committed date's earlier values with the day each was set;
 - progress (done of total, by story points when every requirement has them) and
   the scope since planning;
-- the forecast's 50% to 85% band and verdict, and the team's latest date;
+- the forecast's 50% to 85% band and verdict, and the team's own date;
 - the impact markers on the day each thing happened (DeliveryImpactService.
   timeline_markers): scope added with or without the change label, bugs, scope
   removed, reopened, closing late, blockers and the committed date's moves;
@@ -453,6 +453,8 @@ class TimelineService:
                 verdict=verdict,
                 p85=p85 if banded else None,
                 forecast_reason=reason,
+                team_date=team.latest,
+                team_undated=team.undated,
                 committed=committed,
                 committed_history=tuple(tick.target for tick in history),
                 planned=(baseline is not None) if whole else None,

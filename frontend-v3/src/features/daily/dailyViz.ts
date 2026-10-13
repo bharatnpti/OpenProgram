@@ -289,14 +289,14 @@ function dateChart(facts: DateFacts, today: string, variant: BarVariant): DateBa
     team = {
       x: x(day),
       y: mid,
-      title: `Team's latest date, ${formatDay(facts.team_latest)}${facts.team_latest_key ? `, ${facts.team_latest_key}` : ""}`,
+      title: `Team's own date, ${formatDay(facts.team_latest)}${facts.team_latest_key ? `, ${facts.team_latest_key}` : ""}`,
     };
-    const text = small ? `Team${key} · ${when}` : `Team's latest date${key} · ${when}`;
+    const text = small ? `Team${key} · ${when}` : `Team's own date${key} · ${when}`;
     const left: Text = { x: g.x0, y: g.bottom, text, anchor: "start", size };
     // The forecast's labels and the history count share the bottom row: the team's
     // date goes there where it fits, else in words under the bar.
     const row = [...(forecast?.labels ?? []), ...notes];
-    if (row.some((other) => overlaps(left, other))) teamNote = `Team's latest date${key} · ${when}`;
+    if (row.some((other) => overlaps(left, other))) teamNote = `Team's own date${key} · ${when}`;
     else notes.unshift(left);
   }
 
@@ -379,7 +379,7 @@ function dateBarLabel(facts: DateFacts, today: string, end: number): string {
   if (facts.team_latest) {
     const day = facts.team_latest === today ? "today" : formatDay(facts.team_latest);
     const key = facts.team_latest_key ? `, ${facts.team_latest_key}` : "";
-    parts.push(`The team's latest date is ${day}${key}.`);
+    parts.push(`The team's own date is ${day}${key}.`);
   }
   return parts.join(" ");
 }

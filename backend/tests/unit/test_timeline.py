@@ -644,6 +644,20 @@ def test_a_row_reads_as_one_sentence() -> None:
         "2 without the CR label."
     )
     assert dates == "Storefront Pod: likely by 13 Nov, 5 days before the committed 18 Nov."
+    # The team's own date, in the same words as the row, the table, the day report and Ora.
+    teamed = row_sentence(
+        SentenceParts(
+            name="Payments Pod",
+            p85=date(2026, 11, 13),
+            committed=date(2026, 11, 18),
+            team_date=date(2026, 12, 4),
+            team_undated=5,
+        )
+    )
+    assert teamed == (
+        "Payments Pod: likely by 13 Nov, 5 days before the committed 18 Nov; "
+        "team's own date: 4 Dec · 5 have no date."
+    )
     assert waiting == (
         "Identity Pod: no likely date yet: 4 of 10 working days of history, no committed "
         "date; 2 of 8 done; planning is not marked complete yet."

@@ -198,18 +198,18 @@ function preview(history, release) {
   const reportId = release ? "rep-checkout-r1" : "rep-checkout";
   const progress = "28% complete: 5 of 18 requirements in production (28% on Mon 5 Oct 2026).";
   const delivery = month
-    ? "Delivery Tue 15 Dec 2026: at risk. History says 85% likely by Mon 21 Dec 2026. The team's latest date is Tue 6 Oct 2026 (CHK-4)."
-    : "Delivery Tue 15 Dec 2026: at risk. The team's latest date is Tue 6 Oct 2026 (CHK-4).";
+    ? "Delivery Tue 15 Dec 2026: at risk. History says 85% likely by Mon 21 Dec 2026. Team's own date: Tue 6 Oct 2026 (CHK-4)."
+    : "Delivery Tue 15 Dec 2026: at risk. Team's own date: Tue 6 Oct 2026 (CHK-4).";
   const reasons = month
     ? [
         "Committed for Tue 15 Dec 2026 by Mina Patel; moved once, 14 days later than first set.",
         "History: 50% likely by Wed 2 Dec 2026, 85% by Mon 21 Dec 2026 (13 requirements to go; 5 finished in the last 15 working days).",
-        "Team dates: the latest open requirement is due Tue 6 Oct 2026 (CHK-4).",
+        "Team's own date: Tue 6 Oct 2026 (CHK-4), the latest finish date the team gave (ETA or due date) across the open requirements.",
       ]
     : [
         "Committed for Tue 15 Dec 2026 by Mina Patel.",
         `Only 3 working days of history; a forecast needs ${neededDays()}.`,
-        "Team dates: the latest open requirement is due Tue 6 Oct 2026 (CHK-4).",
+        "Team's own date: Tue 6 Oct 2026 (CHK-4), the latest finish date the team gave (ETA or due date) across the open requirements.",
       ];
   const bypassLines = BYPASSED.map(
     (item) =>

@@ -68,7 +68,8 @@ export function teamDatesLine(
   const items = `${team.dated} dated ${team.dated === 1 ? "item" : "items"}`;
   const key = team.latest_key ? ` (${team.latest_key})` : "";
   const gone = past ? ", past its date" : "";
-  const undated = team.undated > 0 ? ` · ${team.undated} without a date` : "";
+  const undated =
+    team.undated > 0 ? ` · ${team.undated} ${team.undated === 1 ? "has" : "have"} no date` : "";
   return `latest of ${items}${key}${gone}${undated}`;
 }
 
@@ -119,7 +120,7 @@ export function verdictCause(
     if (team.undated > 0) {
       return {
         because: `${label} because ${undatedWords(team.undated)}.`,
-        also: "The team's latest date is before the delivery date, but a requirement with no date could finish later, and there is not enough history to forecast it.",
+        also: "The team's own date is before the delivery date, but a requirement with no date could finish later, and there is not enough history to forecast it.",
         saysUndated: true,
       };
     }
@@ -135,7 +136,7 @@ export function verdictCause(
     }
     if (team.latest) {
       return {
-        because: `${label} because the team's latest date, ${formatDay(team.latest)}${keyed}, is after the delivery date.`,
+        because: `${label} because the team's own date, ${formatDay(team.latest)}${keyed}, is after the delivery date.`,
         also: null,
         saysUndated: false,
       };

@@ -320,7 +320,7 @@ function Lanes({ impact, ends }: { impact: DeliveryImpactResponse; ends: string 
   if (impact.committed_changes.length > 0) {
     lines.push(["Committed date", impact.committed_changes.map(committedLine).join("; ")]);
   }
-  if (team) lines.push(["Team's date", teamLine(team)]);
+  if (team) lines.push(["Team's own date", teamLine(team)]);
   if (impact.evidence && impact.evidence.undated.length > 0) {
     lines.push(["No date yet", impact.evidence.undated.join(", ")]);
   }

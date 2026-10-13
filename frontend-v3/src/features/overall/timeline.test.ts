@@ -21,6 +21,8 @@ import {
   rowShape,
   sentenceOf,
   tableRow,
+  TEAM_DATE_MEANING,
+  teamDateWords,
   timeScale,
   verdictChip,
   weekOf,
@@ -161,25 +163,19 @@ test("no committed date runs the track to the likely finish, dashed", () => {
   assert.equal(open.end, xOf(scale, "2026-12-02"));
 });
 
-test("a row says itself in one plain line, the team's date only when it is a week off", () => {
-  // The team's 20 Nov is twelve days from the likely 2 Dec: said. Four days off: not.
-  assert.deepEqual(rowLine(row()), [
-    "Likely by 2 Dec",
-    "committed 18 Nov",
-    "8 of 22 done",
-    "team says 20 Nov",
-  ]);
-  assert.deepEqual(rowLine(row({ team: { date: "2026-11-28", key: "CHK-9", undated: 0 } })), [
-    "Likely by 2 Dec",
-    "committed 18 Nov",
-    "8 of 22 done",
-  ]);
-  assert.deepEqual(rowLine(row({ team: { date: "2026-12-20", key: "CHK-9", undated: 0 } })), [
-    "Likely by 2 Dec",
-    "committed 18 Nov",
-    "8 of 22 done",
-    "team says 20 Dec",
-  ]);
+test("a row says itself in one plain line, the team's own date apart and self-explaining", () => {
+  // The team's 20 Nov is twelve days from the likely 2 Dec, and 2 have no date: said.
+  assert.deepEqual(rowLine(row()), {
+    parts: ["Likely by 2 Dec", "committed 18 Nov", "8 of 22 done"],
+    team: "team's own date: 20 Nov · 2 have no date",
+  });
+  // Four days off with every requirement dated: not said.
+  assert.equal(rowLine(row({ team: { date: "2026-11-28", key: "CHK-9", undated: 0 } })).team, null);
+  // A week off and all dated: the date alone.
+  assert.equal(
+    rowLine(row({ team: { date: "2026-12-20", key: "CHK-9", undated: 0 } })).team,
+    "team's own date: 20 Dec",
+  );
   assert.deepEqual(
     rowLine(
       row({
@@ -189,7 +185,19 @@ test("a row says itself in one plain line, the team's date only when it is a wee
         team: { date: null, key: null, undated: 3 },
       }),
     ),
-    ["No likely date yet", "no committed date"],
+    {
+      parts: ["No likely date yet", "no committed date"],
+      team: "team's own date: none given · 3 have no date",
+    },
+  );
+  assert.equal(
+    teamDateWords({ date: "2026-12-04", undated: 1 }),
+    "team's own date: 4 Dec · 1 has no date",
+  );
+  assert.equal(teamDateWords({ date: null, undated: 0 }), "");
+  assert.equal(
+    TEAM_DATE_MEANING,
+    "The latest finish date the team gave (ETA or due date) across the open requirements",
   );
   assert.equal(verdictChip(null).label, "No likely date");
   assert.equal(verdictChip("off_track").tone, "danger");
@@ -402,7 +410,7 @@ test("the table lists the dates, the moves, the likely finish and what changed b
   assert.equal(listed.committed, "18 Nov");
   assert.equal(listed.moves, "4 Nov → 18 Nov on 9 Oct");
   assert.equal(listed.likely, "12 Nov – 2 Dec");
-  assert.equal(listed.team, "20 Nov (CHK-12), 2 undated");
+  assert.equal(listed.team, "20 Nov (CHK-12) · 2 have no date");
   assert.equal(listed.done, "8 of 22 done");
   assert.deepEqual(listed.events, ["9 Oct: 1 requirement added without the CR label (CHK-21)"]);
   assert.equal(

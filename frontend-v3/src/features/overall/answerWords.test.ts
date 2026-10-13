@@ -89,7 +89,7 @@ test("every verdict has its sentence, and nothing counted says so", () => {
       scope({ verdict: "off_track", latest: "2027-01-08", key: "CHK-9" }),
       "Checkout Revamp",
     ),
-    "Checkout Revamp is off track because the team's latest date, Fri 8 Jan (CHK-9), is after the delivery date.",
+    "Checkout Revamp is off track because the team's own date, Fri 8 Jan (CHK-9), is after the delivery date.",
   );
   assert.equal(
     scopeAnswer(scope({ verdict: "not_enough_data", undated: 8 }), "Checkout Revamp"),

@@ -521,8 +521,11 @@ def _delivery_line(view: ScopeDeliveryView) -> str:
     if view.history.p85 is not None:
         line += f" History says 85% likely by {_day_label(view.history.p85)}."
     if view.team.latest is not None and view.team.latest_key:
+        undated = view.team.undated
         line += (
-            f" The team's latest date is {_day_label(view.team.latest)} ({view.team.latest_key})."
+            f" Team's own date: {_day_label(view.team.latest)} ({view.team.latest_key})"
+            + (f" · {undated} {'has' if undated == 1 else 'have'} no date" if undated else "")
+            + "."
         )
     return line
 
@@ -687,7 +690,7 @@ _DRAWN_REASONS: tuple[tuple[str, str], ...] = (
     ("History: ", "forecast"),
     ("No history yet", "history"),
     ("Nothing reached production in the last ", "history"),
-    ("Team dates: ", "team"),
+    ("Team's own date: ", "team"),
 )
 
 

@@ -213,12 +213,26 @@ export function progressLabel(row: Row): string {
   return `${number(progress.done)} of ${number(progress.total)}${points} done`;
 }
 
+/** What the team's own date is, said on hover, focus or tap wherever it shows. */
+export const TEAM_DATE_MEANING =
+  "The latest finish date the team gave (ETA or due date) across the open requirements";
+
+/** "team's own date: 4 Dec · 5 have no date", in the server's words; empty when nothing to say. */
+export function teamDateWords(team: { date: string | null; undated: number }): string {
+  if (!team.date && team.undated <= 0) return "";
+  const said = `team's own date: ${team.date ? shortDay(team.date) : "none given"}`;
+  return team.undated > 0
+    ? `${said} · ${team.undated} ${team.undated === 1 ? "has" : "have"} no date`
+    : said;
+}
+
 /**
- * The row's one plain line: "Likely by 19 Mar · committed 15 Dec · 2 of 10 done",
- * with "team says 4 Dec" only when the team's date is more than a week from the
- * likely one.
+ * The row's one plain line: "Likely by 19 Mar · committed 15 Dec · 2 of 10 done";
+ * then, apart, the team's own date ("team's own date: 4 Dec · 5 have no date"),
+ * only when it is more than a week from the likely date, when there is no likely
+ * date, or when some open requirements have no date.
  */
-export function rowLine(row: Row): string[] {
+export function rowLine(row: Row): { parts: string[]; team: string | null } {
   const parts: string[] = [];
   const likely = row.forecast?.p85 ?? null;
   parts.push(likely ? `Likely by ${shortDay(likely)}` : "No likely date yet");
@@ -227,11 +241,11 @@ export function rowLine(row: Row): string[] {
   );
   const done = progressLabel(row);
   if (done) parts.push(done);
-  const team = row.team.date;
-  if (team && (!likely || Math.abs(dayNumber(team) - dayNumber(likely)) > TEAM_APART_DAYS)) {
-    parts.push(`team says ${shortDay(team)}`);
-  }
-  return parts;
+  const date = row.team.date;
+  const apart =
+    date !== null && (!likely || Math.abs(dayNumber(date) - dayNumber(likely)) > TEAM_APART_DAYS);
+  const team = apart || row.team.undated > 0 ? teamDateWords(row.team) : "";
+  return { parts, team: team || null };
 }
 
 // ---- what changed --------------------------------------------------------------------
@@ -619,13 +633,11 @@ export function tableRow(row: Row, changeLabel: string): TableRow {
     likely: row.forecast
       ? likelyRange(row.forecast.p50, row.forecast.p85).replace(/^likely /, "")
       : (row.forecast_reason ?? "—"),
-    team: row.team.date
-      ? `${shortDay(row.team.date)}${row.team.key ? ` (${row.team.key})` : ""}${
-          row.team.undated > 0 ? `, ${row.team.undated} undated` : ""
-        }`
-      : row.team.undated > 0
-        ? `None given, ${row.team.undated} undated`
-        : "—",
+    team:
+      teamDateWords(row.team)
+        .replace(/^team's own date: /, "")
+        .replace(/^(\d+ \w+)/, `$1${row.team.date && row.team.key ? ` (${row.team.key})` : ""}`) ||
+      "—",
     done: progressLabel(row) || "—",
     events,
   };

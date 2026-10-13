@@ -1628,8 +1628,8 @@ def _forecast_reasons(history: HistoryForecast, team: TeamForecast, as_of: date)
     if team.latest is not None:
         late = " (past its date)" if team.latest < as_of else ""
         reasons.append(
-            f"Team dates: the latest open requirement is due {_day(team.latest)}"
-            f" ({team.latest_key}){late}."
+            f"Team's own date: {_day(team.latest)} ({team.latest_key}){late}, the latest "
+            "finish date the team gave (ETA or due date) across the open requirements."
         )
     if team.undated:
         reasons.append(

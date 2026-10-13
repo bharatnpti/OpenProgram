@@ -1,6 +1,7 @@
 import {
   Fragment,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -28,6 +29,7 @@ import {
   rowLine,
   rowShape,
   sentenceOf,
+  TEAM_DATE_MEANING,
   tableRow,
   timeScale,
   verdictChip,
@@ -178,10 +180,13 @@ function Drawing({
   const glyphRefs = useRef<(HTMLButtonElement | null)[][]>([]);
   const acting = actions !== undefined && data.rows.some((row) => Boolean(actions(row)));
   // A wide screen: the label beside the bar. A phone: the label above it.
-  const labelH = narrow ? (acting ? 66 : 58) : 0;
+  // The label: name and verdict, the plain line, and the team's own date when said.
+  const teamSaid = data.rows.some((row) => rowLine(row).team !== null);
+  // Beside a date button the team's line can wrap to two lines on a phone.
+  const labelH = narrow ? (acting ? 66 : 58) + (teamSaid ? (acting ? 32 : 16) : 0) : 0;
   const barY = narrow ? labelH + 16 : acting ? 26 : 22;
   const laneY = barY + BAR_H + 16;
-  const rowH = narrow ? labelH + 58 : acting ? 100 : 78;
+  const rowH = narrow ? labelH + 58 : (acting ? 100 : 78) + (teamSaid ? 14 : 0);
 
   useLayoutEffect(() => {
     const element = box.current;
@@ -436,38 +441,81 @@ function RowLabel({
       )}
       style={{ height }}
     >
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-pressed={onSelect ? selected : undefined}
-        aria-label={`${row.name}: ${chip.label}. ${line.join(", ")}${onSelect ? ". Explain this row below" : ""}`}
-        onClick={() => onSelect?.(row)}
-        onKeyDown={onKeyDown}
-        className="min-w-0 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-      >
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span
-            title={row.name}
-            className="truncate text-[14px] leading-tight font-extrabold text-ink max-sm:text-[13px]"
-          >
-            {row.name}
+      <div className="min-w-0">
+        <button
+          ref={buttonRef}
+          type="button"
+          aria-pressed={onSelect ? selected : undefined}
+          aria-label={`${row.name}: ${chip.label}. ${line.parts.join(", ")}${onSelect ? ". Explain this row below" : ""}`}
+          onClick={() => onSelect?.(row)}
+          onKeyDown={onKeyDown}
+          className="min-w-0 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+        >
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span
+              title={row.name}
+              className="truncate text-[14px] leading-tight font-extrabold text-ink max-sm:text-[13px]"
+            >
+              {row.name}
+            </span>
+            <RagChip tone={chip.tone} className="h-5 px-1.5 text-[10.5px]">
+              {chip.label}
+            </RagChip>
           </span>
-          <RagChip tone={chip.tone} className="h-5 px-1.5 text-[10.5px]">
-            {chip.label}
-          </RagChip>
-        </span>
-        {/* One plain line; it breaks between its parts, never inside one. */}
-        <span className="mt-0.5 block text-[12px] leading-snug text-grey-body">
-          {line.map((part, index) => (
-            <Fragment key={part}>
-              {index > 0 ? " · " : ""}
-              <span className="whitespace-nowrap">{part}</span>
-            </Fragment>
-          ))}
-        </span>
-      </button>
+          {/* One plain line; it breaks between its parts, never inside one. */}
+          <span className="mt-0.5 block text-[12px] leading-snug text-grey-body">
+            {line.parts.map((part, index) => (
+              <Fragment key={part}>
+                {index > 0 ? " · " : ""}
+                <span className="whitespace-nowrap">{part}</span>
+              </Fragment>
+            ))}
+          </span>
+        </button>
+        {line.team ? <TeamDate words={line.team} /> : null}
+      </div>
       {action ? <div className="flex flex-none">{action}</div> : null}
     </div>
+  );
+}
+
+/**
+ * The team's own date beside a row, with what it means on hover, focus or tap:
+ * the latest finish date the team gave across the open requirements.
+ */
+function TeamDate({ words }: { words: string }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <span className="relative block">
+      <button
+        type="button"
+        aria-describedby={id}
+        aria-expanded={open}
+        // A tap focuses it too: show on either, close on blur, leave or Escape.
+        onClick={() => setOpen(true)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setOpen(false);
+        }}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        className="text-left text-[12px] leading-snug text-grey-body underline decoration-dotted underline-offset-2 focus-visible:outline-2 focus-visible:outline-ink"
+      >
+        {words}
+      </button>
+      <span
+        id={id}
+        role="tooltip"
+        className={cn(
+          "absolute top-full left-0 z-10 mt-1 w-60 rounded-lg bg-ink px-2.5 py-1.5 text-[12px] text-(--op-viz-surface) shadow-md",
+          open ? "block" : "hidden",
+        )}
+      >
+        {TEAM_DATE_MEANING}.
+      </span>
+    </span>
   );
 }
 
@@ -777,7 +825,7 @@ export function TimelineTable({ data, label }: { data: TimelineResponse; label: 
               "Committed",
               "Moves",
               "Likely finish",
-              "Team's date",
+              "Team's own date",
               "Done",
               "What changed",
             ].map((head) => (

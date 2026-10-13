@@ -18,14 +18,14 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from config.settings import Settings
-from core.application.day_report_builder import _reason_kind
+from core.application.day_report_builder import _delivery_line, _reason_kind
 from core.domain.delivery import DeliveryStage
 from core.domain.escalation_matrix import NeedType
 from core.domain.forecast import Verdict
 from core.domain.graph import Developer
 from core.domain.report_facts import BypassFacts, StageCount, StageMoveFacts
 from core.domain.reports import render_text
-from tests.fixtures.day_report_full_day import DAYS, NOTE, formats, full_report
+from tests.fixtures.day_report_full_day import DAYS, NOTE, TODAY, a_full_day, formats, full_report
 from tests.unit.test_day_reports import TENANT, _groups, _report_body, _section
 
 S = DeliveryStage
@@ -237,7 +237,9 @@ def test_the_reason_openings_are_the_forecasts_own_sentences() -> None:
         == "history"
     )
     assert (
-        _reason_kind("Team dates: the latest open requirement is due Fri 9 Oct 2026 (CHK-4).")
+        _reason_kind(
+            "Team's own date: Fri 9 Oct 2026 (CHK-4), the latest finish date the team gave."
+        )
         == "team"
     )
     # Kept as lines: nothing on the bar draws them.
@@ -247,3 +249,16 @@ def test_the_reason_openings_are_the_forecasts_own_sentences() -> None:
         _reason_kind("History and the team's dates are 12 working days apart; one is wrong.")
         is None
     )
+
+
+async def test_the_delivery_line_says_the_teams_own_date_as_every_other_surface_does() -> None:
+    registry = await a_full_day()
+    view = (await registry.forecast_service().project_delivery(TENANT, "checkout", TODAY)).project
+    teamed = replace(view, team=replace(view.team, latest=date(2026, 12, 4), latest_key="CHK-4"))
+
+    with_undated = _delivery_line(replace(teamed, team=replace(teamed.team, undated=5)))
+    all_dated = _delivery_line(replace(teamed, team=replace(teamed.team, undated=0)))
+
+    assert with_undated.endswith(" Team's own date: Fri 4 Dec 2026 (CHK-4) · 5 have no date.")
+    assert all_dated.endswith(" Team's own date: Fri 4 Dec 2026 (CHK-4).")
+    assert "latest date" not in with_undated
