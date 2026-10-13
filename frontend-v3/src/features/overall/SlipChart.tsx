@@ -155,7 +155,7 @@ function SlipCard({
                   stroke={band.stroke}
                   strokeOpacity={0.6}
                 >
-                  <title>Forecast range, 50% to 85% likely, as it stood each day</title>
+                  <title>The likely finish as it stood each day</title>
                 </polygon>
               ))}
               {g.bandStart ? (
@@ -164,7 +164,7 @@ function SlipCard({
                   y={Math.max(g.bandStart.y - 6, top - 2)}
                   style={{ ...SVG_TEXT.amber, fill: band.stroke }}
                 >
-                  Forecast from {formatDay(g.bandStart.day)}
+                  Likely date from {formatDay(g.bandStart.day)}
                 </text>
               ) : null}
               {g.noDate.map((span) => (
@@ -263,7 +263,7 @@ function SlipCard({
                 <Swatch
                   style={{ background: band.fill, boxShadow: `inset 0 0 0 1.5px ${band.stroke}` }}
                 />
-                Forecast, 50% to 85% likely
+                Likely finish
               </span>
             ) : null}
             {g.noDate.length > 0 ? (

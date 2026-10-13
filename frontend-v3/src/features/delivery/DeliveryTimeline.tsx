@@ -9,13 +9,13 @@ import { usePodTimeline, useTimeline } from "../overall/queries";
 import { TimelineChart } from "../overall/TimelineChart";
 
 /*
- * The compact timelines on Delivery's panels: the same rows and markers as
- * Overall's Timeline, without the waterfall. The project panel's lists the
- * project and its pods (a scrum master's, the pods only), where the date
- * history used to be: the committed date's moves are each row's ticks, and the
- * table lists them. A pod's panel shows the pod's own row, with its project's
- * date as a reference tick. "Why it moved" opens Overall's Timeline with the row
- * picked, for the readers who have it there (not a developer).
+ * The timelines on Delivery's panels: the same rows and changes as Overall's
+ * Timeline (labels above the bars, a shorter change list), without Why the
+ * date moved. The project panel's lists the project and its pods (a scrum
+ * master's, the pods only), where the date history used to be: the committed
+ * date's moves are in What changed and the table. A pod's panel shows the pod's
+ * own row. "Why it moved" opens Overall's Timeline with the row picked, for
+ * the readers who have it there (not a developer).
  */
 
 /** The project's rows: the project (for its readers) and its pods, worst first. */

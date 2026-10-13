@@ -107,7 +107,7 @@ export function PodPanel({
       <div className="mb-5 grid grid-cols-[minmax(0,1fr)] gap-3">
         {/* Every listed pod that opens shows its dates: that is all a name-only pod lacks. */}
         <PodDateStrips pod={pod} readable={own ? true : undefined} />
-        {/* Its own timeline row, with its project's date as a reference tick. */}
+        {/* Its own timeline row: done, the likely finish and what changed. */}
         <PodTimeline pod={pod} readable={own ? true : readPodDelivery} />
       </div>
       {/* Per person, so only for the roles that read a pod's people. */}

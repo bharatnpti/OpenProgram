@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -16,42 +17,42 @@ import type { BadgeTone } from "../../lib/status";
 import { cn } from "../../lib/utils";
 import {
   axisLabels,
+  changeList,
   drawn,
   foldReleases,
-  glyphLegend,
   itemNote,
   longDay,
   moveFocus,
-  movesLabel,
   openingScroll,
-  progressLabel,
-  rowGlyphs,
+  rowDots,
+  rowLine,
   rowShape,
-  scopeLabel,
   sentenceOf,
   tableRow,
   timeScale,
   verdictChip,
   xOf,
+  type Dot,
   type Focus,
-  type Glyph,
-  type GlyphKind,
   type Row,
 } from "./timeline";
 import { Legend, Swatch } from "./viz";
 
 /*
- * The timeline's drawing: row labels in HTML in a left column that never
- * scrolls, the time axis in SVG in its own box that scrolls sideways on a phone
- * (28 px a week at the least), and each marker an HTML button over the drawing,
- * so it takes focus, hover and a tap and says what it marks. The SVG is
- * role="img" and speaks the server's sentence for every row. Every colour is a
- * theme token, so the .op-viz dark remap reaches it; green, amber and red appear
- * only on the forecast band, as its verdict.
+ * The timeline's drawing, to be read in five seconds (decision D78): per row a
+ * grey track from planning to the committed date with a dark fill for what is
+ * done, the likely finish as one segment in its verdict's colour (past the
+ * committed date, with its dates, when it is late), the committed date as a
+ * tick, and one dot on each day something changed, red when it pushed the
+ * date. The row's label says it in one plain line. Labels are HTML (a column
+ * on a wide screen, above each bar on a phone); the axis is SVG in its own box
+ * that scrolls sideways when it must. Each dot is a button that says what
+ * changed. The SVG is role="img" with the server's sentence for every row.
  */
 
 const AXIS_H = 26;
-const LANE_GAP = 4;
+const BAR_H = 12;
+const DOT_R = 7;
 
 const TONE: Record<BadgeTone, { fill: string; stroke: string }> = {
   success: { fill: "var(--op-green-bg)", stroke: "var(--op-green)" },
@@ -61,23 +62,36 @@ const TONE: Record<BadgeTone, { fill: string; stroke: string }> = {
   neutral: { fill: "var(--op-unknown-bg)", stroke: "var(--op-unknown)" },
 };
 
+/** Below 640 px the labels sit above each bar, so the axis gets the card's width. */
+function useNarrow(): boolean {
+  const query = "(max-width: 639px)";
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== "undefined" && Boolean(window.matchMedia?.(query).matches),
+  );
+  useEffect(() => {
+    const list = window.matchMedia?.(query);
+    if (!list) return;
+    const changed = () => setNarrow(list.matches);
+    list.addEventListener("change", changed);
+    return () => list.removeEventListener("change", changed);
+  }, []);
+  return narrow;
+}
+
 export function TimelineChart({
   data,
   selected,
   onSelect,
-  shade,
   compact = false,
   actions,
   label = "Timeline",
   heading,
 }: {
   data: TimelineResponse;
-  /** The row the waterfall below explains (`row` id); highlighted. */
+  /** The row Why the date moved explains (`row` id); highlighted. */
   selected?: string;
   onSelect?: (row: Row) => void;
-  /** The waterfall's period, shaded on the axis. */
-  shade?: { from: string; to: string } | null;
-  /** Delivery's panels: shorter rows, no scope line. */
+  /** Delivery's panels: a shorter change list. */
   compact?: boolean;
   /** Set date or Change date beside a row, for whoever may. */
   actions?: (row: Row) => ReactNode;
@@ -131,7 +145,6 @@ export function TimelineChart({
           data={drawnData}
           selected={selected}
           onSelect={onSelect}
-          shade={shade ?? null}
           compact={compact}
           actions={actions}
           label={label}
@@ -145,7 +158,6 @@ function Drawing({
   data,
   selected,
   onSelect,
-  shade,
   compact,
   actions,
   label,
@@ -153,21 +165,23 @@ function Drawing({
   data: TimelineResponse;
   selected?: string;
   onSelect?: (row: Row) => void;
-  shade: { from: string; to: string } | null;
   compact: boolean;
   actions?: (row: Row) => ReactNode;
   label: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  // A phone, or a Delivery panel's card: each label above its bar, so the axis gets the width.
+  const narrow = useNarrow() || compact;
   const [available, setAvailable] = useState(0);
   const [open, setOpen] = useState<{ row: number; glyph: number } | null>(null);
   const rowRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const glyphRefs = useRef<(HTMLButtonElement | null)[][]>([]);
-  // A row with Set date or Change date under its label needs the room for it.
   const acting = actions !== undefined && data.rows.some((row) => Boolean(actions(row)));
-  const rowH = compact ? 62 : acting ? 96 : 72;
-  const laneY = compact ? 44 : acting ? 58 : 50;
-  const barY = compact ? 16 : acting ? 26 : 20;
+  // A wide screen: the label beside the bar. A phone: the label above it.
+  const labelH = narrow ? (acting ? 66 : 58) : 0;
+  const barY = narrow ? labelH + 16 : acting ? 26 : 22;
+  const laneY = barY + BAR_H + 16;
+  const rowH = narrow ? labelH + 58 : acting ? 100 : 78;
 
   useLayoutEffect(() => {
     const element = box.current;
@@ -181,12 +195,13 @@ function Drawing({
 
   const scale = timeScale(data.axis, available);
   const rows = data.rows;
-  const glyphs = rows.map((row) => rowGlyphs(row, scale, data.change_label));
-  const marks = drawn(rows, scale, data.change_label);
+  const today = data.axis.today;
+  const dots = rows.map((row) => rowDots(row, scale, data.change_label));
+  const marks = drawn(rows, scale, today);
   const height = AXIS_H + rows.length * rowH;
-  const todayX = xOf(scale, data.axis.today);
+  const todayX = xOf(scale, today);
   // A past day is drawn as of that day, and its line says which day it is.
-  const todayLabel = useReadOnly().readOnly ? longDay(data.axis.today) : "Today";
+  const todayLabel = useReadOnly().readOnly ? longDay(today) : "Today";
 
   // On a phone the box opens on today and the committed dates ahead of it.
   const opened = useRef(false);
@@ -194,15 +209,15 @@ function Drawing({
     const element = box.current;
     if (!element || opened.current || available === 0) return;
     opened.current = true;
-    if (window.matchMedia?.("(max-width: 639px)").matches) {
+    if (element.scrollWidth > element.clientWidth) {
       element.scrollLeft = openingScroll(
         scale,
-        data.axis.today,
+        today,
         element.clientWidth,
-        data.rows.map((row) => row.committed.date),
+        rows.map((row) => row.committed.date),
       );
     }
-  }, [available, scale, data.axis.today, data.rows]);
+  }, [available, scale, today, rows]);
 
   const focusOn = (focus: Focus) => {
     if (focus.glyph === null) {
@@ -219,37 +234,45 @@ function Drawing({
     const next = moveFocus(
       focus,
       event.key,
-      glyphs.map((list) => list.length),
+      dots.map((list) => list.length),
     );
     if (next === null) return;
     event.preventDefault();
     focusOn(next);
   };
-  const shown = open ? glyphs[open.row]?.[open.glyph] : undefined;
+  const shown = open ? dots[open.row]?.[open.glyph] : undefined;
   const spoken = rows.map((row) => sentenceOf(data, row)).join(" ");
+  const labels = rows.map((row, index) => (
+    <RowLabel
+      key={`${row.row}:${row.project_id}`}
+      row={row}
+      height={narrow ? labelH : rowH}
+      narrow={narrow}
+      selected={row.row === selected}
+      buttonRef={(element) => {
+        rowRefs.current[index] = element;
+      }}
+      // Only a row the reader has whole is explained below; a dates row is not.
+      onSelect={row.access === "panel" ? onSelect : undefined}
+      onKeyDown={onKey({ row: index, glyph: null })}
+      action={actions?.(row)}
+    />
+  ));
 
   return (
     <figure className="m-0 grid min-w-0 gap-3">
-      <div className="grid grid-cols-[120px_minmax(0,1fr)] sm:grid-cols-[208px_minmax(0,1fr)]">
-        <div className="min-w-0 border-r border-(--op-viz-grid)">
-          <div style={{ height: AXIS_H }} aria-hidden />
-          {rows.map((row, index) => (
-            <RowLabel
-              key={`${row.row}:${row.project_id}`}
-              row={row}
-              height={rowH}
-              compact={compact}
-              selected={row.row === selected}
-              buttonRef={(element) => {
-                rowRefs.current[index] = element;
-              }}
-              // Only a row the reader has whole is explained below; a dates row is not.
-              onSelect={row.access === "panel" ? onSelect : undefined}
-              onKeyDown={onKey({ row: index, glyph: null })}
-              action={actions?.(row)}
-            />
-          ))}
-        </div>
+      <div
+        className={cn(
+          "relative grid",
+          narrow ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-[280px_minmax(0,1fr)]",
+        )}
+      >
+        {narrow ? null : (
+          <div className="min-w-0 border-r border-(--op-viz-grid)">
+            <div style={{ height: AXIS_H }} aria-hidden />
+            {labels}
+          </div>
+        )}
         <div
           ref={box}
           className="relative min-w-0 overflow-x-auto overflow-y-hidden"
@@ -266,35 +289,6 @@ function Drawing({
               role="img"
               aria-label={spoken}
             >
-              {shade ? (
-                <rect
-                  x={xOf(scale, shade.from)}
-                  y={0}
-                  width={Math.max(2, xOf(scale, shade.to) - xOf(scale, shade.from))}
-                  height={height}
-                  fill="var(--op-grey-fill)"
-                  opacity={0.7}
-                />
-              ) : null}
-              {axisLabels(scale, { x: todayX, label: todayLabel }).map((tick) => (
-                <g key={tick.label}>
-                  <line
-                    x1={tick.x}
-                    x2={tick.x}
-                    y1={AXIS_H - 6}
-                    y2={height}
-                    stroke="var(--op-viz-grid)"
-                  />
-                  <text
-                    x={tick.x}
-                    y={14}
-                    textAnchor={tick.anchor}
-                    style={{ fill: "var(--op-grey-secondary)", fontSize: 11.5 }}
-                  >
-                    {tick.label}
-                  </text>
-                </g>
-              ))}
               {rows.map((row, index) => {
                 const top = AXIS_H + index * rowH;
                 return (
@@ -309,57 +303,103 @@ function Drawing({
                       />
                     ) : null}
                     <line x1={0} x2={scale.width} y1={top} y2={top} stroke="var(--op-viz-grid)" />
-                    <RowDrawing row={row} scale={scale} top={top} barY={barY} laneY={laneY} />
                   </g>
                 );
               })}
-              <line
-                x1={todayX}
-                x2={todayX}
-                y1={AXIS_H - 8}
-                y2={height}
-                stroke="var(--op-black)"
-                strokeWidth={1.2}
-                strokeDasharray="2 3"
-              />
+              {axisLabels(scale, { x: todayX, label: todayLabel }).map((tick) => (
+                <g key={tick.label}>
+                  {rows.map((row, index) => (
+                    <line
+                      key={row.row}
+                      x1={tick.x}
+                      x2={tick.x}
+                      y1={AXIS_H + index * rowH + labelH}
+                      y2={AXIS_H + (index + 1) * rowH}
+                      stroke="var(--op-viz-grid)"
+                    />
+                  ))}
+                  <text
+                    x={tick.x}
+                    y={14}
+                    textAnchor={tick.anchor}
+                    style={{ fill: "var(--op-grey-secondary)", fontSize: 11.5 }}
+                  >
+                    {tick.label}
+                  </text>
+                </g>
+              ))}
+              {rows.map((row, index) => (
+                <RowDrawing
+                  key={`${row.row}:${row.project_id}`}
+                  row={row}
+                  scale={scale}
+                  today={today}
+                  top={AXIS_H + index * rowH}
+                  barY={barY}
+                />
+              ))}
+              {/* Today: one thin line across the bars, its label above the axis. */}
+              {rows.map((row, index) => (
+                <line
+                  key={row.row}
+                  x1={todayX}
+                  x2={todayX}
+                  y1={AXIS_H + index * rowH + labelH + (index === 0 && !narrow ? -6 : 0)}
+                  y2={AXIS_H + (index + 1) * rowH}
+                  stroke="var(--op-black)"
+                  strokeWidth={1}
+                  strokeOpacity={0.55}
+                />
+              ))}
               <text
                 x={todayX}
-                y={AXIS_H - 10}
+                y={14}
                 textAnchor={todayX > scale.width - 40 ? "end" : todayX < 40 ? "start" : "middle"}
                 style={{ fill: "var(--op-black)", fontSize: 11.5, fontWeight: 700 }}
               >
                 {todayLabel}
               </text>
             </svg>
-            {glyphs.map((list, rowIndex) =>
-              list.map((glyph, glyphIndex) => (
-                <GlyphButton
-                  key={glyph.id}
-                  glyph={glyph}
+            {dots.map((list, rowIndex) =>
+              list.map((dot, dotIndex) => (
+                <DotButton
+                  key={dot.id}
+                  dot={dot}
                   top={AXIS_H + rowIndex * rowH + laneY}
-                  pressed={open?.row === rowIndex && open.glyph === glyphIndex}
+                  pressed={open?.row === rowIndex && open.glyph === dotIndex}
                   buttonRef={(element) => {
                     glyphRefs.current[rowIndex] ??= [];
-                    glyphRefs.current[rowIndex][glyphIndex] = element;
+                    glyphRefs.current[rowIndex][dotIndex] = element;
                   }}
-                  onOpen={() => setOpen({ row: rowIndex, glyph: glyphIndex })}
-                  onKeyDown={onKey({ row: rowIndex, glyph: glyphIndex })}
+                  onOpen={() => setOpen({ row: rowIndex, glyph: dotIndex })}
+                  onKeyDown={onKey({ row: rowIndex, glyph: dotIndex })}
                 />
               )),
             )}
           </div>
         </div>
+        {narrow ? (
+          // On a phone each label sits above its bar, over the box, and does not scroll.
+          <div className="pointer-events-none absolute inset-x-0 top-0">
+            {labels.map((element, index) => (
+              <div
+                key={rows[index].row}
+                className="absolute inset-x-0"
+                style={{ top: AXIS_H + index * rowH, height: labelH }}
+              >
+                {element}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div aria-live="polite">
         {shown ? (
-          <MarkerList glyph={shown} changeLabel={data.change_label} onClose={() => setOpen(null)} />
-        ) : marks.glyphs.length > 0 ? (
-          <p className="text-[12px] text-grey-secondary">
-            A marker opens its requirements: hover, tap or move to it with the arrow keys.
-          </p>
+          <DotList dot={shown} changeLabel={data.change_label} onClose={() => setOpen(null)} />
         ) : null}
       </div>
-      <TimelineLegend marks={marks} changeLabel={data.change_label} />
+      <TimelineLegend marks={marks} />
+      <WhatChanged rows={rows} changeLabel={data.change_label} compact={compact} />
     </figure>
   );
 }
@@ -367,7 +407,7 @@ function Drawing({
 function RowLabel({
   row,
   height,
-  compact,
+  narrow,
   selected,
   buttonRef,
   onSelect,
@@ -376,7 +416,7 @@ function RowLabel({
 }: {
   row: Row;
   height: number;
-  compact: boolean;
+  narrow: boolean;
   selected: boolean;
   buttonRef: (element: HTMLButtonElement | null) => void;
   onSelect?: (row: Row) => void;
@@ -384,13 +424,15 @@ function RowLabel({
   action?: ReactNode;
 }) {
   const chip = verdictChip(row.verdict);
-  const whole = row.access === "panel";
-  const detail = whole && !compact ? (scopeLabel(row) ?? movesLabel(row)) : movesLabel(row);
+  const line = rowLine(row);
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-col justify-center gap-1 border-t border-(--op-viz-grid) py-1.5 pr-2",
-        selected && "bg-grey-header",
+        "pointer-events-auto flex min-w-0 gap-2",
+        narrow
+          ? "items-start justify-between pt-1.5"
+          : "flex-col justify-center gap-1 border-t border-(--op-viz-grid) py-1.5 pr-3",
+        selected && !narrow && "bg-grey-header",
       )}
       style={{ height }}
     >
@@ -398,36 +440,33 @@ function RowLabel({
         ref={buttonRef}
         type="button"
         aria-pressed={onSelect ? selected : undefined}
-        aria-label={`${row.name}${row.scope_kind === "pod" && compact ? ` for ${row.project_name}` : ""}: ${chip.label}${whole && row.progress ? `, ${progressLabel(row)} done` : ""}${onSelect ? ". Explain this row below" : ""}`}
+        aria-label={`${row.name}: ${chip.label}. ${line.join(", ")}${onSelect ? ". Explain this row below" : ""}`}
         onClick={() => onSelect?.(row)}
         onKeyDown={onKeyDown}
         className="min-w-0 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
       >
-        {/* Two lines on a phone rather than a cut name; the full name on hover. */}
-        <span
-          title={row.name}
-          className="line-clamp-2 break-words text-[13.5px] leading-tight font-extrabold text-ink max-sm:text-[12.5px]"
-        >
-          {row.name}
-        </span>
-        <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
-          <RagChip tone={chip.tone} className="h-5 max-w-full truncate px-1.5 text-[10.5px]">
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span
+            title={row.name}
+            className="truncate text-[14px] leading-tight font-extrabold text-ink max-sm:text-[13px]"
+          >
+            {row.name}
+          </span>
+          <RagChip tone={chip.tone} className="h-5 px-1.5 text-[10.5px]">
             {chip.label}
           </RagChip>
-          {whole && row.progress ? (
-            <span className="text-[11.5px] font-bold tabular-nums text-grey-body">
-              <span className="max-sm:hidden">{progressLabel(row)}</span>
-              <span className="sm:hidden">{progressLabel(row, true)}</span>
-            </span>
-          ) : null}
         </span>
-        {detail ? (
-          <span className="mt-0.5 block truncate text-[11px] text-grey-secondary max-sm:hidden">
-            {detail}
-          </span>
-        ) : null}
+        {/* One plain line; it breaks between its parts, never inside one. */}
+        <span className="mt-0.5 block text-[12px] leading-snug text-grey-body">
+          {line.map((part, index) => (
+            <Fragment key={part}>
+              {index > 0 ? " · " : ""}
+              <span className="whitespace-nowrap">{part}</span>
+            </Fragment>
+          ))}
+        </span>
       </button>
-      {action ? <div className="flex">{action}</div> : null}
+      {action ? <div className="flex flex-none">{action}</div> : null}
     </div>
   );
 }
@@ -435,172 +474,100 @@ function RowLabel({
 function RowDrawing({
   row,
   scale,
+  today,
   top,
   barY,
-  laneY,
 }: {
   row: Row;
   scale: ReturnType<typeof timeScale>;
+  today: string;
   top: number;
   barY: number;
-  laneY: number;
 }) {
-  const shape = rowShape(row, scale);
+  const shape = rowShape(row, scale, today);
   const y = top + barY;
-  const h = 12;
-  const tone = shape.band ? TONE[shape.band.tone] : null;
-  const arrowFrom = shape.earlier.length > 0 ? shape.earlier[shape.earlier.length - 1].x : null;
+  const likely = shape.likely;
+  const tone = likely ? TONE[likely.tone] : null;
+  // The likely dates beside a late segment: after it when there is room, else before it
+  // when that keeps clear of the track, else just above it, ending where it ends.
+  const labelWidth = likely ? likely.label.length * 6.2 : 0;
+  const place = !likely
+    ? null
+    : likely.to + 6 + labelWidth <= scale.width
+      ? { x: likely.to + 6, y: y + BAR_H - 1, anchor: "start" as const }
+      : likely.from - 6 - labelWidth >= shape.end + 4
+        ? { x: likely.from - 6, y: y + BAR_H - 1, anchor: "end" as const }
+        : { x: likely.to, y: y - 6, anchor: "end" as const };
   return (
     <g>
-      {/* The span: planning to the committed date, faded without a baseline, open without a date. */}
       <rect
         x={shape.start}
         y={y}
         width={Math.max(2, shape.end - shape.start)}
-        height={h}
+        height={BAR_H}
         rx={3}
         fill="var(--op-grey-fill)"
         stroke="var(--op-viz-axis)"
         strokeDasharray={shape.open ? "4 3" : undefined}
-        opacity={shape.faded ? 0.55 : 1}
       />
-      {shape.fill !== null ? (
+      {shape.fill !== null && shape.fill > shape.start ? (
         <rect
           x={shape.start}
           y={y}
-          width={Math.max(0, shape.fill - shape.start)}
-          height={h}
+          width={shape.fill - shape.start}
+          height={BAR_H}
           rx={3}
           fill="var(--op-black)"
-          opacity={shape.faded ? 0.55 : 0.85}
+          opacity={0.85}
         />
       ) : null}
-      {shape.band && tone ? (
-        <rect
-          x={shape.band.from}
-          y={y - 3}
-          width={shape.band.to - shape.band.from}
-          height={h + 6}
-          rx={3}
-          fill={tone.fill}
-          stroke={tone.stroke}
-          strokeWidth={1.5}
-          opacity={0.92}
-        />
+      {likely && tone ? (
+        <>
+          <rect
+            x={likely.from}
+            y={y - 2}
+            width={likely.to - likely.from}
+            height={BAR_H + 4}
+            rx={4}
+            fill={tone.fill}
+            stroke={tone.stroke}
+            strokeWidth={1.5}
+          />
+          {likely.late && place ? (
+            <text
+              x={place.x}
+              y={place.y}
+              textAnchor={place.anchor}
+              style={{ fill: tone.stroke, fontSize: 11.5, fontWeight: 700 }}
+            >
+              {likely.label}
+            </text>
+          ) : null}
+        </>
       ) : null}
-      {shape.reference !== null ? (
-        <line
-          x1={shape.reference}
-          x2={shape.reference}
-          y1={y - 8}
-          y2={y + h + 8}
-          stroke="var(--op-grey-secondary)"
-          strokeWidth={1.5}
-          strokeDasharray="1 2"
-        />
-      ) : null}
-      {shape.jira !== null ? (
-        <line
-          x1={shape.jira}
-          x2={shape.jira}
-          y1={y - 6}
-          y2={y + h + 6}
-          stroke="var(--op-black)"
-          strokeWidth={1.5}
-          strokeDasharray="1.5 2"
-        />
-      ) : null}
-      {shape.earlier.map((tick) => (
-        <rect
-          key={`${tick.date}:${tick.on}`}
-          x={tick.x - 2}
-          y={y - 5}
-          width={4}
-          height={h + 10}
-          rx={1}
-          fill="var(--op-viz-surface)"
-          stroke="var(--op-black)"
-          strokeWidth={1.2}
-        />
-      ))}
-      {arrowFrom !== null &&
-      shape.committed !== null &&
-      Math.abs(shape.committed - arrowFrom) > 6 ? (
-        <path
-          d={arrowPath(arrowFrom, shape.committed, y - 8)}
-          fill="none"
-          stroke="var(--op-black)"
-          strokeWidth={1}
-        />
-      ) : null}
-      {shape.team ? (
-        <path
-          d={`M${shape.team.x} ${y - 1} l5 ${h / 2 + 1} l-5 ${h / 2 + 1} l-5 ${-(h / 2 + 1)} Z`}
-          fill={shape.team.hollow ? "var(--op-viz-surface)" : "var(--op-black)"}
-          stroke="var(--op-black)"
-          strokeWidth={1.4}
-        />
-      ) : null}
-      {/* Last, so a team's date on the same day never hides the committed date. */}
+      {/* Last, so the likely finish never hides the committed date. */}
       {shape.committed !== null ? (
         <rect
           x={shape.committed - 1.5}
-          y={y - 6}
+          y={y - 5}
           width={3}
-          height={h + 12}
+          height={BAR_H + 10}
           fill="var(--op-black)"
         />
-      ) : null}
-      {row.access === "panel" ? (
-        <line
-          x1={shape.start}
-          x2={shape.open ? scale.width : Math.max(shape.end, shape.start + 2)}
-          y1={top + laneY}
-          y2={top + laneY}
-          stroke="var(--op-viz-grid)"
-          strokeWidth={1}
-          transform={`translate(0 ${LANE_GAP})`}
-        />
-      ) : null}
-      {/* The open end says "no date", unless the row's chip says it already. */}
-      {shape.open && row.verdict !== "no_date" ? (
-        <text
-          x={scale.width - 4}
-          y={y + h + 14}
-          textAnchor="end"
-          style={{ fill: "var(--op-grey-secondary)", fontSize: 11 }}
-        >
-          no date
-        </text>
-      ) : null}
-      {shape.faded ? (
-        <text
-          x={shape.start + 4}
-          y={y - 4}
-          style={{ fill: "var(--op-grey-secondary)", fontSize: 10.5 }}
-        >
-          no baseline
-        </text>
       ) : null}
     </g>
   );
 }
 
-/** A thin arrow from the last earlier committed date to the current one, above the bar. */
-function arrowPath(from: number, to: number, y: number): string {
-  const head = to > from ? -4 : 4;
-  return `M${from} ${y} L${to} ${y} M${to + head} ${y - 3} L${to} ${y} L${to + head} ${y + 3}`;
-}
-
-function GlyphButton({
-  glyph,
+function DotButton({
+  dot,
   top,
   pressed,
   buttonRef,
   onOpen,
   onKeyDown,
 }: {
-  glyph: Glyph;
+  dot: Dot;
   top: number;
   pressed: boolean;
   buttonRef: (element: HTMLButtonElement | null) => void;
@@ -611,90 +578,44 @@ function GlyphButton({
     <button
       ref={buttonRef}
       type="button"
-      aria-label={glyph.label}
+      aria-label={dot.label}
       aria-expanded={pressed}
       onFocus={onOpen}
       onMouseEnter={onOpen}
       onClick={onOpen}
       onKeyDown={onKeyDown}
       className={cn(
-        "absolute grid h-5 w-5 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-ink max-sm:h-6 max-sm:w-6",
-        pressed && "bg-grey-fill",
+        "absolute grid place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ink",
+        pressed && "ring-2 ring-ink ring-offset-1",
       )}
-      style={{ left: glyph.x - 10, top: top - 10 + LANE_GAP }}
+      style={{ left: dot.x - DOT_R, top: top - DOT_R, width: DOT_R * 2, height: DOT_R * 2 }}
     >
-      <GlyphMark kind={glyph.kind} ringed={glyph.ringed} />
-      {glyph.count > 1 ? (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute -right-1.5 -top-1.5 text-[9.5px] font-extrabold tabular-nums text-ink"
-        >
-          {glyph.count}
-        </span>
-      ) : null}
+      <ChangeDot pushed={dot.pushed} count={dot.count} />
     </button>
   );
 }
 
-/** Each marker kind's own shape, in ink: never colour alone. */
-export function GlyphMark({ kind, ringed = false }: { kind: GlyphKind; ringed?: boolean }) {
-  const ink = "var(--op-black)";
-  const surface = "var(--op-viz-surface)";
+/** A change: red when it pushed the date, grey otherwise; its count inside when more than one. */
+function ChangeDot({ pushed, count = 1 }: { pushed: boolean; count?: number }) {
   return (
-    <svg width={16} height={16} viewBox="0 0 16 16" aria-hidden className="block overflow-visible">
-      {ringed ? (
-        <circle
-          cx={8}
-          cy={8.5}
-          r={8}
-          fill="none"
-          stroke={ink}
-          strokeWidth={1}
-          strokeDasharray="2 1.5"
-        />
-      ) : null}
-      {kind === "added_label" ? <path d="M8 2.5 L13.5 12.5 L2.5 12.5 Z" fill={ink} /> : null}
-      {kind === "added" ? (
-        <path d="M8 3 L13 12.2 L3 12.2 Z" fill={surface} stroke={ink} strokeWidth={1.6} />
-      ) : null}
-      {kind === "removed" ? <path d="M2.5 3.5 L13.5 3.5 L8 13.5 Z" fill={ink} /> : null}
-      {kind === "reopened" ? (
-        <path
-          d="M12.5 8 A4.5 4.5 0 1 1 8 3.5 M8 3.5 L10.5 1.8 M8 3.5 L10.2 5.6"
-          fill="none"
-          stroke={ink}
-          strokeWidth={1.6}
-          strokeLinecap="round"
-        />
-      ) : null}
-      {kind === "late" ? (
-        <>
-          <line x1={4} y1={14} x2={4} y2={2} stroke={ink} strokeWidth={1.6} />
-          <path d="M4 2.5 L12.5 5 L4 7.8 Z" fill={ink} />
-        </>
-      ) : null}
-      {kind === "bug" ? (
-        <path
-          d="M3.5 3.5 L12.5 12.5 M12.5 3.5 L3.5 12.5"
-          stroke={ink}
-          strokeWidth={2}
-          strokeLinecap="round"
-        />
-      ) : null}
-      {kind === "blocker_opened" ? <circle cx={8} cy={8} r={4.5} fill={ink} /> : null}
-      {kind === "blocker_closed" ? (
-        <circle cx={8} cy={8} r={4.2} fill={surface} stroke={ink} strokeWidth={1.6} />
-      ) : null}
-    </svg>
+    <span
+      aria-hidden
+      className={cn(
+        "grid h-3.5 w-3.5 place-items-center rounded-full text-[9px] leading-none font-extrabold tabular-nums text-white",
+        pushed ? "bg-(--op-red)" : "bg-(--op-grey-secondary)",
+      )}
+    >
+      {count > 1 ? count : null}
+    </span>
   );
 }
 
-function MarkerList({
-  glyph,
+function DotList({
+  dot,
   changeLabel,
   onClose,
 }: {
-  glyph: Glyph;
+  dot: Dot;
   changeLabel: string;
   onClose: () => void;
 }) {
@@ -702,8 +623,9 @@ function MarkerList({
     <div className="grid gap-1.5 rounded-2xl border border-grey-border bg-grey-fill px-3.5 py-3 text-[13px] text-grey-body">
       <div className="flex items-start justify-between gap-3">
         <p className="flex items-center gap-2 font-extrabold text-ink">
-          <GlyphMark kind={glyph.kind} ringed={glyph.ringed} />
-          {glyph.label}
+          <ChangeDot pushed={dot.pushed} />
+          {dot.label.split(":")[0]}
+          {dot.pushed ? <span className="font-bold text-(--op-red)">· pushed the date</span> : null}
         </p>
         <button
           type="button"
@@ -713,33 +635,36 @@ function MarkerList({
           Close
         </button>
       </div>
-      {glyph.items.length > 0 ? (
-        <ul className="m-0 grid list-none gap-1 p-0">
-          {glyph.items.map((item, index) => {
-            const note = itemNote(item, glyph.kind, changeLabel, (stage) => STAGE_LABELS[stage]);
-            return (
-              <li key={`${item.key}:${index}`} className="min-w-0">
-                <b className="font-extrabold text-ink">{item.key}</b> {item.title}
-                {note ? <span className="text-grey-secondary"> · {note}</span> : null}
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-      {glyph.more > 0 ? (
-        <p className="text-[12px] text-grey-secondary">and {glyph.more} more</p>
-      ) : null}
+      <ul className="m-0 grid list-none gap-1.5 p-0">
+        {dot.entries.map((entry) => (
+          <li key={`${entry.kind}:${entry.words}`} className="min-w-0">
+            <span className="font-bold text-ink">{entry.words}</span>
+            {entry.items.length > 0 ? (
+              <ul className="m-0 mt-0.5 grid list-none gap-0.5 p-0 pl-3">
+                {entry.items.slice(0, 10).map((item, index) => {
+                  const note = itemNote(
+                    item,
+                    entry.kind,
+                    changeLabel,
+                    (stage) => STAGE_LABELS[stage],
+                  );
+                  return (
+                    <li key={`${item.key}:${index}`}>
+                      <b className="font-extrabold text-ink">{item.key}</b> {item.title}
+                      {note ? <span className="text-grey-secondary"> · {note}</span> : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
 
-function TimelineLegend({
-  marks,
-  changeLabel,
-}: {
-  marks: ReturnType<typeof drawn>;
-  changeLabel: string;
-}) {
+function TimelineLegend({ marks }: { marks: ReturnType<typeof drawn> }) {
   return (
     <Legend>
       {marks.done ? (
@@ -748,7 +673,7 @@ function TimelineLegend({
           Done
         </span>
       ) : null}
-      {marks.committed || marks.open ? (
+      {marks.toDo ? (
         <span>
           <Swatch
             style={{
@@ -756,13 +681,13 @@ function TimelineLegend({
               boxShadow: "inset 0 0 0 1px var(--op-viz-axis)",
             }}
           />
-          To go
+          To do
         </span>
       ) : null}
-      {marks.band ? (
+      {marks.likely ? (
         <span>
           <span className="inline-flex gap-0.5">
-            {marks.bandTones.map((tone) => (
+            {marks.likelyTones.map((tone) => (
               <Swatch
                 key={tone}
                 style={{
@@ -772,7 +697,7 @@ function TimelineLegend({
               />
             ))}
           </span>
-          Forecast, 50% to 85% likely, in its verdict&apos;s colour
+          Likely finish
         </span>
       ) : null}
       {marks.committed ? (
@@ -781,60 +706,63 @@ function TimelineLegend({
           Committed date
         </span>
       ) : null}
-      {marks.earlier ? (
+      {marks.change ? (
         <span>
-          <i aria-hidden className="inline-block h-3 w-1 rounded-[1px] border border-ink" />
-          Earlier committed date
-        </span>
-      ) : null}
-      {marks.team ? (
-        <span>
-          <i aria-hidden className="inline-block h-2 w-2 rotate-45 bg-ink" />
-          Team&apos;s latest date{marks.teamHollow ? " (hollow: some have none)" : ""}
-        </span>
-      ) : null}
-      {marks.jira ? (
-        <span>
-          <i aria-hidden className="inline-block h-3 w-0 border-l-2 border-dotted border-ink" />
-          Jira release date
-        </span>
-      ) : null}
-      {marks.reference ? (
-        <span>
-          <i
-            aria-hidden
-            className="inline-block h-3 w-0 border-l-2 border-dotted border-grey-secondary"
-          />
-          The project&apos;s date
-        </span>
-      ) : null}
-      {marks.open ? (
-        <span>
-          <i
-            aria-hidden
-            className="inline-block h-0 w-[18px] border-t-2 border-dashed border-grey-secondary"
-          />
-          No committed date
-        </span>
-      ) : null}
-      {marks.faded ? <span>Faded: no planning baseline</span> : null}
-      {marks.glyphs.map((kind) => (
-        <span key={kind}>
-          <GlyphMark kind={kind} />
-          {glyphLegend(kind, changeLabel)}
-        </span>
-      ))}
-      {marks.ringed ? (
-        <span>
-          <GlyphMark kind="added" ringed />
-          Open in Jira hygiene
+          <ChangeDot pushed />
+          Change (red = pushed the date)
         </span>
       ) : null}
     </Legend>
   );
 }
 
-/** The table the drawing stands in for: per row its dates, done, and events by date. */
+/** Under the chart: per row, what changed, newest first, in a few short lines. */
+function WhatChanged({
+  rows,
+  changeLabel,
+  compact,
+}: {
+  rows: Row[];
+  changeLabel: string;
+  compact: boolean;
+}) {
+  const lists = rows
+    .map((row) => ({ row, list: changeList(row, changeLabel, compact ? 3 : 5) }))
+    .filter(({ list }) => list.lead !== null || list.lines.length > 0);
+  if (lists.length === 0) return null;
+  return (
+    <section aria-label="What changed" className="grid gap-2 border-t border-grey-border pt-3">
+      <h4 className="text-[12px] font-bold uppercase tracking-wider text-grey-secondary">
+        What changed
+      </h4>
+      <div className="grid gap-x-6 gap-y-3 sm:grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
+        {lists.map(({ row, list }) => (
+          <div key={`${row.row}:${row.project_id}`} className="grid content-start gap-1">
+            <p className="text-[13px] font-extrabold text-ink">{row.name}</p>
+            {list.lead ? <p className="text-[12.5px] text-grey-body">{list.lead}</p> : null}
+            <ul className="m-0 grid list-none gap-0.5 p-0 text-[12.5px] text-grey-body">
+              {list.lines.map((line) => (
+                <li key={line.day} className="flex items-start gap-1.5">
+                  <span className="mt-[3px] flex-none">
+                    <ChangeDot pushed={line.pushed} />
+                  </span>
+                  <span className="min-w-0">{line.text}</span>
+                </li>
+              ))}
+            </ul>
+            {list.more > 0 ? (
+              <p className="text-[12px] text-grey-secondary">
+                and {list.more} earlier {list.more === 1 ? "day" : "days"} (Table lists them)
+              </p>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** The table the drawing stands in for: per row its dates, done, and what changed by date. */
 export function TimelineTable({ data, label }: { data: TimelineResponse; label: string }) {
   const rows = data.rows.map((row) => tableRow(row, data.change_label));
   return (
@@ -848,11 +776,10 @@ export function TimelineTable({ data, label }: { data: TimelineResponse; label: 
               "Start",
               "Committed",
               "Moves",
-              "50%",
-              "85%",
+              "Likely finish",
               "Team's date",
               "Done",
-              "Events",
+              "What changed",
             ].map((head) => (
               <th key={head} scope="col" className={th}>
                 {head}
@@ -869,8 +796,7 @@ export function TimelineTable({ data, label }: { data: TimelineResponse; label: 
               <td className={td}>{row.start}</td>
               <td className={td}>{row.committed}</td>
               <td className={td}>{row.moves}</td>
-              <td className={td}>{row.p50}</td>
-              <td className={td}>{row.p85}</td>
+              <td className={td}>{row.likely}</td>
               <td className={td}>{row.team}</td>
               <td className={td}>{row.done}</td>
               <td className={td}>

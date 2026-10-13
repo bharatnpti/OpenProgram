@@ -56,7 +56,13 @@ sentence and the no-forecast reason.
   committed date's moves, and blockers opened and cleared. Each lists its work
   items (key, title, stage) and, by kind, the change label, who brought it in,
   what a blocker waits on, and whether Jira hygiene has a finding open on it.
-- **Words:** one sentence per row, for the picture's text alternative.
+- **Words:** one sentence per row, for the picture's text alternative, in Why
+  the date moved's words (`impact_words.likely_words`): "Checkout Revamp: likely
+  by 19 Mar, 3 months after the committed 15 Dec; 2 of 10 done; 2 requirements
+  added since planning, 1 without the CR label."
+
+The read carries more than the picture draws (the committed history, the team's
+date, a release's Jira date): the table and the words use it.
 
 ## Who sees what
 
@@ -78,18 +84,32 @@ history, so a past day's ring says how findings stand now.
 
 ## Console (frontend-v3)
 
+Drawn to be read in five seconds (decision D78):
+
 - **Overall › Timeline** (`features/overall/TimelineSection.tsx`), second after
   the answer line in the order `features/overall/sections.ts` keeps. The
   drawing (`TimelineChart.tsx`, pure layout in `timeline.ts`) is inline SVG with
-  theme tokens: the row labels sit in a fixed HTML column, the axis scrolls in
-  its own box at 28 px a week at the least, and on a phone it opens on today and
-  the nearest committed date ahead. Releases fold under the project's row.
-  Markers are buttons over the SVG with their own shape and label; arrow keys
-  move along a row and between rows. A Table toggle lists every row.
+  theme tokens. Per row: the name, the verdict and one plain line (`rowLine`:
+  "Likely by 19 Mar · committed 15 Dec · 2 of 10 done", the team's date only
+  when a week off); a grey track from planning to the committed date with the
+  share done filled dark; the likely finish (50% to 85%) as one segment in the
+  verdict's colour, with its dates beside it when late; the committed tick; and
+  today's line. Each day with changes is one dot with a count (`rowDots`), red
+  when a change pushed the date, opening its plain words and items. Under the
+  chart, "What changed" (`changeList`) gives each row's scope since planning and
+  at most five days, newest first. The legend has at most five entries. Month
+  ticks only; the axis ends a little after the latest likely finish. Labels sit
+  in a column on a wide screen and above each bar on a phone or a Delivery card;
+  the axis scrolls in its own box only when it must. Releases fold under the
+  project's row. Arrow keys move along a row's dots and between rows; a Table
+  toggle lists every row.
 - **Why the date moved** (`ImpactWaterfall.tsx`, `waterfall.ts`) explains the
-  row picked (`?row=`), over the period chips, which also shade the axis.
-- **Band over time:** the slip chart, folded under the project's row.
-- **Delivery:** the project panel's compact timeline and a pod panel's own row
+  row picked (`?row=`) over its period chips: the server's sentence, at most
+  three causes as bars from zero (red right, green left), short lines for the
+  likely date, the committed date, the team's date and the undated keys, and a
+  closed Details fold for the measured date and a table.
+- **How the likely date moved, day by day:** the slip chart, folded under it.
+- **Delivery:** the project panel's timeline and a pod panel's own row
   (`features/delivery/DeliveryTimeline.tsx`), linking to Overall's row.
 
 Retired with it: Overall's "Dates by pod", "How the date moved" as a section,

@@ -46,8 +46,6 @@ export function slipDrawable(changes: Change[], days: Day[]): boolean {
 /** Bold words inside a sentence, as three runs: before, bold, after. */
 export type Phrase = [string, string, string];
 
-const quoted = (note: string) => (note.trim() ? `: “${note.trim()}”` : ".");
-
 /**
  * One line per change for the keys beside the chart. "Tue 1 Dec, set by Mina
  * Patel on Mon 14 Sep: “First plan.”" then "Moved to Tue 15 Dec by Mina Patel on
@@ -60,7 +58,8 @@ export function changeKeys(changes: Change[]): Phrase[] {
   return changes.map((change) => {
     const on = formatDay(change.changed_at);
     const who = change.changed_by_name;
-    const why = quoted(change.note);
+    // Short: the date, who and when; the note stays in the date dialog's history.
+    const why = ".";
     const target = change.target_date;
     let phrase: Phrase;
     if (target === null) {
@@ -100,16 +99,12 @@ export function slipRecord(
       ? [
           "",
           formatDay(last.target_date),
-          `, set by ${last.changed_by_name} on ${formatDay(last.changed_at)}${quoted(last.note)}`,
+          `, set by ${last.changed_by_name} on ${formatDay(last.changed_at)}.`,
         ]
       : jiraDate
         ? ["No date is committed; the Jira release date ", formatDay(jiraDate), " is used."]
         : ["", "No delivery date is committed yet.", ""];
-  const has = `It has ${sampleDays}.`;
-  const note =
-    last && last.target_date
-      ? `The chart draws once the date moves or the forecast has ${neededDays} working days of history. ${has}`
-      : `The chart draws once a date is committed and moves, or the forecast has ${neededDays} working days of history. ${has}`;
+  const note = `It draws once the date moves or there are ${neededDays} working days of history (now ${sampleDays}).`;
   return { line, note };
 }
 
@@ -121,7 +116,7 @@ export function rebuiltNote(days: { day: string; reconstructed?: boolean }[]): s
   const rebuilt = days.filter((item) => item.reconstructed);
   if (rebuilt.length === 0) return null;
   const last = rebuilt[rebuilt.length - 1].day;
-  return `The forecast up to ${formatDay(last)} was rebuilt afterwards from the daily snapshots kept then.`;
+  return `Up to ${formatDay(last)}, the likely dates were worked out afterwards.`;
 }
 
 /** "2 to 21 Dec", or "28 Nov to 21 Dec" across a month. */

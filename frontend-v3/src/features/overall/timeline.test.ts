@@ -6,20 +6,19 @@ import type { TimelineResponse } from "../../api/schema";
 import {
   MIN_PX_PER_WEEK,
   axisLabels,
+  changeEntry,
+  changeList,
   dayNumber,
   drawn,
   foldReleases,
-  glyphKind,
-  glyphLabel,
   isoOf,
   itemNote,
+  likelyRange,
   moveFocus,
-  movesLabel,
   openingScroll,
-  progressLabel,
-  rowGlyphs,
+  rowDots,
+  rowLine,
   rowShape,
-  scopeLabel,
   sentenceOf,
   tableRow,
   timeScale,
@@ -107,13 +106,9 @@ test("the axis fills the box, never narrower than 28 px a week, and scrolls past
   assert.equal(timeScale({ ...AXIS, end: "2027-02-01" }, 800).weekly, true);
 });
 
-test("the axis says month starts, and the 15th only when a fortnight has room", () => {
+test("the axis says month starts only, and gives way to the day line's label", () => {
   const wide = axisLabels(timeScale(AXIS, 1000)).map((label) => label.label);
-  const narrow = axisLabels(timeScale(AXIS, 200)).map((label) => label.label);
-
-  assert.deepEqual(wide, ["1 Oct", "15 Oct", "1 Nov", "15 Nov", "1 Dec"]);
-  assert.deepEqual(narrow, ["1 Oct", "1 Nov", "1 Dec"]);
-  // A month label the day line's own label would touch gives way to it.
+  assert.deepEqual(wide, ["1 Oct", "1 Nov", "1 Dec"]);
   const scale = timeScale(AXIS, 200);
   const near = axisLabels(scale, { x: xOf(scale, "2026-10-03"), label: "Today" });
   assert.deepEqual(
@@ -122,189 +117,264 @@ test("the axis says month starts, and the 15th only when a fortnight has room", 
   );
 });
 
-test("a row runs from planning to the committed date, filled for what is done", () => {
+test("a row is a track from planning to its committed date, filled for what is done", () => {
   const scale = timeScale(AXIS, 700);
-  const shape = rowShape(row(), scale);
+  const shape = rowShape(row(), scale, AXIS.today);
 
   assert.equal(shape.start, 0);
   assert.equal(shape.end, xOf(scale, "2026-11-18"));
   assert.equal(shape.open, false);
-  assert.equal(shape.faded, false);
-  assert.ok(shape.fill !== null && Math.abs(shape.fill - shape.end * (8 / 22)) < 0.5);
-  assert.equal(shape.band?.tone, "warning"); // the 50% date meets it, the 85% does not
-  assert.equal(shape.overhang, true);
-  assert.deepEqual(
-    shape.earlier.map((tick) => tick.date),
-    ["2026-11-04"],
-  );
-  assert.deepEqual(shape.team, { x: xOf(scale, "2026-11-20"), hollow: true });
-  assert.equal(shape.jira, null);
+  assert.ok(shape.share !== null && Math.abs(shape.share - 8 / 22) < 1e-9);
+  assert.ok(shape.fill !== null && Math.abs(shape.fill - (shape.end * 8) / 22) < 0.01);
+  assert.equal(shape.committed, xOf(scale, "2026-11-18"));
 });
 
-test("no committed date runs open to the edge; no baseline is faded; no band without a forecast", () => {
+test("the likely finish is one segment, said with its dates when it runs late", () => {
   const scale = timeScale(AXIS, 700);
-  const shape = rowShape(
-    row({
-      baseline: null,
-      committed: { date: null, history: [] },
-      forecast: null,
-      team: { date: null, key: null, undated: 3 },
-    }),
+  const late = rowShape(row(), scale, AXIS.today).likely;
+
+  assert.ok(late);
+  assert.equal(late.from, xOf(scale, "2026-11-12"));
+  assert.equal(late.to, xOf(scale, "2026-12-02"));
+  assert.equal(late.late, true); // 2 Dec is after the committed 18 Nov
+  assert.equal(late.tone, "warning"); // the 50% date makes it, the 85% does not
+  assert.equal(late.label, "likely 12 Nov – 2 Dec");
+  const early = rowShape(
+    row({ forecast: { p50: "2026-11-01", p85: "2026-11-10", on: "2026-10-12" } }),
     scale,
-  );
-
-  assert.equal(shape.open, true);
-  assert.equal(shape.end, scale.width);
-  assert.equal(shape.fill, null); // a fill of an open end would say nothing
-  assert.equal(shape.faded, true);
-  assert.equal(shape.band, null);
-  assert.equal(shape.team, null);
+    AXIS.today,
+  ).likely;
+  assert.ok(early && !early.late && early.tone === "success");
+  assert.equal(likelyRange("2026-11-10", "2026-11-10"), "likely 10 Nov");
+  assert.equal(rowShape(row({ forecast: null }), scale, AXIS.today).likely, null);
 });
 
-test("a release's Jira date is a tick of its own when it is not the committed date", () => {
+test("no committed date runs the track to the likely finish, dashed", () => {
   const scale = timeScale(AXIS, 700);
-  const release = row({ scope_kind: "release", jira_release_date: "2026-11-25" });
-
-  assert.equal(rowShape(release, scale).jira, xOf(scale, "2026-11-25"));
-  assert.equal(rowShape(row({ jira_release_date: "2026-11-18" }), scale).jira, null);
-});
-
-test("a row's labels: done of total with its share, short on a phone, the scope and moves", () => {
-  assert.equal(progressLabel(row()), "8 of 22 · 36%");
-  assert.equal(progressLabel(row(), true), "36%");
-  assert.equal(
-    progressLabel(row({ progress: { done: 13, total: 40, unit: "story points" } })),
-    "13 of 40 pts · 33%",
+  const open = rowShape(
+    row({ committed: { date: null, history: [] }, verdict: "no_date" }),
+    scale,
+    AXIS.today,
   );
-  assert.equal(progressLabel(row({ progress: null, access: "dates" })), "");
-  assert.equal(scopeLabel(row()), "18 → 22 since planning");
-  assert.equal(scopeLabel(row({ scope: null })), null);
-  assert.equal(movesLabel(row()), "Moved once, +14 days");
-  assert.equal(movesLabel(row({ committed: { date: "2026-11-18", history: [] } })), null);
-  assert.deepEqual(verdictChip(null), { label: "No forecast kept", tone: "neutral" });
-  assert.deepEqual(verdictChip("off_track"), { label: "Off track", tone: "danger" });
+  assert.equal(open.open, true);
+  assert.equal(open.committed, null);
+  assert.equal(open.end, xOf(scale, "2026-12-02"));
 });
 
-test("markers of one kind on one day are one glyph with a count, each with its own shape", () => {
-  const scale = timeScale(AXIS, 900);
-  const glyphs = rowGlyphs(
+test("a row says itself in one plain line, the team's date only when it is a week off", () => {
+  // The team's 20 Nov is twelve days from the likely 2 Dec: said. Four days off: not.
+  assert.deepEqual(rowLine(row()), [
+    "Likely by 2 Dec",
+    "committed 18 Nov",
+    "8 of 22 done",
+    "team says 20 Nov",
+  ]);
+  assert.deepEqual(rowLine(row({ team: { date: "2026-11-28", key: "CHK-9", undated: 0 } })), [
+    "Likely by 2 Dec",
+    "committed 18 Nov",
+    "8 of 22 done",
+  ]);
+  assert.deepEqual(rowLine(row({ team: { date: "2026-12-20", key: "CHK-9", undated: 0 } })), [
+    "Likely by 2 Dec",
+    "committed 18 Nov",
+    "8 of 22 done",
+    "team says 20 Dec",
+  ]);
+  assert.deepEqual(
+    rowLine(
+      row({
+        forecast: null,
+        committed: { date: null, history: [] },
+        progress: null,
+        team: { date: null, key: null, undated: 3 },
+      }),
+    ),
+    ["No likely date yet", "no committed date"],
+  );
+  assert.equal(verdictChip(null).label, "No likely date");
+  assert.equal(verdictChip("off_track").tone, "danger");
+});
+
+test("changes on one day are one dot with a count, red when one pushed the date", () => {
+  const scale = timeScale(AXIS, 700);
+  const dots = rowDots(
     row({
       markers: [
-        marker("2026-10-06", "scope_added", [item("CHK-20", { change_label: true })], {
-          change_label: true,
+        marker("2026-10-09", "scope_added", [item("CHK-20"), item("CHK-21")], {
+          change_label: false,
         }),
-        marker(
-          "2026-10-08",
-          "scope_added",
-          [item("CHK-21", { change_label: false, hygiene: true }), item("CHK-22")],
-          { change_label: false },
-        ),
-        marker("2026-10-08", "bug", [item("CHK-30", { stage: null })]),
-        marker("2026-10-09", "committed_date_changed", [], { count: 1 }),
+        marker("2026-10-09", "blocker_closed", [item("CHK-3")]),
+        marker("2026-10-06", "scope_added", [item("CHK-19")], { change_label: true }),
       ],
     }),
     scale,
     "CR",
   );
 
+  assert.equal(dots.length, 2);
+  const [labelled, busy] = dots;
+  assert.equal(labelled.pushed, false); // an agreed change, with the label
+  assert.equal(busy.count, 3);
+  assert.equal(busy.pushed, true);
+  assert.equal(
+    busy.label,
+    "9 Oct: 2 requirements added without the CR label, 1 blocker cleared. Pushed the date.",
+  );
+  assert.ok(busy.x - labelled.x >= 16);
+});
+
+test("each change says itself, and which of them pushed the date", () => {
+  const base = row({
+    committed: {
+      date: "2026-11-18",
+      history: [
+        { date: "2026-11-04", on: "2026-09-20" },
+        { date: "2026-11-18", on: "2026-10-09" },
+      ],
+    },
+  });
+  const said = (kind: string, extra: Partial<Marker> = {}, count = 1) =>
+    changeEntry(
+      marker(
+        "2026-10-09",
+        kind,
+        Array.from({ length: count }, (_, i) => item(`K-${i}`)),
+        extra,
+      ),
+      base,
+      "CR",
+    );
   assert.deepEqual(
-    glyphs.map((glyph) => [glyph.kind, glyph.count]),
+    [said("bug"), said("blocker_opened"), said("reopened"), said("late", {}, 2)].map((entry) => [
+      entry.words,
+      entry.pushed,
+    ]),
     [
-      ["added_label", 1],
-      ["added", 2],
-      ["bug", 1],
+      ["1 bug opened", true],
+      ["1 blocker opened", true],
+      ["1 requirement reopened", true],
+      ["2 requirements passed their date while open", false],
     ],
   );
-  assert.equal(glyphs[1].ringed, true);
-  assert.equal(glyphs[1].label, "8 Oct: 2 requirements added without the CR label");
-  // Two glyphs on one day keep their room: the later one moves right.
-  assert.ok(glyphs[2].x - glyphs[1].x >= 18);
+  const moved = said("committed_date_changed");
+  assert.equal(moved.words, "committed date moved 4 Nov → 18 Nov");
+  assert.equal(moved.pushed, true);
+  assert.equal(said("scope_removed").pushed, false);
 });
 
-test("on an axis longer than twelve weeks the markers merge per week", () => {
-  const scale = timeScale({ start: "2026-08-01", end: "2026-12-31", today: "2026-10-12" }, 900);
-  const glyphs = rowGlyphs(
+test("on a long axis a row's changes merge per week", () => {
+  const scale = timeScale({ ...AXIS, end: "2027-03-01" }, 600);
+  const dots = rowDots(
     row({
       markers: [
-        marker("2026-10-06", "late", [item("CHK-4")]),
-        marker("2026-10-08", "late", [item("CHK-9")]),
+        marker("2026-10-06", "bug", [item("CHK-1")]),
+        marker("2026-10-08", "scope_removed", [item("CHK-2")]),
       ],
     }),
     scale,
     "CR",
   );
-
-  assert.equal(glyphs.length, 1);
-  assert.equal(glyphs[0].count, 2);
-  // On its week's first event, never ahead of what happened.
-  assert.equal(glyphs[0].x, xOf(scale, "2026-10-06"));
-  assert.equal(glyphs[0].label, "Week of 5 Oct: 2 requirements passed their date while open");
-});
-
-test("every glyph says what it marks, in words", () => {
-  const words = (kind: Parameters<typeof glyphLabel>[0], count: number) =>
-    glyphLabel(kind, count, "2026-10-09", false, "CR");
-
-  assert.equal(words("added_label", 1), "9 Oct: 1 requirement added with the CR label");
-  assert.equal(words("removed", 2), "9 Oct: 2 requirements left the scope");
-  assert.equal(words("reopened", 1), "9 Oct: 1 requirement reopened");
-  assert.equal(words("late", 1), "9 Oct: 1 requirement passed its date while open");
-  assert.equal(words("bug", 3), "9 Oct: 3 bugs opened");
-  assert.equal(words("blocker_opened", 1), "9 Oct: 1 blocker opened");
-  assert.equal(words("blocker_closed", 2), "9 Oct: 2 blockers cleared");
-  assert.equal(glyphKind({ kind: "committed_date_changed", change_label: null }), null);
-});
-
-test("a marker's item says its stage, label, who added it and what it waits on", () => {
-  const stage = (value: string) => (value === "raised" ? "Raised" : value);
-
-  assert.equal(
-    itemNote(
-      item("CHK-21", { change_label: false, hygiene: true, added_by: "Asha Rao" }),
-      "added",
-      "CR",
-      stage,
-    ),
-    "Raised · no CR label · open in Jira hygiene · added by Asha Rao",
+  assert.equal(dots.length, 1);
+  assert.equal(dots[0].weekly, true);
+  assert.ok(dots[0].label.startsWith("Week of 5 Oct: "));
+  // One kind in one week is said once, its counts added.
+  const twice = rowDots(
+    row({
+      markers: [
+        marker("2026-10-06", "blocker_opened", [item("CHK-1")]),
+        marker("2026-10-08", "blocker_opened", [item("CHK-2")]),
+      ],
+    }),
+    scale,
+    "CR",
   );
-  assert.equal(
-    itemNote(item("CHK-2", { waits_on: "the sandbox keys" }), "blocker_opened", "CR", stage),
-    "Raised · waits on: the sandbox keys",
+  assert.equal(twice[0].entries.length, 1);
+  assert.equal(twice[0].label, "Week of 5 Oct: 2 blockers opened. Pushed the date.");
+  assert.deepEqual(
+    twice[0].entries[0].items.map((one) => one.key),
+    ["CHK-1", "CHK-2"],
   );
 });
 
-test("the legend names only what the rows draw", () => {
+test("what changed is a few lines a row, newest first, after the scope since planning", () => {
+  const list = changeList(
+    row({
+      markers: [
+        marker("2026-10-06", "scope_added", [item("CHK-19")], { change_label: true }),
+        marker("2026-10-09", "scope_added", [item("CHK-20")], { change_label: false }),
+        marker("2026-10-09", "scope_added", [item("CHK-21")], { change_label: true }),
+        marker("2026-10-09", "bug", [item("CHK-22")]),
+      ],
+    }),
+    "CR",
+  );
+
+  assert.equal(list.lead, "Since planning (1 Oct): 18 → 22 requirements");
+  assert.deepEqual(list.lines, [
+    {
+      day: "2026-10-09",
+      text: "9 Oct · 2 requirements added (1 without the CR label) · 1 bug opened",
+      pushed: true,
+    },
+    { day: "2026-10-06", text: "6 Oct · 1 requirement added with the CR label", pushed: false },
+  ]);
+  const many = changeList(
+    row({
+      markers: [
+        "2026-10-02",
+        "2026-10-03",
+        "2026-10-05",
+        "2026-10-06",
+        "2026-10-07",
+        "2026-10-08",
+      ].map((day) => marker(day, "bug", [item("CHK-9")])),
+    }),
+    "CR",
+  );
+  assert.equal(many.lines.length, 5);
+  assert.equal(many.more, 1);
+  assert.equal(many.lines[0].day, "2026-10-08");
+  assert.equal(
+    changeList(row({ baseline: null }), "CR").lead,
+    "Planning is not marked complete yet",
+  );
+});
+
+test("a change's item says its stage, label, who added it and what it waits on", () => {
+  const words = (stage: string) => stage;
+  assert.equal(
+    itemNote(item("CHK-21", { added_by: "Asha Rao", hygiene: true }), "scope_added", "CR", words),
+    "raised · no CR label · open in Jira hygiene · added by Asha Rao",
+  );
+  assert.equal(
+    itemNote(item("CHK-3", { waits_on: "the sandbox keys" }), "blocker_opened", "CR", words),
+    "raised · waits on: the sandbox keys",
+  );
+});
+
+test("the legend names only what the rows draw, five at the most", () => {
   const scale = timeScale(AXIS, 700);
-  const dates = row({ access: "dates", progress: null, scope: null, markers: [] });
-  const marks = drawn([dates], scale, "CR");
-
-  assert.equal(marks.done, false); // a dates row has no progress
-  assert.equal(marks.band, true);
-  assert.deepEqual(marks.bandTones, ["warning"]);
-  assert.equal(marks.glyphs.length, 0);
-  assert.equal(marks.open, false);
+  const marks = drawn([row(), row({ forecast: null, markers: [] })], scale, AXIS.today);
+  assert.deepEqual(marks, {
+    done: true,
+    toDo: true,
+    likely: true,
+    likelyTones: ["warning"],
+    committed: true,
+    change: false,
+  });
 });
 
-test("the arrow keys move along a row's markers and between rows", () => {
-  const counts = [2, 0, 3];
-
-  assert.deepEqual(moveFocus({ row: 0, glyph: null }, "ArrowRight", counts), { row: 0, glyph: 0 });
-  assert.deepEqual(moveFocus({ row: 0, glyph: 0 }, "ArrowRight", counts), { row: 0, glyph: 1 });
-  assert.equal(moveFocus({ row: 0, glyph: 1 }, "ArrowRight", counts), null);
-  assert.deepEqual(moveFocus({ row: 0, glyph: 0 }, "ArrowLeft", counts), { row: 0, glyph: null });
-  assert.deepEqual(moveFocus({ row: 0, glyph: 1 }, "ArrowDown", counts), { row: 1, glyph: null });
-  assert.deepEqual(moveFocus({ row: 2, glyph: 2 }, "ArrowUp", counts), { row: 1, glyph: null });
+test("the arrow keys move along a row's dots and between rows", () => {
+  assert.deepEqual(moveFocus({ row: 0, glyph: null }, "ArrowRight", [2, 1]), { row: 0, glyph: 0 });
   assert.deepEqual(moveFocus({ row: 0, glyph: 1 }, "ArrowDown", [2, 1]), { row: 1, glyph: 0 });
-  assert.deepEqual(moveFocus({ row: 2, glyph: null }, "End", counts), { row: 2, glyph: 2 });
-  assert.equal(moveFocus({ row: 1, glyph: null }, "ArrowRight", counts), null);
-  assert.equal(moveFocus({ row: 0, glyph: null }, "ArrowUp", counts), null);
-  assert.equal(moveFocus({ row: 0, glyph: null }, "Enter", counts), null);
+  assert.deepEqual(moveFocus({ row: 0, glyph: 0 }, "ArrowLeft", [2, 1]), { row: 0, glyph: null });
+  assert.equal(moveFocus({ row: 0, glyph: 1 }, "ArrowRight", [2, 1]), null);
+  assert.deepEqual(moveFocus({ row: 1, glyph: null }, "End", [2, 3]), { row: 1, glyph: 2 });
 });
 
 test("on a phone the box opens on today, never past either end", () => {
-  // A month and a half before today, two months after: wider than a 240 px box.
   const scale = timeScale({ ...AXIS, start: "2026-09-01" }, 240);
-
   assert.equal(scale.width, 400);
   assert.equal(openingScroll(scale, "2026-10-12", 240), 104); // today a quarter in
   assert.equal(openingScroll(scale, "2026-09-02", 240), 0);
@@ -313,70 +383,50 @@ test("on a phone the box opens on today, never past either end", () => {
 });
 
 test("on a phone the box opens on today and the nearest committed date ahead of it", () => {
-  // 28 px a week from 5 Oct; a 204 px box shows about seven weeks.
   const scale = timeScale({ start: "2026-10-05", end: "2027-03-20", today: "2026-10-13" }, 204);
-
-  // Today a quarter in already shows 20 Nov: it opens there, at the axis start.
   assert.equal(openingScroll(scale, "2026-10-13", 204, ["2026-12-15", "2026-11-20"]), 0);
-  // 5 Dec would fall past the right edge: the box opens on further, 5 Dec just inside.
   const further = openingScroll(scale, "2026-10-27", 204, ["2026-12-05"]);
   assert.equal(further, 56);
   assert.ok(xOf(scale, "2026-12-05") - further <= 204 - 16);
   assert.ok(xOf(scale, "2026-10-27") - further >= 16);
-  // Nothing ahead fits: today stays just inside the left edge, never scrolled past.
-  const late = openingScroll(scale, "2026-11-02", 204, ["2027-02-01"]);
-  assert.equal(late, xOf(scale, "2026-11-02") - 16);
-  // A committed date already passed, or none: today a quarter in.
-  assert.equal(
-    openingScroll(scale, "2026-11-02", 204, ["2026-10-20", null]),
-    Math.round(xOf(scale, "2026-11-02") - 51),
-  );
 });
 
-test("the table lists the dates, the moves and the events by date", () => {
-  const table = tableRow(
+test("the table lists the dates, the moves, the likely finish and what changed by date", () => {
+  const listed = tableRow(
     row({
-      markers: [
-        marker("2026-10-09", "committed_date_changed", [], { count: 1 }),
-        marker("2026-10-03", "late", [item("CHK-4")]),
-      ],
+      markers: [marker("2026-10-09", "scope_added", [item("CHK-21")], { change_label: false })],
     }),
     "CR",
   );
-
-  assert.equal(table.start, "1 Oct (planning)");
-  assert.equal(table.committed, "18 Nov");
-  assert.equal(table.moves, "4 Nov → 18 Nov on 9 Oct");
-  assert.equal(table.p85, "2 Dec");
-  assert.equal(table.team, "20 Nov (CHK-12), 2 undated");
-  assert.equal(table.done, "8 of 22 · 36%");
-  assert.deepEqual(table.events, [
-    "3 Oct: 1 requirement passed its date while open (CHK-4)",
-    "9 Oct: committed date moved 4 Nov → 18 Nov",
-  ]);
-  const waiting = tableRow(
-    row({ forecast: null, forecast_reason: "No forecast yet: 4 of 10 working days of history" }),
-    "CR",
+  assert.equal(listed.start, "1 Oct (planning)");
+  assert.equal(listed.committed, "18 Nov");
+  assert.equal(listed.moves, "4 Nov → 18 Nov on 9 Oct");
+  assert.equal(listed.likely, "12 Nov – 2 Dec");
+  assert.equal(listed.team, "20 Nov (CHK-12), 2 undated");
+  assert.equal(listed.done, "8 of 22 done");
+  assert.deepEqual(listed.events, ["9 Oct: 1 requirement added without the CR label (CHK-21)"]);
+  assert.equal(
+    tableRow(row({ forecast: null, forecast_reason: "No likely date yet" }), "CR").likely,
+    "No likely date yet",
   );
-  assert.equal(waiting.p85, "No forecast yet: 4 of 10 working days of history");
 });
 
 test("a row speaks the server's sentence", () => {
   const timeline: TimelineResponse = {
     axis: AXIS,
+    change_label: "CR",
     rows: [row()],
     text: [
       {
         row: "project:project-checkout",
         scope_id: "project-checkout",
         project_id: "project-checkout",
-        sentence: "Checkout Revamp: 8 of 22 done.",
+        sentence: "Checkout Revamp: likely by 2 Dec.",
       },
     ],
-    change_label: "CR",
   };
-
-  assert.equal(sentenceOf(timeline, timeline.rows[0]), "Checkout Revamp: 8 of 22 done.");
+  assert.equal(sentenceOf(timeline, row()), "Checkout Revamp: likely by 2 Dec.");
+  assert.equal(sentenceOf({ ...timeline, text: [] }, row()), "Checkout Revamp");
 });
 
 test("the project's releases sit folded under its row; a release the page picked is not", () => {
@@ -391,6 +441,9 @@ test("the project's releases sit folded under its row; a release the page picked
   );
   assert.equal(folded.releases, 1);
   assert.equal(foldReleases([project, release, pod], true).rows.length, 3);
-  // ?release= puts the release first: it heads the timeline, so nothing folds.
   assert.deepEqual(foldReleases([release, pod], false), { rows: [release, pod], releases: 0 });
+});
+
+test("a day number survives the round trip", () => {
+  assert.equal(isoOf(dayNumber("2027-01-01")), "2027-01-01");
 });

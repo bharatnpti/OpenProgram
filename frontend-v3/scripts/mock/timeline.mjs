@@ -314,24 +314,35 @@ function baselineOf(req, projectId, releaseId) {
   return readLane(baselinesLane, req, `/projects/${projectId}/baselines`)?.active ?? null;
 }
 
+// "Likely by 19 Mar, 3 months after the committed 15 Dec": the server's likely_words.
+function likelyWords(likely, committed, measure = "p85") {
+  if (!likely) return "No likely date yet";
+  const said = `${measure === "p50" ? "Likely around" : "Likely by"} ${short(likely)}`;
+  if (!committed) return `${said}; no committed date yet`;
+  const gap = Math.round((Date.parse(likely) - Date.parse(committed)) / 86_400_000);
+  if (gap === 0) return `${said}, on the committed date`;
+  const days = Math.abs(gap);
+  const span =
+    days < 14
+      ? `${days} ${days === 1 ? "day" : "days"}`
+      : days < 60
+        ? `${Math.round(days / 7)} weeks`
+        : `${Math.round(days / 30.44)} months`;
+  return `${said}, ${span} ${gap > 0 ? "after" : "before"} the committed ${short(committed)}`;
+}
+
 function sentence(row) {
   const parts = [];
-  if (row.progress) parts.push(`${row.progress.done} of ${row.progress.total} done`);
   const committed = row.committed.date;
   if (!row.forecast) {
     parts.push(
-      `${(row.forecast_reason ?? "no forecast yet").replace(/^N/, "n")}, ${committed ? `committed ${short(committed)}` : "no committed date"}`,
+      `${(row.forecast_reason ?? "no likely date yet").replace(/^N/, "n")}, ${committed ? `committed ${short(committed)}` : "no committed date"}`,
     );
-  } else if (!committed) {
-    parts.push(`the 85% date is ${short(row.forecast.p85)}, with no committed date`);
   } else {
-    const gap = workingDaysBetween(committed, row.forecast.p85);
-    parts.push(
-      gap === 0
-        ? `the 85% date is the committed date, ${short(committed)}`
-        : `the 85% date, ${short(row.forecast.p85)}, is ${Math.abs(gap)} working ${Math.abs(gap) === 1 ? "day" : "days"} ${gap > 0 ? "after" : "before"} the committed ${short(committed)}`,
-    );
+    const words = likelyWords(row.forecast.p85, committed);
+    parts.push(words.charAt(0).toLowerCase() + words.slice(1));
   }
+  if (row.progress) parts.push(`${row.progress.done} of ${row.progress.total} done`);
   const dated = row.committed.history.map((tick) => tick.date);
   const moves = dated.filter((day, i) => i > 0 && day !== dated[i - 1]).length;
   if (moves > 0) {
@@ -405,7 +416,7 @@ function buildRow({
     forecast: band,
     forecast_reason: band
       ? null
-      : `No forecast yet: ${shortSet ? 2 : 1} of ${neededDays()} working days of history`,
+      : `No likely date yet: ${shortSet ? 2 : 1} of ${neededDays()} working days of history`,
     team: { date: facts.team[0], key: facts.team[1], undated: facts.team[2] },
     progress: { done: facts.progress[0], total: facts.progress[1], unit: "requirements" },
     scope: baseline && facts.scope ? { at_baseline: facts.scope[0], now: facts.scope[1] } : null,
@@ -548,39 +559,31 @@ function impactOf(req, roles, projectId, scope, period, measure, asOf) {
   });
   const drivers = [];
   if (!row.forecast) {
-    notes.push(
-      `No forecast yet: Only 2 working days of history; a forecast needs ${neededDays()}.`,
-    );
+    notes.push(`No likely date yet: only 2 working days of history; it needs ${neededDays()}.`);
   } else {
-    for (const [group, labelled] of [
-      ["change_request", true],
-      ["no_label", false],
-    ]) {
-      const items = added.filter((m) => m.change_label === labelled).flatMap((m) => m.items);
-      if (items.length === 0) continue;
+    // At most three causes, as the server words them (impact_words.causes).
+    const items = added.flatMap((m) => m.items);
+    if (items.length > 0) {
+      const labelled = added.filter((m) => m.change_label).flatMap((m) => m.items).length;
+      const without = items.length - labelled;
       const days = Math.round(2.5 * items.length * factor * 10) / 10;
       drivers.push({
         kind: "scope_added",
-        group,
+        group: null,
         working_days: days,
         p50: Math.round(2.5 * items.length * 0.6 * 10) / 10,
         p85: 2.5 * items.length,
         items: items.map((i) => itemOf(i, Math.round((days / items.length) * 10) / 10)),
         more: 0,
-        note: `${items.length} ${items.length === 1 ? "requirement" : "requirements"} added ${labelled ? "as change requests" : "without the CR label"}`,
+        note: [
+          labelled ? `${labelled} ${labelled === 1 ? "change request" : "change requests"}` : null,
+          without ? `${without} without the CR label` : null,
+        ]
+          .filter(Boolean)
+          .join(", "),
       });
     }
     const late = row.markers.filter((m) => m.kind === "late" && within(m)).flatMap((m) => m.items);
-    drivers.push({
-      kind: "pace",
-      group: null,
-      working_days: 2 * factor,
-      p50: 1.2,
-      p85: 2,
-      items: [],
-      more: 0,
-      note: `3 finished${late.length ? `; ${late.map((i) => i.key).join(", ")} late` : ""}`,
-    });
     const removed = row.markers
       .filter((m) => m.kind === "scope_removed" && within(m))
       .flatMap((m) => m.items);
@@ -593,18 +596,18 @@ function impactOf(req, roles, projectId, scope, period, measure, asOf) {
         p85: -1,
         items: removed.map((i) => itemOf(i, -1 * factor)),
         more: 0,
-        note: `${removed.length} requirement removed`,
+        note: `${removed.length} ${removed.length === 1 ? "requirement" : "requirements"} removed`,
       });
     }
     drivers.push({
-      kind: "throughput",
+      kind: "team_speed",
       group: null,
-      working_days: -1 * factor,
-      p50: -0.6,
-      p85: -1,
+      working_days: 1 * factor,
+      p50: 0.6,
+      p85: 1,
       items: [],
       more: 0,
-      note: "The 30-day window lost a slow day (11 Sep); yesterday finished 1. The average went from 0.5 to 0.6 a day.",
+      note: `3 requirements finished${late.length ? `; ${late.map((i) => i.key).join(", ")} ${late.length === 1 ? "is" : "are"} late` : ""}`,
     });
     drivers.sort((a, b) => b.working_days - a.working_days);
   }
@@ -615,13 +618,28 @@ function impactOf(req, roles, projectId, scope, period, measure, asOf) {
   const p50Now = row.forecast?.p50 ?? null;
   const p85Then = p85Now ? addWorkingDays(p85Now, -drivers.reduce((s, d) => s + d.p85, 0)) : null;
   const p50Then = p50Now ? addWorkingDays(p50Now, -drivers.reduce((s, d) => s + d.p50, 0)) : null;
-  const measureWords = measure === "p50" ? "50% date" : "85% date";
+  const likelyNow = measure === "p50" ? p50Now : p85Now;
+  const stands = `${likelyWords(likelyNow, row.committed.date, measure)}.`;
+  const phrase = (d, first) => {
+    const n = Math.abs(d.working_days);
+    const unit = first ? ` ${n === 1 ? "day" : "days"}` : "";
+    const verb = d.working_days > 0 ? `pushed it back ${n}${unit}` : `pulled it in ${n}${unit}`;
+    const subject =
+      d.kind === "scope_added"
+        ? "added scope"
+        : d.kind === "scope_removed"
+          ? "removed scope"
+          : d.working_days > 0
+            ? "slower finishing"
+            : "the team finishing faster";
+    return `${subject} ${verb}`;
+  };
   const summary =
     moved === null
-      ? `No forecast to compare ${words}.`
-      : `The ${measureWords} moved ${Math.abs(moved)} working days ${moved >= 0 ? "later" : "earlier"} ${words}: ${drivers
-          .filter((d) => d.working_days > 0)
-          .map((d) => `+${d.working_days} from ${d.kind === "pace" ? "slower finishing" : d.note}`)
+      ? `${stands} No likely date ${words} to compare with.`
+      : `${stands} ${words.charAt(0).toUpperCase()}${words.slice(1)} it moved ${Math.abs(moved)} working days ${moved >= 0 ? "later" : "earlier"}: ${drivers
+          .filter((d) => Math.abs(d.working_days) >= 0.5)
+          .map((d, i) => phrase(d, i === 0))
           .join(", ")}.`;
   const committedChanges = row.committed.history
     .map((tick, i, all) => ({ tick, before: all[i - 1] }))

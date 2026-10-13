@@ -5,17 +5,14 @@ import type { DeliveryImpactResponse } from "../../api/schema";
 
 import { OVERALL_ORDER, overallSections } from "./sections.ts";
 import {
-  barNote,
+  causeBars,
   committedLine,
+  daysWords,
   driverLabel,
   endsLine,
-  lateLine,
-  movedWords,
-  percentOf,
-  shadedPeriod,
+  measureWords,
   signed,
   teamLine,
-  waterfall,
   type Driver,
 } from "./waterfall.ts";
 
@@ -32,129 +29,66 @@ const driver = (kind: string, p85: number, p50: number, extra: Partial<Driver> =
 });
 
 const DRIVERS = [
-  driver("pace", 3, 1, { note: "0 finished" }),
-  driver("scope_added", 6, 4, { group: "no_label" }),
-  driver("throughput", -1, 0.5),
+  driver("team_speed", -78, -40, { note: "1 requirement finished" }),
+  driver("scope_added", 24, 12, { note: "1 change request, 1 without the CR label" }),
 ];
 
-test("the bars run worst first, each from where the one before ended, to the move", () => {
-  const falls = waterfall(DRIVERS, "p85", "CR");
+test("the causes are bars from zero, latest-pushing first, sized by the largest", () => {
+  const bars = causeBars(DRIVERS, "p85");
 
   assert.deepEqual(
-    falls.bars.map((bar) => [bar.label, bar.from, bar.to]),
+    bars.map((bar) => [bar.label, bar.value, bar.later, Math.round(bar.size * 100) / 100]),
     [
-      ["Scope added: without the CR label", 0, 6],
-      ["Pace", 6, 9],
-      ["Throughput", 9, 8],
+      ["Scope added", 24, true, 0.31],
+      ["Team speed", -78, false, 1],
     ],
   );
-  assert.equal(falls.total, 8);
-  assert.equal(falls.bars[1].note, "0 finished");
-  // A note that only repeats the bar's name is left out.
-  assert.equal(
-    waterfall([driver("throughput", 1, 1, { note: "throughput" })], "p85", "CR").bars[0].note,
-    "",
-  );
-  // What is left of the rounding is "Other", with the hint the server gives it.
+  assert.equal(bars[0].note, "1 change request, 1 without the CR label");
+  // The likely (50%) date reads the same causes by their own working days.
   assert.deepEqual(
-    waterfall([driver("rounding", 2, 2, { note: "rounding" })], "p85", "CR").bars.map((bar) => [
-      bar.label,
-      bar.note,
-    ]),
-    [["Other", "rounding"]],
+    causeBars(DRIVERS, "p50").map((bar) => bar.value),
+    [12, -40],
   );
-  assert.equal(falls.max, 9);
-  assert.equal(falls.min, 0);
-  assert.equal(percentOf(falls, 9), 100);
 });
 
-test("a bar's note never says the bar's name twice", () => {
-  assert.equal(barNote("Pace", "pace"), "");
-  assert.equal(
-    barNote(
-      "Throughput",
-      "throughput (5 days joined the window with 1 finished; 3 days left it with 0)",
-    ),
-    "5 days joined the window with 1 finished; 3 days left it with 0",
-  );
-  assert.equal(barNote("Throughput", "throughput"), "");
-  assert.equal(barNote("Pace", "0 finished"), "0 finished");
-  // Brackets that do not follow the name are the note's own.
-  assert.equal(barNote("Pace", "slower finishing (CHK-4 late)"), "slower finishing (CHK-4 late)");
-  // A note that ends with what the name says keeps the count before it.
-  assert.equal(
-    barNote("Scope added: without the CR label", "2 requirements added, without the CR label"),
-    "2 requirements added",
-  );
-  assert.equal(
-    barNote("Scope added: change requests", "1 requirement added, change request"),
-    "1 requirement added",
-  );
-  assert.equal(
-    barNote("Scope added: change requests", "1 requirement added as change requests"),
-    "1 requirement added",
-  );
-  // One shared word is not the name said twice.
-  assert.equal(barNote("Scope removed", "1 requirement removed"), "1 requirement removed");
-  assert.equal(barNote("Pace", "3 finished; CHK-102 late"), "3 finished; CHK-102 late");
-});
-
-test("the 50% date reorders the same drivers by their own working days", () => {
-  const falls = waterfall(DRIVERS, "p50", "CR");
-
-  assert.deepEqual(
-    falls.bars.map((bar) => bar.driver.kind),
-    ["scope_added", "pace", "throughput"],
-  );
-  assert.equal(falls.total, 5.5);
-});
-
-test("a driver of no working days stays only when it lists requirements", () => {
-  const falls = waterfall(
+test("a cause of no working days stays only when it lists requirements", () => {
+  const bars = causeBars(
     [
-      driver("rounding", 0, 0),
-      driver("scope_removed", 0, 0, {
+      driver("scope_removed", 0, 0),
+      driver("scope_added", 0, 0, {
         items: [
           {
-            key: "CHK-7",
-            title: "Old flow",
+            key: "CHK-9",
+            title: "Card art",
             type: "Story",
             working_days: 0,
-            day: "2026-10-07",
-            group: null,
-            change_label: null,
+            day: null,
+            group: "no_label",
+            change_label: false,
             added_by: null,
           },
         ],
       }),
     ],
     "p85",
-    "CR",
   );
-
   assert.deepEqual(
-    falls.bars.map((bar) => bar.driver.kind),
-    ["scope_removed"],
+    bars.map((bar) => bar.label),
+    ["Scope added"],
   );
 });
 
-test("each driver is named in a leader's words", () => {
-  assert.equal(
-    driverLabel({ kind: "scope_added", group: "change_request" }, "CR"),
-    "Scope added: change requests",
-  );
-  assert.equal(driverLabel({ kind: "scope_added", group: "bug" }, "CR"), "Scope added: bugs");
-  assert.equal(driverLabel({ kind: "re_estimated", group: null }, "CR"), "Re-estimated");
-  assert.equal(
-    driverLabel({ kind: "not_attributed", group: null }, "CR"),
-    "Days with no breakdown kept",
-  );
-  assert.equal(signed(3), "+3");
-  assert.equal(signed(-2.5), "−2.5");
-  assert.equal(signed(0.01), "0");
-  assert.equal(movedWords(8), "Moved 8 working days later");
-  assert.equal(movedWords(-1), "Moved 1 working day earlier");
-  assert.equal(movedWords(0.2), "Did not move");
+test("each cause, date and day count is said in a leader's words", () => {
+  assert.equal(driverLabel({ kind: "scope_added" }), "Scope added");
+  assert.equal(driverLabel({ kind: "scope_removed" }), "Scope removed");
+  assert.equal(driverLabel({ kind: "team_speed" }), "Team speed");
+  assert.equal(driverLabel({ kind: "something_new" }), "Other");
+  assert.equal(measureWords("p85"), "At the latest likely");
+  assert.equal(measureWords("p50"), "Likely");
+  assert.equal(daysWords(24), "+24 days");
+  assert.equal(daysWords(-1), "−1 day");
+  assert.equal(signed(0), "0");
+  assert.equal(signed(-2.4), "−2.4");
 });
 
 const impact = {
@@ -168,11 +102,9 @@ const impact = {
   end: { day: "2026-10-12", p50: "2026-11-20", p85: "2026-12-02", committed: null, verdict: null },
 } as Pick<DeliveryImpactResponse, "start" | "end"> as DeliveryImpactResponse;
 
-test("the ends, the shaded period and the two date lanes read as lines", () => {
-  assert.equal(endsLine(impact, "p85"), "18 Nov → 2 Dec");
-  assert.equal(endsLine(impact, "p50"), "10 Nov → 20 Nov");
-  assert.deepEqual(shadedPeriod(impact), { from: "2026-10-01", to: "2026-10-12" });
-  assert.equal(shadedPeriod(undefined), null);
+test("the likely date at both ends, the committed date and the team's date are short lines", () => {
+  assert.equal(endsLine(impact, "p85"), "18 Nov then, 2 Dec now");
+  assert.equal(endsLine(impact, "p50"), "10 Nov then, 20 Nov now");
   assert.equal(
     committedLine({
       from_date: "2026-11-04",
@@ -182,7 +114,7 @@ test("the ends, the shaded period and the two date lanes read as lines", () => {
       note: "two changes approved",
       after_added: ["CHK-20", "CHK-21"],
     }),
-    "4 Nov → 18 Nov (Mina Patel, 9 Oct: “two changes approved”), after CHK-20, CHK-21 were added",
+    "4 Nov → 18 Nov, by Mina Patel on 9 Oct",
   );
   assert.equal(
     teamLine({
@@ -192,21 +124,17 @@ test("the ends, the shaded period and the two date lanes read as lines", () => {
       to_key: "CHK-20",
       moves: [],
     }),
-    "CHK-12, 14 Oct → CHK-20, 30 Oct",
+    "14 Oct → 30 Oct (CHK-20)",
   );
   assert.equal(
-    lateLine(
-      {
-        key: "CHK-4",
-        title: "Card vault",
-        stage: "in_testing",
-        date: "2026-10-02",
-        date_kind: "due",
-        working_days_late: 6,
-      },
-      () => "In testing",
-    ),
-    "CHK-4, due 2 Oct, 6 working days late, In testing",
+    teamLine({
+      from_date: "2026-12-04",
+      from_key: "CHK-103",
+      to_date: "2026-12-04",
+      to_key: "CHK-103",
+      moves: [],
+    }),
+    "4 Dec (CHK-103), unchanged",
   );
 });
 

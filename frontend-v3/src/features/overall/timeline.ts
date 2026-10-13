@@ -1,9 +1,10 @@
-// The timeline per project and pod: one row per scope from planning to its
-// committed date, with progress, the 50% to 85% band, the team's date, the
-// committed date's earlier values as hollow ticks, and the impact markers on the
-// day each thing happened. Pure geometry, words and keyboard moves; the
-// components draw what these return. Type imports and runtime imports by their
-// .ts path only, so `node --test` runs it as written.
+// The timeline per project and pod, drawn to be read in five seconds (decision
+// D78): one row per scope with a grey track from planning to its committed date,
+// a dark fill for what is done, the likely finish as one segment in its verdict's
+// colour, the committed date as a tick, and one dot on each day something
+// changed, red when it pushed the date. Pure geometry, words and keyboard moves;
+// the components draw what these return. Type imports and runtime imports by
+// their .ts path only, so `node --test` runs it as written.
 import type {
   TimelineMarkerResponse,
   TimelineResponse,
@@ -21,12 +22,16 @@ type MarkerItem = Marker["items"][number];
 
 /** The narrowest the axis is drawn: four weeks per 112 px, so a week is always 28 px. */
 export const MIN_PX_PER_WEEK = 28;
-/** Past twelve weeks a lane merges its markers per week, so a glyph keeps its room. */
+/** Past twelve weeks a row's changes merge per week, so a dot keeps its room. */
 export const WEEK_MERGE_DAYS = 84;
-/** Two glyphs on one lane keep this far apart; the later one moves right. */
-export const GLYPH_GAP = 18;
-/** The most items a marker's list names; the rest are counted. */
+/** Two dots on one row keep this far apart; the later one moves right. */
+export const DOT_GAP = 16;
+/** The most items a change's list names; the rest are counted. */
 export const LIST_ITEMS = 10;
+/** The most days a row's "What changed" list says, newest first. */
+export const CHANGE_LINES = 5;
+/** The team's date is said beside the likely date only when they are this far apart. */
+export const TEAM_APART_DAYS = 7;
 
 const DAY_MS = 86_400_000;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -74,7 +79,7 @@ export type Scale = {
   pxPerDay: number;
   /** The drawing's width in px: wider than the box on a phone, which then scrolls. */
   width: number;
-  /** Markers merge per week on a long axis. */
+  /** Changes merge per week on a long axis. */
   weekly: boolean;
 };
 
@@ -90,7 +95,7 @@ export function timeScale(axis: TimelineResponse["axis"], available: number): Sc
     end,
     days,
     pxPerDay,
-    width: Math.ceil(days * pxPerDay),
+    width: Math.floor(days * pxPerDay),
     weekly: days > WEEK_MERGE_DAYS,
   };
 }
@@ -102,26 +107,22 @@ export function xOf(scale: Scale, iso: string): number {
 }
 
 /**
- * The axis labels: each month's first day, and its 15th when a fortnight is
- * wide enough to say it, thinned so no two run together. ``today`` is the day
- * line's own label: a month label it would touch gives way to it.
+ * The axis labels: each month's first day only, thinned so no two run
+ * together. ``today`` is the day line's own label: a month label it would touch
+ * gives way to it.
  */
 export function axisLabels(scale: Scale, today?: { x: number; label: string }): AxisLabel[] {
-  const wide = scale.pxPerDay * 14 >= 64;
   const candidates: { x: number; label: string; anchor: "middle" }[] = [];
   for (let day = scale.start; day <= scale.end; day++) {
     const date = new Date(day * DAY_MS);
-    const dom = date.getUTCDate();
-    if (dom === 1 || (wide && dom === 15)) {
+    if (date.getUTCDate() === 1) {
       candidates.push({
         x: (day - scale.start) * scale.pxPerDay,
-        label: `${dom} ${MONTHS[date.getUTCMonth()]}`,
+        label: `1 ${MONTHS[date.getUTCMonth()]}`,
         anchor: "middle",
       });
     }
   }
-  // Month starts first, so a 15th gives way to a 1st it would touch.
-  candidates.sort((a, b) => Number(!a.label.startsWith("1 ")) - Number(!b.label.startsWith("1 ")));
   if (!today) return thinAxisLabels(candidates, scale.width);
   // The day line's label goes first, so it is kept; it is drawn on its own.
   const marked = ` ${today.label}`;
@@ -133,280 +134,269 @@ export function axisLabels(scale: Scale, today?: { x: number; label: string }): 
 
 // ---- one row -------------------------------------------------------------------------
 
-export type Tick = { x: number; date: string; on: string };
-
 export type RowShape = {
-  /** The span: from the baseline (or the first kept day) to the committed date. */
+  /** The track: from planning (or the first kept day) to the committed date. */
   start: number;
   end: number;
-  /** No committed date: the span runs to the right edge, dashed. */
+  /** No committed date: the track runs to the likely finish (or today), dashed. */
   open: boolean;
-  /** No planning baseline: the span starts at the first kept day, faded. */
-  faded: boolean;
-  /** Where the done fill ends; only on a span with a committed end. */
+  /** Where the done fill ends. */
   fill: number | null;
   /** Done of total, 0 to 1. */
   share: number | null;
-  band: { from: number; to: number; tone: BadgeTone } | null;
-  /** The band runs past the committed date: late, visible at a glance. */
-  overhang: boolean;
-  team: { x: number; hollow: boolean } | null;
+  /** The likely finish, 50% to 85%, in the verdict's colour. */
+  likely: {
+    from: number;
+    to: number;
+    tone: BadgeTone;
+    /** It runs past the committed date: drawn there, with its dates said. */
+    late: boolean;
+    label: string;
+  } | null;
   committed: number | null;
-  /** The committed date's earlier values, oldest first. */
-  earlier: Tick[];
-  /** Jira's release date, when it is not the committed date. */
-  jira: number | null;
-  /** A pod's row: its project's committed date. */
-  reference: number | null;
 };
 
-export function rowShape(row: Row, scale: Scale): RowShape {
+export function rowShape(row: Row, scale: Scale, today: string): RowShape {
   const committedDate = row.committed.date;
   const start = xOf(scale, row.start);
   const committed = committedDate ? xOf(scale, committedDate) : null;
-  const end = committed !== null ? Math.max(committed, start) : scale.width;
+  const forecast = row.forecast;
+  const likely = forecast
+    ? (() => {
+        const from = xOf(scale, forecast.p50);
+        return {
+          from,
+          to: Math.max(xOf(scale, forecast.p85), from + 3),
+          tone: forecastTone(committedDate ?? row.jira_release_date, forecast.p50, forecast.p85),
+          late: Boolean(committedDate && forecast.p85 > committedDate),
+          label: likelyRange(forecast.p50, forecast.p85),
+        };
+      })()
+    : null;
+  const end =
+    committed !== null
+      ? Math.max(committed, start)
+      : Math.max(likely?.to ?? 0, xOf(scale, today), start + 2);
   const progress = row.progress;
   const share =
     progress && progress.total > 0
       ? Math.min(1, Math.max(0, progress.done / progress.total))
       : null;
-  const forecast = row.forecast;
-  const target = committedDate ?? row.jira_release_date;
-  const history = row.committed.history;
-  const earlier = history
-    .slice(0, -1)
-    .filter((tick) => tick.date !== committedDate)
-    .filter((tick, i, all) => all.findIndex((other) => other.date === tick.date) === i)
-    .map((tick) => ({ x: xOf(scale, tick.date), date: tick.date, on: tick.on }));
   return {
     start,
     end,
     open: committed === null,
-    faded: row.baseline === null,
-    fill: committed !== null && share !== null ? start + (end - start) * share : null,
+    fill: share !== null ? start + (end - start) * share : null,
     share,
-    band: forecast
-      ? {
-          from: xOf(scale, forecast.p50),
-          to: Math.max(xOf(scale, forecast.p85), xOf(scale, forecast.p50) + 2),
-          tone: forecastTone(target, forecast.p50, forecast.p85),
-        }
-      : null,
-    overhang: Boolean(forecast && committedDate && forecast.p85 > committedDate),
-    team: row.team.date ? { x: xOf(scale, row.team.date), hollow: row.team.undated > 0 } : null,
+    likely,
     committed,
-    earlier,
-    jira:
-      row.jira_release_date && row.jira_release_date !== committedDate
-        ? xOf(scale, row.jira_release_date)
-        : null,
-    reference: row.reference_date ? xOf(scale, row.reference_date) : null,
   };
 }
 
-/** The verdict's chip: its word and tone; a dates row without a forecast says so. */
+/** "likely 3 Feb – 19 Mar"; one day when both are the same. */
+export function likelyRange(p50: string, p85: string): string {
+  return p50 === p85 ? `likely ${shortDay(p85)}` : `likely ${shortDay(p50)} – ${shortDay(p85)}`;
+}
+
+/** The verdict's pill: its word and tone; a dates row without a forecast says so. */
 export function verdictChip(verdict: Verdict | null): { label: string; tone: BadgeTone } {
-  if (verdict === null) return { label: "No forecast kept", tone: "neutral" };
+  if (verdict === null) return { label: "No likely date", tone: "neutral" };
   return { label: VERDICT_LABELS[verdict], tone: toneForVerdict(verdict) };
 }
 
-/** "8 of 22 · 36%", or on a phone "36%"; story points say so. Nothing on a dates row. */
-export function progressLabel(row: Row, short = false): string {
+/** "2 of 10 done", "8 of 22 pts done"; nothing on a dates row. */
+export function progressLabel(row: Row): string {
   const progress = row.progress;
   if (!progress) return "";
-  if (progress.total <= 0) return "Nothing in scope";
-  const percent = Math.round((progress.done / progress.total) * 100);
-  if (short) return `${percent}%`;
+  if (progress.total <= 0) return "nothing in scope";
   const points = progress.unit === "story points" ? " pts" : "";
-  return `${number(progress.done)} of ${number(progress.total)}${points} · ${percent}%`;
+  return `${number(progress.done)} of ${number(progress.total)}${points} done`;
 }
 
-/** "18 → 22 requirements since planning", when the row has a baseline. */
-export function scopeLabel(row: Row): string | null {
-  if (!row.scope) return null;
-  const { at_baseline: then, now } = row.scope;
-  return then === now ? `${now}, unchanged since planning` : `${then} → ${now} since planning`;
-}
-
-/** "Moved twice, +12 days": the committed date's history in a few words. */
-export function movesLabel(row: Row): string | null {
-  const dated = row.committed.history.map((tick) => tick.date);
-  const moves = dated.filter((day, i) => i > 0 && day !== dated[i - 1]).length;
-  if (moves === 0 || !row.committed.date) return null;
-  const days = dayNumber(row.committed.date) - dayNumber(dated[0]);
-  const times = moves === 1 ? "once" : moves === 2 ? "twice" : `${moves} times`;
-  const signed = days > 0 ? `+${days}` : days < 0 ? `−${-days}` : "±0";
-  return `Moved ${times}, ${signed} days`;
-}
-
-// ---- the impact lane -------------------------------------------------------------------
-
-/** What a lane draws, each with its own shape (never colour alone). */
-export type GlyphKind =
-  | "added_label"
-  | "added"
-  | "removed"
-  | "reopened"
-  | "late"
-  | "bug"
-  | "blocker_opened"
-  | "blocker_closed";
-
-export const GLYPH_ORDER: GlyphKind[] = [
-  "added_label",
-  "added",
-  "removed",
-  "reopened",
-  "late",
-  "bug",
-  "blocker_opened",
-  "blocker_closed",
-];
-
-/** A marker's glyph; the committed date's moves are the row's ticks, not a glyph. */
-export function glyphKind(marker: Pick<Marker, "kind" | "change_label">): GlyphKind | null {
-  switch (marker.kind) {
-    case "scope_added":
-      return marker.change_label ? "added_label" : "added";
-    case "scope_removed":
-      return "removed";
-    case "reopened":
-      return "reopened";
-    case "late":
-      return "late";
-    case "bug":
-      return "bug";
-    case "blocker_opened":
-      return "blocker_opened";
-    case "blocker_closed":
-      return "blocker_closed";
-    default:
-      return null;
+/**
+ * The row's one plain line: "Likely by 19 Mar · committed 15 Dec · 2 of 10 done",
+ * with "team says 4 Dec" only when the team's date is more than a week from the
+ * likely one.
+ */
+export function rowLine(row: Row): string[] {
+  const parts: string[] = [];
+  const likely = row.forecast?.p85 ?? null;
+  parts.push(likely ? `Likely by ${shortDay(likely)}` : "No likely date yet");
+  parts.push(
+    row.committed.date ? `committed ${shortDay(row.committed.date)}` : "no committed date",
+  );
+  const done = progressLabel(row);
+  if (done) parts.push(done);
+  const team = row.team.date;
+  if (team && (!likely || Math.abs(dayNumber(team) - dayNumber(likely)) > TEAM_APART_DAYS)) {
+    parts.push(`team says ${shortDay(team)}`);
   }
+  return parts;
 }
 
-export type Glyph = {
+// ---- what changed --------------------------------------------------------------------
+
+export type ChangeEntry = {
+  kind: string;
+  count: number;
+  /** In plain words: "1 requirement added without the CR label". */
+  words: string;
+  /** It pushed the date: added without the change label, a bug, a blocker, reopened, a later date. */
+  pushed: boolean;
+  items: MarkerItem[];
+};
+
+export type Dot = {
   id: string;
-  kind: GlyphKind;
   /** The day it happened, or the Monday of its week on a long axis. */
   day: string;
   weekly: boolean;
   x: number;
   count: number;
-  items: MarkerItem[];
-  /** More items than the list names. */
-  more: number;
-  /** An addition without the change label with an open Jira hygiene finding on it. */
-  ringed: boolean;
+  pushed: boolean;
+  entries: ChangeEntry[];
   label: string;
 };
 
+/** One marker as a change a leader reads, with whether it pushed the date. */
+export function changeEntry(marker: Marker, row: Row, changeLabel: string): ChangeEntry {
+  const count = marker.count;
+  const n = (one: string, many: string) => (count === 1 ? `1 ${one}` : `${count} ${many}`);
+  const requirements = n("requirement", "requirements");
+  const entry = (words: string, pushed: boolean): ChangeEntry => ({
+    kind: marker.kind,
+    count,
+    words,
+    pushed,
+    items: marker.items,
+  });
+  switch (marker.kind) {
+    case "scope_added":
+      return marker.change_label
+        ? entry(`${requirements} added with the ${changeLabel} label`, false)
+        : entry(`${requirements} added without the ${changeLabel} label`, true);
+    case "scope_removed":
+      return entry(`${requirements} removed`, false);
+    case "reopened":
+      return entry(`${requirements} reopened`, true);
+    case "late":
+      return entry(
+        `${requirements} passed ${count === 1 ? "its" : "their"} date while open`,
+        false,
+      );
+    case "bug":
+      return entry(n("bug opened", "bugs opened"), true);
+    case "blocker_opened":
+      return entry(n("blocker opened", "blockers opened"), true);
+    case "blocker_closed":
+      return entry(n("blocker cleared", "blockers cleared"), false);
+    case "committed_date_changed": {
+      const index = row.committed.history.findIndex((tick) => tick.on === marker.day);
+      const tick = index >= 0 ? row.committed.history[index] : null;
+      const before = index > 0 ? row.committed.history[index - 1] : null;
+      if (tick && before) {
+        return {
+          ...entry(`committed date moved ${shortDay(before.date)} → ${shortDay(tick.date)}`, false),
+          count: 1,
+          pushed: tick.date > before.date,
+        };
+      }
+      return {
+        ...entry(
+          tick ? `committed date set to ${shortDay(tick.date)}` : "committed date changed",
+          false,
+        ),
+        count: 1,
+      };
+    }
+    default:
+      return entry(`${n("change", "changes")}`, false);
+  }
+}
+
 /**
- * A row's glyphs: markers of one kind on one day merged into one glyph with a
- * count (per week on a long axis), left to right, nudged apart so none hides
- * another. The committed date's moves are left to the ticks.
+ * A row's dots: every change on one day (one week on a long axis) is one dot
+ * with a count, red when any of them pushed the date; left to right, nudged
+ * apart so none hides another.
  */
-export function rowGlyphs(row: Row, scale: Scale, changeLabel: string): Glyph[] {
-  const buckets = new Map<string, Glyph>();
-  for (const marker of row.markers) {
-    const kind = glyphKind(marker);
-    if (kind === null) continue;
+export function rowDots(row: Row, scale: Scale, changeLabel: string): Dot[] {
+  const buckets = new Map<string, Dot>();
+  for (const marker of mergedMarkers(row.markers, scale.weekly)) {
     const day = scale.weekly ? weekOf(marker.day) : marker.day;
-    const id = `${day}:${kind}`;
-    const found = buckets.get(id);
+    const change = changeEntry(marker, row, changeLabel);
+    const found = buckets.get(day);
     if (found) {
-      found.count += marker.count;
-      found.items = [...found.items, ...marker.items];
-      found.ringed ||= marker.items.some((item) => item.hygiene === true);
-      // A week's glyph sits on its first event, never ahead of what happened.
+      found.entries.push(change);
+      found.count += change.count;
+      found.pushed ||= change.pushed;
+      // A week's dot sits on its first change, never ahead of what happened.
       found.x = Math.min(found.x, xOf(scale, marker.day));
       continue;
     }
-    buckets.set(id, {
-      id,
-      kind,
+    buckets.set(day, {
+      id: day,
       day,
       weekly: scale.weekly,
       x: xOf(scale, marker.day),
-      count: marker.count,
-      items: [...marker.items],
-      more: 0,
-      ringed: marker.items.some((item) => item.hygiene === true),
+      count: change.count,
+      pushed: change.pushed,
+      entries: [change],
       label: "",
     });
   }
-  const glyphs = [...buckets.values()].sort(
-    (a, b) => a.x - b.x || GLYPH_ORDER.indexOf(a.kind) - GLYPH_ORDER.indexOf(b.kind),
-  );
+  const dots = [...buckets.values()].sort((a, b) => a.x - b.x);
   let last = -Infinity;
-  for (const glyph of glyphs) {
-    glyph.x = Math.max(glyph.x, last + GLYPH_GAP);
-    last = glyph.x;
-    glyph.more = Math.max(0, glyph.count - Math.min(glyph.items.length, LIST_ITEMS));
-    glyph.items = glyph.items.slice(0, LIST_ITEMS);
-    glyph.label = glyphLabel(glyph.kind, glyph.count, glyph.day, glyph.weekly, changeLabel);
+  for (const dot of dots) {
+    dot.x = Math.max(dot.x, last + DOT_GAP);
+    last = dot.x;
+    dot.entries.sort((a, b) => Number(b.pushed) - Number(a.pushed));
+    const when = dot.weekly ? `Week of ${shortDay(dot.day)}` : shortDay(dot.day);
+    const words = dot.entries.map((entry) => entry.words).join(", ");
+    dot.label = `${when}: ${words}.${dot.pushed ? " Pushed the date." : ""}`;
   }
-  return glyphs;
+  return dots;
 }
 
-/** What one glyph says: "9 Oct: 2 requirements added without the CR label". */
-export function glyphLabel(
-  kind: GlyphKind,
-  count: number,
-  day: string,
-  weekly: boolean,
-  changeLabel: string,
-): string {
-  const when = weekly ? `Week of ${shortDay(day)}` : shortDay(day);
-  return `${when}: ${glyphWords(kind, count, changeLabel)}`;
-}
-
-export function glyphWords(kind: GlyphKind, count: number, changeLabel: string): string {
-  const requirements = count === 1 ? "1 requirement" : `${count} requirements`;
-  switch (kind) {
-    case "added_label":
-      return `${requirements} added with the ${changeLabel} label`;
-    case "added":
-      return `${requirements} added without the ${changeLabel} label`;
-    case "removed":
-      return `${requirements} left the scope`;
-    case "reopened":
-      return `${requirements} reopened`;
-    case "late":
-      return `${requirements} passed ${count === 1 ? "its" : "their"} date while open`;
-    case "bug":
-      return count === 1 ? "1 bug opened" : `${count} bugs opened`;
-    case "blocker_opened":
-      return count === 1 ? "1 blocker opened" : `${count} blockers opened`;
-    case "blocker_closed":
-      return count === 1 ? "1 blocker cleared" : `${count} blockers cleared`;
+/**
+ * A dot's markers with one kind said once: the same kind (and label) on one day,
+ * or in one week on a long axis, is one marker with the counts and items added.
+ * A committed date's moves stay apart, since each says its own dates.
+ */
+function mergedMarkers(markers: Marker[], weekly: boolean): Marker[] {
+  const merged = new Map<string, Marker>();
+  const kept: Marker[] = [];
+  for (const marker of markers) {
+    if (marker.kind === "committed_date_changed") {
+      kept.push(marker);
+      continue;
+    }
+    const day = weekly ? weekOf(marker.day) : marker.day;
+    const key = `${day}:${marker.kind}:${String(marker.change_label)}`;
+    const found = merged.get(key);
+    if (found) {
+      merged.set(key, {
+        ...found,
+        day: found.day < marker.day ? found.day : marker.day,
+        count: found.count + marker.count,
+        items: [...found.items, ...marker.items],
+      });
+    } else {
+      merged.set(key, marker);
+    }
   }
+  return [...merged.values(), ...kept];
 }
 
-/** The legend's word for each glyph. */
-export function glyphLegend(kind: GlyphKind, changeLabel: string): string {
-  return {
-    added_label: `Added with the ${changeLabel} label`,
-    added: `Added without the ${changeLabel} label`,
-    removed: "Left the scope",
-    reopened: "Reopened",
-    late: "Passed its date while open",
-    bug: "Bug opened",
-    blocker_opened: "Blocker opened",
-    blocker_closed: "Blocker cleared",
-  }[kind];
-}
-
-/** One item of a glyph's list, after its key and title: its stage, label, who and what. */
+/** One item of a change's list, after its key and title: its stage, label, who and what. */
 export function itemNote(
   item: MarkerItem,
-  kind: GlyphKind,
+  kind: string,
   changeLabel: string,
   stageWord: (stage: NonNullable<MarkerItem["stage"]>) => string,
 ): string {
   const parts: string[] = [];
   if (item.stage) parts.push(stageWord(item.stage));
-  if (kind === "added" || kind === "added_label") {
+  if (kind === "scope_added") {
     parts.push(item.change_label ? `${changeLabel} label` : `no ${changeLabel} label`);
     if (item.hygiene) parts.push("open in Jira hygiene");
   }
@@ -415,71 +405,98 @@ export function itemNote(
   return parts.join(" · ");
 }
 
+export type ChangeList = {
+  /** "Since planning (5 Oct): 8 → 10 requirements", when the row has a baseline. */
+  lead: string | null;
+  /** Newest first: "9 Oct · 2 requirements added (1 without the CR label)". */
+  lines: { day: string; text: string; pushed: boolean }[];
+  /** Days older than the lines shown. */
+  more: number;
+};
+
+/** The short "What changed" list under the chart: one line per day, newest first. */
+export function changeList(row: Row, changeLabel: string, max = CHANGE_LINES): ChangeList {
+  const byDay = new Map<string, Marker[]>();
+  for (const marker of row.markers) {
+    byDay.set(marker.day, [...(byDay.get(marker.day) ?? []), marker]);
+  }
+  const days = [...byDay.keys()].sort((a, b) => b.localeCompare(a));
+  const lines = days.slice(0, max).map((day) => {
+    const markers = byDay.get(day) ?? [];
+    const phrases: string[] = [];
+    const added = markers.filter((marker) => marker.kind === "scope_added");
+    if (added.length > 0) {
+      const total = added.reduce((sum, marker) => sum + marker.count, 0);
+      const without = added
+        .filter((marker) => !marker.change_label)
+        .reduce((sum, marker) => sum + marker.count, 0);
+      const noun = total === 1 ? "requirement" : "requirements";
+      phrases.push(
+        without === 0
+          ? `${total} ${noun} added with the ${changeLabel} label`
+          : without === total
+            ? `${total} ${noun} added without the ${changeLabel} label`
+            : `${total} ${noun} added (${without} without the ${changeLabel} label)`,
+      );
+    }
+    const entries = markers
+      .filter((marker) => marker.kind !== "scope_added")
+      .map((marker) => changeEntry(marker, row, changeLabel));
+    phrases.push(...entries.map((entry) => entry.words));
+    const pushed =
+      added.some((marker) => !marker.change_label) || entries.some((entry) => entry.pushed);
+    return { day, text: `${shortDay(day)} · ${phrases.join(" · ")}`, pushed };
+  });
+  const scope = row.scope;
+  const lead =
+    row.baseline && scope
+      ? `Since planning (${shortDay(row.baseline.day)}): ${
+          scope.at_baseline === scope.now
+            ? `${scope.now} requirements, unchanged`
+            : `${scope.at_baseline} → ${scope.now} requirements`
+        }`
+      : row.access === "panel" && !row.baseline
+        ? "Planning is not marked complete yet"
+        : null;
+  return { lead, lines, more: Math.max(0, days.length - max) };
+}
+
 // ---- what is drawn, for the legend ----------------------------------------------------
 
 export type Drawn = {
   done: boolean;
-  band: boolean;
-  bandTones: BadgeTone[];
-  team: boolean;
-  teamHollow: boolean;
+  toDo: boolean;
+  likely: boolean;
+  likelyTones: BadgeTone[];
   committed: boolean;
-  earlier: boolean;
-  jira: boolean;
-  reference: boolean;
-  open: boolean;
-  faded: boolean;
-  glyphs: GlyphKind[];
-  ringed: boolean;
+  change: boolean;
 };
 
-/** Only what the rows draw gets a legend entry; a swatch is the colour drawn. */
-export function drawn(rows: Row[], scale: Scale, changeLabel: string): Drawn {
-  const shapes = rows.map((row) => rowShape(row, scale));
-  const glyphs = rows.flatMap((row) => rowGlyphs(row, scale, changeLabel));
+/** Only what the rows draw gets a legend entry, five at the most. */
+export function drawn(rows: Row[], scale: Scale, today: string): Drawn {
+  const shapes = rows.map((row) => rowShape(row, scale, today));
   const tones = [
-    ...new Set(shapes.flatMap((shape) => (shape.band ? [shape.band.tone] : []))),
+    ...new Set(shapes.flatMap((shape) => (shape.likely ? [shape.likely.tone] : []))),
   ] as BadgeTone[];
   return {
-    done: shapes.some((shape) => shape.fill !== null),
-    band: shapes.some((shape) => shape.band !== null),
-    bandTones: tones,
-    team: shapes.some((shape) => shape.team !== null),
-    teamHollow: shapes.some((shape) => shape.team?.hollow),
+    done: shapes.some((shape) => shape.fill !== null && shape.share !== null && shape.share > 0),
+    toDo: shapes.length > 0,
+    likely: tones.length > 0,
+    likelyTones: tones,
     committed: shapes.some((shape) => shape.committed !== null),
-    earlier: shapes.some((shape) => shape.earlier.length > 0),
-    jira: shapes.some((shape) => shape.jira !== null),
-    reference: shapes.some((shape) => shape.reference !== null),
-    open: shapes.some((shape) => shape.open),
-    faded: shapes.some((shape) => shape.faded),
-    glyphs: GLYPH_ORDER.filter((kind) => glyphs.some((glyph) => glyph.kind === kind)),
-    ringed: glyphs.some((glyph) => glyph.ringed),
+    change: rows.some((row) => row.markers.length > 0),
   };
-}
-
-// ---- the rows drawn ---------------------------------------------------------------------
-
-/**
- * The project's releases sit folded under its row (DESIGN §5.2): the rows to
- * draw, and how many releases the fold holds. A release that heads the read
- * (``?release=``) is its first row and is never folded.
- */
-export function foldReleases(rows: Row[], open: boolean): { rows: Row[]; releases: number } {
-  const folded = (row: Row, index: number) => index > 0 && row.scope_kind === "release";
-  const releases = rows.filter(folded).length;
-  if (open || releases === 0) return { rows, releases };
-  return { rows: rows.filter((row, index) => !folded(row, index)), releases };
 }
 
 // ---- keyboard ------------------------------------------------------------------------
 
-/** Where focus is: a row's label (glyph null) or one of its glyphs. */
+/** Where focus is: a row's label (dot null) or one of its dots. */
 export type Focus = { row: number; glyph: number | null };
 
 /**
- * The arrow keys: right and left move along a row's glyphs (left from the first
+ * The arrow keys: right and left move along a row's dots (left from the first
  * goes back to the row), up and down to the row above or below, keeping the
- * place along it; Home and End go to a row's first and last glyph. Null when the
+ * place along it; Home and End go to a row's first and last dot. Null when the
  * key moves nothing, so the page keeps it.
  */
 export function moveFocus(focus: Focus, key: string, glyphCounts: number[]): Focus | null {
@@ -511,6 +528,20 @@ export function moveFocus(focus: Focus, key: string, glyphCounts: number[]): Foc
   }
 }
 
+// ---- the rows drawn ---------------------------------------------------------------------
+
+/**
+ * The project's releases sit folded under its row (DESIGN §5.2): the rows to
+ * draw, and how many releases the fold holds. A release that heads the read
+ * (``?release=``) is its first row and is never folded.
+ */
+export function foldReleases(rows: Row[], open: boolean): { rows: Row[]; releases: number } {
+  const folded = (row: Row, index: number) => index > 0 && row.scope_kind === "release";
+  const releases = rows.filter(folded).length;
+  if (open || releases === 0) return { rows, releases };
+  return { rows: rows.filter((row, index) => !folded(row, index)), releases };
+}
+
 // ---- a phone ---------------------------------------------------------------------------
 
 /** How far into the box today and the nearest committed date ahead keep from its edges. */
@@ -518,7 +549,7 @@ const EDGE = 16;
 
 /**
  * Where the box opens scrolled on a narrow screen: on today and the committed
- * dates ahead of it. Today sits a quarter in, so the latest markers show too;
+ * dates ahead of it. Today sits a quarter in, so the latest changes show too;
  * when the nearest committed date ahead would fall past the right edge, the box
  * opens further on, as far as keeping today just inside the left edge. Never
  * past either end.
@@ -550,16 +581,15 @@ export type TableRow = {
   start: string;
   committed: string;
   moves: string;
-  p50: string;
-  p85: string;
+  likely: string;
   team: string;
   done: string;
   events: string[];
 };
 
 /**
- * One row as the table lists it: start, the committed date and its moves, 50%
- * and 85%, the team's date, done, and the events by date.
+ * One row as the table lists it: start, the committed date and its moves, the
+ * likely finish, the team's date, done, and what changed by date.
  */
 export function tableRow(row: Row, changeLabel: string): TableRow {
   const history = row.committed.history;
@@ -571,7 +601,13 @@ export function tableRow(row: Row, changeLabel: string): TableRow {
     .filter((_line, i) => history[i + 1].date !== history[i].date);
   const events = [...row.markers]
     .sort((a, b) => a.day.localeCompare(b.day))
-    .map((marker) => eventLine(marker, row, changeLabel));
+    .map((marker) => {
+      const entry = changeEntry(marker, row, changeLabel);
+      const keys = marker.items.map((item) => item.key);
+      const named =
+        keys.length > 0 ? ` (${keys.slice(0, 5).join(", ")}${keys.length > 5 ? ", …" : ""})` : "";
+      return `${shortDay(marker.day)}: ${entry.words}${named}`;
+    });
   return {
     row: row.row,
     name: row.name,
@@ -580,8 +616,9 @@ export function tableRow(row: Row, changeLabel: string): TableRow {
       : `${shortDay(row.start)} (no baseline)`,
     committed: row.committed.date ? shortDay(row.committed.date) : "No date",
     moves: moves.length > 0 ? moves.join("; ") : "Never moved",
-    p50: row.forecast ? shortDay(row.forecast.p50) : "—",
-    p85: row.forecast ? shortDay(row.forecast.p85) : (row.forecast_reason ?? "—"),
+    likely: row.forecast
+      ? likelyRange(row.forecast.p50, row.forecast.p85).replace(/^likely /, "")
+      : (row.forecast_reason ?? "—"),
     team: row.team.date
       ? `${shortDay(row.team.date)}${row.team.key ? ` (${row.team.key})` : ""}${
           row.team.undated > 0 ? `, ${row.team.undated} undated` : ""
@@ -592,25 +629,6 @@ export function tableRow(row: Row, changeLabel: string): TableRow {
     done: progressLabel(row) || "—",
     events,
   };
-}
-
-function eventLine(marker: Marker, row: Row, changeLabel: string): string {
-  const kind = glyphKind(marker);
-  if (kind === null) {
-    const index = row.committed.history.findIndex((tick) => tick.on === marker.day);
-    const tick = index >= 0 ? row.committed.history[index] : null;
-    const before = index > 0 ? row.committed.history[index - 1] : null;
-    const words = tick
-      ? before
-        ? `committed date moved ${shortDay(before.date)} → ${shortDay(tick.date)}`
-        : `committed date set to ${shortDay(tick.date)}`
-      : "committed date changed";
-    return `${shortDay(marker.day)}: ${words}`;
-  }
-  const keys = marker.items.map((item) => item.key);
-  const named =
-    keys.length > 0 ? ` (${keys.slice(0, 5).join(", ")}${keys.length > 5 ? ", …" : ""})` : "";
-  return `${shortDay(marker.day)}: ${glyphWords(kind, marker.count, changeLabel)}${named}`;
 }
 
 /** The server's sentence for a row; one exists for each row it sends. */

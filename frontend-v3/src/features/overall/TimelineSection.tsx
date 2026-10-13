@@ -8,7 +8,6 @@ import { useRole } from "../../app/role";
 import { PanelState, SectionHeader } from "../../components/PanelState";
 import { Fold } from "../../components/viz/Fold";
 import { readState } from "../../lib/readState";
-import { cn } from "../../lib/utils";
 import { DeliveryDateDialog } from "../reports/DeliveryDateDialog";
 import { Locked } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
@@ -17,20 +16,17 @@ import { ImpactWaterfall } from "./ImpactWaterfall";
 import { useBaselines, useDelivery, useImpact, useTimeline } from "./queries";
 import { BandOverTime } from "./SlipChart";
 import { TimelineChart } from "./TimelineChart";
-import { shortDay, type Row } from "./timeline";
+import { type Row } from "./timeline";
 import { VizCard } from "./viz";
-import { PERIODS, shadedPeriod } from "./waterfall";
 
 /**
- * Overall's Timeline (DESIGN §5): one row each for the project (or the release
- * picked above), its releases and its pods, from planning to the committed date,
- * with progress, the forecast band, the team's date, the committed date's
- * earlier values and the impact markers; then why the picked row's date moved.
- * It replaces "Dates by pod" and "How the date moved": the committed date's
- * history is each row's ticks, the band's movement is the waterfall, and the
- * daily band is the project row's "Band over time", one level down. The server
- * words every row for the reader: a scrum master gets the pods only, their own
- * whole and the others' dates. `?row=` picks the row the waterfall explains.
+ * Overall's Timeline (DESIGN §5, simplified by D78): one row each for the
+ * project (or the release picked above), its releases and its pods, from
+ * planning to the committed date, with what is done, the likely finish and a
+ * dot on each day something changed; then why the picked row's date moved, with
+ * its period chips; then, folded, how the likely date moved day by day. The
+ * server words every row for the reader: a scrum master gets the pods only,
+ * their own whole and the others' dates. `?row=` picks the row explained.
  */
 export function TimelineSection({
   projectId,
@@ -86,21 +82,7 @@ export function TimelineSection({
       <SectionHeader
         id="tl-h"
         title="Timeline"
-        meta={timelineMeta(head, data?.change_label ?? "CR")}
-        actions={
-          selected ? (
-            <Periods
-              value={effective}
-              planned={Boolean(selected.baseline)}
-              onChange={setPeriod}
-              onPlan={
-                !selected.baseline && access.setProjectDates && baselines.query.data
-                  ? () => setPlanning(true)
-                  : undefined
-              }
-            />
-          ) : undefined
-        }
+        meta="Each row from planning to its committed date: what is done, when it will likely finish, and what changed"
       />
       <PanelState {...readState(timeline.query)} onRetry={() => void timeline.query.refetch()}>
         {data ? (
@@ -110,7 +92,6 @@ export function TimelineSection({
                 data={data}
                 selected={selected?.row}
                 onSelect={pick}
-                shade={shadedPeriod(impact.query.data)}
                 actions={(row) =>
                   row.can_set_date && !access.readOnly ? (
                     <button
@@ -128,18 +109,26 @@ export function TimelineSection({
                 <Locked>{datesOff}</Locked>
               ) : null}
             </VizCard>
-            {head && head.access === "panel" ? (
-              <Fold summary={`Band over time: ${head.name}`}>
-                <BandOverTime projectId={projectId} releaseId={releaseId} />
-              </Fold>
-            ) : null}
             {selected ? (
               <ImpactWaterfall
                 row={selected}
                 read={impact.query}
                 measure={measure}
                 onMeasure={setMeasure}
+                period={effective}
+                planned={Boolean(selected.baseline)}
+                onPeriod={setPeriod}
+                onPlan={
+                  !selected.baseline && access.setProjectDates && baselines.query.data
+                    ? () => setPlanning(true)
+                    : undefined
+                }
               />
+            ) : null}
+            {head && head.access === "panel" ? (
+              <Fold summary="How the likely date moved, day by day">
+                <BandOverTime projectId={projectId} releaseId={releaseId} />
+              </Fold>
             ) : null}
           </div>
         ) : null}
@@ -155,71 +144,6 @@ export function TimelineSection({
         />
       ) : null}
     </section>
-  );
-}
-
-/** "Checkout Revamp · baseline 1 Oct · 18 → 22 requirements". */
-function timelineMeta(head: Row | undefined, changeLabel: string): string {
-  if (!head) {
-    return "Each pod from planning to its committed date, with what moved it";
-  }
-  const parts = [head.name];
-  parts.push(
-    head.baseline ? `baseline ${shortDay(head.baseline.day)}` : "no planning baseline yet",
-  );
-  if (head.scope) parts.push(`${head.scope.at_baseline} → ${head.scope.now} requirements`);
-  parts.push(`change label ${changeLabel}`);
-  return parts.join(" · ");
-}
-
-/**
- * The waterfall's period chips, which also shade the period on the axis. Before
- * planning is marked complete the first is "Mark planning complete", for whoever
- * may mark it; for anyone else it is not drawn.
- */
-function Periods({
-  value,
-  planned,
-  onChange,
-  onPlan,
-}: {
-  value: PeriodKind;
-  planned: boolean;
-  onChange: (period: PeriodKind) => void;
-  onPlan?: () => void;
-}) {
-  return (
-    <div role="group" aria-label="Period" className="flex flex-wrap gap-1.5">
-      {PERIODS.map((period) =>
-        period.kind === "since_baseline" && !planned ? (
-          onPlan ? (
-            <button
-              key={period.kind}
-              type="button"
-              onClick={onPlan}
-              className="h-8 rounded-full border border-dashed border-ink px-3 text-[12.5px] font-bold text-ink hover:bg-grey-fill max-sm:h-10"
-            >
-              Mark planning complete
-            </button>
-          ) : null
-        ) : (
-          <button
-            key={period.kind}
-            type="button"
-            aria-pressed={value === period.kind}
-            onClick={() => onChange(period.kind)}
-            className={cn(
-              "h-8 rounded-full border px-3 text-[12.5px] font-bold max-sm:h-10",
-              value === period.kind
-                ? "border-ink bg-ink text-(--op-viz-surface)"
-                : "border-grey-border bg-(--op-viz-surface) text-grey-body hover:bg-grey-fill",
-            )}
-          >
-            {period.label}
-          </button>
-        ),
-      )}
-    </div>
   );
 }
 
