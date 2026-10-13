@@ -1,10 +1,15 @@
-"""A pod two projects share has one forecast row a day, and a bad row never drops the day.
+"""A pod that works on two projects keeps no forecast row, and a bad row never drops the day.
 
-The forecast_days key is (tenant, scope kind, scope id, day): it has no project, so a
-pod that works on two projects offers the store the same key twice. Postgres refuses
-a multi-row INSERT ... ON CONFLICT DO UPDATE with a repeated key (CardinalityViolation)
-and saves none of its rows, which lost a whole day's rows for every project of a
-tenant. The demo data shares no pod between projects, which is why nothing caught it.
+The forecast_days key is (tenant, scope kind, scope id, day): it has no project. A pod's
+forecast is its part of one project's work, so a pod on two projects offers the store the
+same key twice, with two different forecasts. Postgres refuses a multi-row INSERT ... ON
+CONFLICT DO UPDATE with a repeated key (CardinalityViolation) and saves none of its rows,
+which lost a whole day's rows for every project of a tenant. The demo data shares no pod
+between projects, which is why nothing caught it.
+
+Decision D80: until the key has the project, such a pod keeps no row on the days it works
+on more than one project. Its today is live in each project's own context, and its past
+days are not kept yet; a row of one project is never read as the other's.
 """
 
 from __future__ import annotations
@@ -17,6 +22,8 @@ import pytest
 from structlog.testing import capture_logs
 
 from core.application.forecast_service import ForecastService
+from core.application.impact_service import ImpactPeriod, PeriodKind
+from core.domain.auth import Principal, Role
 from core.domain.forecast import (
     CommitmentScope,
     CommitmentScopeKind,
@@ -25,12 +32,14 @@ from core.domain.forecast import (
     Verdict,
     forecast_day_key,
 )
-from core.domain.graph import Pod, Project, Task
+from core.domain.graph import GraphEdge, Pod, Project, Task
+from core.domain.impact import Measure
 from infra.persistence.in_memory_forecast import InMemoryForecastDayRepository
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.persistence.postgres_forecast import PostgresForecastDayRepository
 from infra.registry import ServiceRegistry
 from infra.workflows import delivery_reports
+from tests.unit.test_delivery_impact import FULL
 from tests.unit.test_forecast import (
     NOW,
     TENANT,
@@ -45,10 +54,22 @@ from tests.unit.test_forecast_days import _service
 
 POD_KIND = CommitmentScopeKind.POD
 PROJECT_KIND = CommitmentScopeKind.PROJECT
+SHARED_EVENT = "forecast_day_not_kept_pod_on_several_projects"
+#: The day Audit starts working with Payments Pod, when a world says so (a Monday).
+JOINED = date(2026, 9, 28)
 
 
 def _scope(kind: CommitmentScopeKind, scope_id: str, project_id: str) -> CommitmentScope:
     return CommitmentScope(kind=kind, id=scope_id, project_id=project_id)
+
+
+PAY_IN_CHECKOUT = _scope(POD_KIND, "pod-pay", "checkout")
+PAY_IN_AUDIT = _scope(POD_KIND, "pod-pay", "audit")
+
+
+class _OnTheDay(ServiceRegistry):
+    def _tenant_today(self) -> date:
+        return TODAY
 
 
 class _PostgresLikeForecastDays(InMemoryForecastDayRepository):
@@ -67,14 +88,16 @@ class _PostgresLikeForecastDays(InMemoryForecastDayRepository):
         await super().save(records)
 
 
-async def _shared_pod_registry() -> tuple[ServiceRegistry, InMemoryGraphStore]:
-    """Checkout and Audit, and the Payments pod working on both, each with its own tickets.
+async def _shared_pod_registry(
+    *, joined: date | None = None
+) -> tuple[ServiceRegistry, InMemoryGraphStore]:
+    """Checkout and Audit, and Payments Pod working on both, each with its own tickets.
 
-    Audit sorts first by id and last by name, so the project a shared pod is kept under
-    can only be the one the rule names, never the one a listing happens to give first.
+    Audit sorts first by id and last by name. Payments Pod works on Audit from ``joined``,
+    else always. Storefront works on Checkout only, and Audit Pod on Audit only.
     """
     registry, store = await _registry()
-    for project in (
+    for node in (
         Project(
             tenant_id=TENANT,
             id="checkout",
@@ -86,9 +109,17 @@ async def _shared_pod_registry() -> tuple[ServiceRegistry, InMemoryGraphStore]:
         ),
         Pod(tenant_id=TENANT, id="pod-aud", name="Audit Pod"),
     ):
-        await store.upsert_node(project)
-    for parent, child in (("audit", "pod-pay"), ("audit", "pod-aud")):
-        await store.add_edge(_contains(parent, child))
+        await store.upsert_node(node)
+    await store.add_edge(_contains("audit", "pod-aud"))
+    await store.add_edge(
+        GraphEdge(
+            tenant_id=TENANT,
+            from_node_id="audit",
+            to_node_id="pod-pay",
+            kind=_contains("audit", "pod-pay").kind,
+            valid_from=joined,
+        )
+    )
     for key, status, pod in (
         ("AUD-7", "In Progress", "pod-pay"),
         ("AUD-8", "In QA", "pod-pay"),
@@ -104,6 +135,8 @@ async def _shared_pod_registry() -> tuple[ServiceRegistry, InMemoryGraphStore]:
             )
         )
         await store.add_edge(_contains(pod, key))
+    # The registry reads today as TODAY, so the timeline and the impact read can be asked.
+    registry = _OnTheDay(registry.settings, graph_store=store)
     await _keep_history(registry)
     await _keep_audit_history(registry)
     return registry, store
@@ -131,114 +164,138 @@ async def _keep_audit_history(registry: ServiceRegistry) -> None:
         day += timedelta(days=1)
 
 
-def _working_days_before_today(days: int) -> int:
-    return sum(1 for offset in range(1, days + 1) if (TODAY - timedelta(days=offset)).weekday() < 5)
+def _working_days(first: date, last: date) -> list[date]:
+    return [
+        first + timedelta(days=offset)
+        for offset in range((last - first).days + 1)
+        if (first + timedelta(days=offset)).weekday() < 5
+    ]
+
+
+def _manager() -> Principal:
+    return Principal(tenant_id=TENANT, subject="dev-dana", roles=frozenset({Role.MGR}))
 
 
 # --- The hourly run ------------------------------------------------------------------
 
 
-async def test_a_pod_two_projects_share_gets_one_row_a_day_and_every_project_its_own() -> None:
+async def test_a_pod_on_two_projects_keeps_no_row_and_every_other_scope_keeps_its_own() -> None:
     registry, _store = await _shared_pod_registry()
     kept = _PostgresLikeForecastDays()
     service = _service(registry, kept=kept)
 
     recorded = await service.record_forecast_days(TENANT, TODAY)
 
-    # Two projects and three pods: Payments, which both work with, counts once.
-    assert recorded == 5
-    offered = {(row.scope.kind, row.scope.id): row for row in kept.offered}
-    assert len(offered) == len(kept.offered) == 5
-    assert {scope_id for (kind, scope_id) in offered if kind is PROJECT_KIND} == {
-        "checkout",
-        "audit",
+    # Two projects and the two pods that work on one project each; Payments, on both, none.
+    assert recorded == 4
+    offered = {(row.scope.kind, row.scope.id, row.scope.project_id) for row in kept.offered}
+    assert offered == {
+        (PROJECT_KIND, "checkout", "checkout"),
+        (PROJECT_KIND, "audit", "audit"),
+        (POD_KIND, "pod-store", "checkout"),
+        (POD_KIND, "pod-aud", "audit"),
     }
-    assert {scope_id for (kind, scope_id) in offered if kind is POD_KIND} == {
-        "pod-pay",
-        "pod-store",
-        "pod-aud",
-    }
-    for project_id in ("checkout", "audit"):
-        assert await kept.list_between(
-            TENANT, _scope(PROJECT_KIND, project_id, project_id), TODAY, TODAY
-        )
+    for scope in (PAY_IN_CHECKOUT, PAY_IN_AUDIT):
+        assert await kept.list_between(TENANT, scope, date(2026, 1, 1), TODAY) == []
 
 
-async def test_a_shared_pods_row_is_its_part_of_the_first_project_by_id() -> None:
+async def test_a_pod_on_one_project_is_kept_as_it_always_was() -> None:
     registry, _store = await _shared_pod_registry()
     kept = _PostgresLikeForecastDays()
     service = _service(registry, kept=kept)
+    alone, _alone_store = await _registry()
+    await _keep_history(alone)
+    alone_kept = InMemoryForecastDayRepository()
+    await _service(alone, kept=alone_kept).record_forecast_days(TENANT, TODAY)
 
     await service.record_forecast_days(TENANT, TODAY)
 
-    # Audit, though a listing by name gives Checkout first.
-    under_audit = _scope(POD_KIND, "pod-pay", "audit")
-    under_checkout = _scope(POD_KIND, "pod-pay", "checkout")
-    (row,) = await kept.list_between(TENANT, under_audit, TODAY, TODAY)
-    assert await kept.list_between(TENANT, under_checkout, TODAY, TODAY) == []
-    # The row and its attribution are one computation, the one a live read of that scope makes.
-    assert row == await service.forecast_day(TENANT, under_audit, TODAY)
+    storefront = _scope(POD_KIND, "pod-store", "checkout")
+    (row,) = await kept.list_between(TENANT, storefront, TODAY, TODAY)
+    # The same row the tenant kept with no second project, and what a live read computes.
+    assert row == (await alone_kept.list_between(TENANT, storefront, TODAY, TODAY))[0]
+    assert row == await service.forecast_day(TENANT, storefront, TODAY)
     assert row.attribution is not None
-    # The pod's part of Audit: its two Audit tickets, not the Checkout tickets it also holds.
-    delivery = await service.project_delivery(TENANT, "audit", TODAY)
-    (part,) = [pod for pod in delivery.pods if pod.scope == under_audit]
-    assert (
-        (row.remaining, row.unit)
-        == (part.history.remaining, part.history.unit)
-        == (2, "requirements")
-    )
-    # A pod only one project works on is kept under it as before.
-    (storefront,) = await kept.list_between(
-        TENANT, _scope(POD_KIND, "pod-store", "checkout"), TODAY, TODAY
-    )
-    assert storefront.attribution is not None
+    audit_pod = _scope(POD_KIND, "pod-aud", "audit")
+    (kept_audit_pod,) = await kept.list_between(TENANT, audit_pod, TODAY, TODAY)
+    assert kept_audit_pod == await service.forecast_day(TENANT, audit_pod, TODAY)
 
 
-async def test_a_later_run_the_same_day_replaces_the_shared_pods_one_row() -> None:
+async def test_one_info_line_names_the_pod_and_the_day_it_was_not_kept() -> None:
     registry, _store = await _shared_pod_registry()
+    service = _service(registry, kept=InMemoryForecastDayRepository())
+
+    with capture_logs() as logs:
+        await service.record_forecast_days(TENANT, TODAY)
+
+    (line,) = [log for log in logs if log["event"] == SHARED_EVENT]
+    assert line["log_level"] == "info"
+    assert (line["tenant_id"], line["day"], line["pod_id"]) == (TENANT, "2026-10-05", "pod-pay")
+    assert line["project_ids"] == "audit,checkout"
+    assert not [log for log in logs if log["log_level"] in ("warning", "error")]
+
+
+async def test_a_pod_that_joins_a_second_project_is_kept_until_the_day_it_does() -> None:
+    registry, _store = await _shared_pod_registry(joined=JOINED)
     kept = _PostgresLikeForecastDays()
     service = _service(registry, kept=kept)
+    before = JOINED - timedelta(days=3)  # a Friday: Payments works on Checkout alone
 
-    first = await service.record_forecast_days(TENANT, TODAY)
-    second = await service.record_forecast_days(TENANT, TODAY)
+    await service.record_forecast_days(TENANT, before)
+    alone = [row for row in kept.offered if row.scope.id == "pod-pay"]
+    with capture_logs() as logs:
+        await service.record_forecast_days(TENANT, JOINED)
 
-    assert first == second == 5
-    assert len(kept.offered) == 10
-    assert (
-        len(await kept.list_between(TENANT, _scope(POD_KIND, "pod-pay", "audit"), TODAY, TODAY))
-        == 1
-    )
+    assert [(row.scope.project_id, row.day) for row in alone] == [("checkout", before)]
+    assert [row.scope.id for row in kept.offered if row.day == JOINED].count("pod-pay") == 0
+    assert len([log for log in logs if log["event"] == SHARED_EVENT]) == 1
 
 
 # --- The reconstruction --------------------------------------------------------------
 
 
-async def test_the_reconstruction_rebuilds_a_shared_pod_once_a_day_under_the_same_project() -> None:
+async def test_the_reconstruction_rebuilds_no_day_of_a_pod_on_two_projects() -> None:
     registry, _store = await _shared_pod_registry()
     kept = _PostgresLikeForecastDays()
     service = _service(registry, kept=kept)
 
-    summary = await service.reconstruct_forecast_days(TENANT, TODAY, days=14)
+    with capture_logs() as logs:
+        summary = await service.reconstruct_forecast_days(TENANT, TODAY, days=14)
 
-    days = _working_days_before_today(14)
-    # Two projects and three pods, one row each on each working day with a snapshot.
-    assert summary.scopes == 5
-    assert summary.written == 5 * days
-    rows = await kept.list_between(
-        TENANT, _scope(POD_KIND, "pod-pay", "audit"), TODAY - timedelta(days=14), TODAY
-    )
+    days = len(_working_days(TODAY - timedelta(days=14), TODAY - timedelta(days=1)))
+    # Two projects and the two pods that work on one project, one row a working day each.
+    assert summary.scopes == 4
+    assert summary.written == 4 * days
+    window = (TODAY - timedelta(days=14), TODAY)
+    for scope in (PAY_IN_CHECKOUT, PAY_IN_AUDIT):
+        assert await kept.list_between(TENANT, scope, *window) == []
+    rows = await kept.list_between(TENANT, _scope(POD_KIND, "pod-store", "checkout"), *window)
     assert len(rows) == days and all(row.reconstructed for row in rows)
-    assert (
-        await kept.list_between(
-            TENANT, _scope(POD_KIND, "pod-pay", "checkout"), TODAY - timedelta(days=14), TODAY
-        )
-        == []
-    )
-    # The shared pod's rows carry their breakdown, from the day before in the same scope.
-    assert [row.attribution is not None for row in rows[1:]] == [True] * (days - 1)
+    # One info line for each day of the 14 it was not rebuilt.
+    says = [log for log in logs if log["event"] == SHARED_EVENT]
+    assert len(says) == 14
+    assert {log["pod_id"] for log in says} == {"pod-pay"}
+    assert {log["day"] for log in says} == {
+        (TODAY - timedelta(days=offset)).isoformat() for offset in range(1, 15)
+    }
 
 
-async def test_the_reconstruction_leaves_the_shared_pods_hourly_row_where_it_was_kept() -> None:
+async def test_the_reconstruction_rebuilds_the_days_before_a_pod_took_a_second_project() -> None:
+    registry, _store = await _shared_pod_registry(joined=JOINED)
+    kept = _PostgresLikeForecastDays()
+    service = _service(registry, kept=kept)
+
+    await service.reconstruct_forecast_days(TENANT, TODAY, days=14)
+
+    window = (TODAY - timedelta(days=14), TODAY)
+    rows = await kept.list_between(TENANT, PAY_IN_CHECKOUT, *window)
+    # Payments Pod worked on Checkout alone until Sun 27 Sep: those working days, and no more.
+    assert [row.day for row in rows] == _working_days(window[0], JOINED - timedelta(days=1))
+    assert all(row.reconstructed for row in rows)
+    assert await kept.list_between(TENANT, PAY_IN_AUDIT, *window) == []
+
+
+async def test_the_reconstruction_leaves_what_the_hourly_run_kept_where_it_was_kept() -> None:
     registry, _store = await _shared_pod_registry()
     kept = _PostgresLikeForecastDays()
     service = _service(registry, kept=kept)
@@ -247,33 +304,114 @@ async def test_the_reconstruction_leaves_the_shared_pods_hourly_row_where_it_was
     await service.record_forecast_days(TENANT, friday)
     summary = await service.reconstruct_forecast_days(TENANT, TODAY, days=10)
 
-    # The five scopes the Friday kept are left as they were: the pod under the same project.
-    assert summary.kept == 5
-    (row,) = [
-        row
-        for row in await kept.list_between(
-            TENANT, _scope(POD_KIND, "pod-pay", "audit"), friday, friday
+    # The four scopes the Friday kept are left as they were.
+    assert summary.kept == 4
+
+
+# --- The readers ---------------------------------------------------------------------
+
+
+async def test_each_projects_timeline_shows_the_shared_pods_live_forecast_for_that_project() -> (
+    None
+):
+    registry, _store = await _shared_pod_registry()
+    service = registry.forecast_service()
+    await service.reconstruct_forecast_days(TENANT, TODAY, days=14)
+    await service.record_forecast_days(TENANT, TODAY)
+    timeline = registry.timeline_service()
+
+    seen: dict[str, tuple[object, ...]] = {}
+    for project_id in ("checkout", "audit"):
+        live = await service.project_delivery(TENANT, project_id, TODAY)
+        (part,) = [pod for pod in live.pods if pod.scope.id == "pod-pay"]
+        view = await timeline.project_timeline(_manager(), project_id, as_of=TODAY)
+        (row,) = [row for row in view.rows if row.row_id == "pod:pod-pay"]
+        # Today's forecast of the pod's part of this project, computed now, not a kept row.
+        assert row.scope.project_id == project_id and row.forecast_on == TODAY
+        assert (row.p50, row.p85) == (part.history.p50, part.history.p85)
+        assert row.start == TODAY  # no kept history: its span starts today
+        seen[project_id] = (row.done, row.total, row.in_scope, row.team_date)
+    # And the pod's own timeline lists its row under each project, each its own part.
+    pod_view = await timeline.pod_timeline(_manager(), "pod-pay", as_of=TODAY)
+    assert sorted(row.scope.project_id for row in pod_view.rows) == ["audit", "checkout"]
+    assert all(row.forecast_on == TODAY and row.start == TODAY for row in pod_view.rows)
+    assert seen["checkout"] != seen["audit"]
+
+
+async def test_a_row_kept_under_one_project_is_never_read_as_the_pod_of_the_other() -> None:
+    registry, _store = await _shared_pod_registry()
+    service = registry.forecast_service()
+    friday = TODAY - timedelta(days=3)
+    # What an earlier run left: the pod's part of Audit on a past day, with a date of its own.
+    stale = ForecastDayRecord(
+        tenant_id=TENANT,
+        scope=PAY_IN_AUDIT,
+        day=friday,
+        p50=date(2027, 1, 4),
+        p85=date(2027, 2, 1),
+        verdict=Verdict.OFF_TRACK,
+        target_date=None,
+        team_latest=None,
+        team_latest_key=None,
+        remaining=2,
+        unit="requirements",
+        sample_days=12,
+        completed_in_sample=3,
+        min_sample_days=10,
+        computed_at=NOW,
+    )
+    await registry.forecast_day_repository().save([stale])
+    timeline = registry.timeline_service()
+
+    assert await service.kept_days(TENANT, PAY_IN_CHECKOUT, friday, friday) == []
+    assert await service.kept_days(TENANT, PAY_IN_AUDIT, friday, friday) == [stale]
+    for project_id, start in (("checkout", TODAY), ("audit", friday)):
+        view = await timeline.project_timeline(_manager(), project_id, as_of=TODAY)
+        (row,) = [row for row in view.rows if row.row_id == "pod:pod-pay"]
+        # Today is live in every project; only Audit's own history reaches back to Friday.
+        assert row.start == start
+        assert row.p50 != date(2027, 1, 4) and row.forecast_on == TODAY
+
+
+async def test_the_impact_read_of_a_shared_pod_is_its_live_forecast_with_no_kept_history() -> None:
+    registry, _store = await _shared_pod_registry()
+    forecasts = registry.forecast_service()
+    await forecasts.reconstruct_forecast_days(TENANT, TODAY, days=14)
+    await forecasts.record_forecast_days(TENANT, TODAY)
+
+    for scope in (PAY_IN_CHECKOUT, PAY_IN_AUDIT):
+        live = await forecasts.project_delivery(TENANT, scope.project_id, TODAY)
+        (part,) = [pod for pod in live.pods if pod.scope == scope]
+        view = await registry.delivery_impact_service().impact(
+            TENANT,
+            scope,
+            period=ImpactPeriod(kind=PeriodKind.LAST_30_DAYS),
+            measure=Measure.P85,
+            as_of=TODAY,
+            access=FULL,
         )
-    ]
-    assert not row.reconstructed
+        assert view.start is not None and view.end is not None
+        # One row, today's, computed in the project's context: no past day, no other project's.
+        assert (view.start.day, view.end.day) == (TODAY, TODAY)
+        assert (view.end.p50, view.end.p85) == (part.history.p50, part.history.p85)
+        assert view.drivers == () and view.reconstructed_days == 0
 
 
 # --- The activity ---------------------------------------------------------------------
 
 
-async def test_the_snapshot_run_keeps_every_scope_of_the_day_when_a_pod_is_shared(
+async def test_the_snapshot_run_keeps_what_it_can_of_the_day_when_a_pod_is_shared(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry, _store = await _shared_pod_registry()
     monkeypatch.setattr(delivery_reports, "_service_registry", lambda: registry)
-    monkeypatch.setattr(registry, "_tenant_today", lambda: TODAY)
 
     with capture_logs() as logs:
         result = await delivery_reports.run_delivery_snapshot_activity(
             delivery_reports.DeliverySnapshotInput(tenant_id=TENANT, observed_at=NOW.isoformat())
         )
 
-    assert result.projects_recorded == 2 and result.forecasts_recorded == 5
+    assert result.projects_recorded == 2 and result.forecasts_recorded == 4
     assert not [log for log in logs if log["log_level"] in ("warning", "error")]
 
 

@@ -263,6 +263,14 @@ async def test_a_key_offered_twice_in_one_save_keeps_the_last_and_the_rest_of_th
             ("project", "project-checkout", "project-checkout", date(2026, 11, 3)),
             ("project", "project-identity", "project-identity", date(2026, 11, 9)),
         ]
+        # The key has no project, so a read is by the scope's project too: the row kept under
+        # one project is never the pod's row under the other.
+        under_identity, under_checkout = (
+            CommitmentScope(kind=CommitmentScopeKind.POD, id="pod-platform", project_id=project)
+            for project in ("project-identity", "project-checkout")
+        )
+        assert len(await repository.list_between(tenant, under_identity, day, day)) == 1
+        assert await repository.list_between(tenant, under_checkout, day, day) == []
 
         # A later run replaces the rows, and a repeat across the 100-row batch edge is still one.
         many = [
