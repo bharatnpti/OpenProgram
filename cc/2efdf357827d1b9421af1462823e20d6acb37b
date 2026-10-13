@@ -1,0 +1,65 @@
+backend/api/dtos.py
+  s_5f08a60d42019a::t_25f7edd8647a28 1737-1742,1753-1755
+backend/api/people_projection.py
+  s_5f08a60d42019a::t_a2163b7da9bf09 25,34,36,92-94
+backend/api/routers/persona.py
+  s_5f08a60d42019a::t_46ca29093571b1 427-430,434-435
+backend/api/today_dtos.py
+  s_5f08a60d42019a::t_abd95c0f904664 147-152,161-169
+backend/core/application/attention.py
+  s_5f08a60d42019a::t_776d2f90148512 31,218-219,241-245,459-460,504-514,516-519,522,526-527,530,757-760,768-769,780,851,853-854,1182
+backend/core/application/brief_facts.py
+  s_5f08a60d42019a::t_4346ac485c9883 158-160,463,470-475
+backend/core/application/narrative_brief_service.py
+  s_5f08a60d42019a::t_33365ef800a39c 19,201-202,258-263,265,335-337,350
+backend/core/application/people_words.py
+  s_5f08a60d42019a::t_7209c2ad3804e3 16-19,37,39-40,44-47,99-101,181-192,218,220,223,226
+backend/core/application/persona_views.py
+  s_5f08a60d42019a::t_8adadbdbc6e092 24,1278,1447-1450,2469-2472
+backend/core/application/portfolio_privacy.py
+  s_5f08a60d42019a::t_2d4cf55a2ae8ae 25,29,31,39-47,77-79,87-92,96,98-121,124-125,127-128,131,135,205-206
+backend/core/application/today_service.py
+  s_5f08a60d42019a::t_8b509e5421ccfe 26,122-123,204-205,233-234
+backend/tests/unit/test_exec_names.py
+  s_5f08a60d42019a::t_46dfb8323265ad 115-133,220-224
+backend/tests/unit/test_narrative_brief_service.py
+  s_5f08a60d42019a::t_551888bba547fa 466-469,471-473,492-493,503
+backend/tests/unit/test_people_words.py
+  s_5f08a60d42019a::t_429d4b16574781 9,12,15,116,118-122
+backend/tests/unit/test_portfolio_privacy.py
+  s_5f08a60d42019a::t_b5873982263ba0 19,212,215-216
+backend/tests/unit/test_small_group.py
+  s_5f08a60d42019a::t_c0065d89eddfb0 1,6-8,20-24,44-45,69-70,76,79-83,89,92,95,103,109,113,117,119-124,145,153,155-160,185-186,190,192-251
+frontend-v2/src/api/generated.ts
+  s_5f08a60d42019a::t_5aa679b7acf368 2928-2931,7282-7283,10106-10107
+frontend-v2/src/api/openapi.json
+  s_5f08a60d42019a::t_66f78e4e51463e 12138,23708-23716,30884-30892
+frontend-v3/src/api/generated.ts
+  s_5f08a60d42019a::t_c0309881481c59 2928-2931,7282-7283,10106-10107
+frontend-v3/src/api/openapi.json
+  s_5f08a60d42019a::t_9acbcd8b947d39 12138,23708-23716,30884-30892
+frontend-v3/src/features/today/TodayCards.tsx
+  s_5f08a60d42019a::t_263437318e8777 126
+frontend-v3/src/pages/TodayPage.tsx
+  s_5f08a60d42019a::t_b0fe5dc8c8d8db 70-78
+frontend/src/api/generated.ts
+  s_5f08a60d42019a::t_73399101627134 2928-2931,7295-7296,10119-10120
+frontend/src/api/openapi.json
+  s_5f08a60d42019a::t_06716a4d06364a 12138,23708-23716,30884-30892
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cc2efdf357827d1b9421af1462823e20d6acb37b",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
