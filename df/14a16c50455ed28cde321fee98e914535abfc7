@@ -79,9 +79,12 @@ frontend-v3/src/features/overall/queries.ts
   s_22b399281058a2::t_3ea209a53db929 155
 frontend-v3/src/pages/OverallPage.tsx
   s_22b399281058a2::t_0c3d3b9cf2252d 1,17-18,23-26,36-37,63-64,88-89,91,93-114,116-120,129,133
+  s_ed47025cfc8469::t_933e90b9efae98 28-30
+  s_ed47025cfc8469::t_87dfdf1fde2c5e 27,38-39,115
 frontend-v3/src/features/overall/sections.ts
   s_22b399281058a2::t_8fbe05817c4f8d 39
   s_22b399281058a2::t_f3b58cedc2b25f 1-15,17-38,40-41
+  s_ed47025cfc8469::t_ecd5eb83304484 16
 frontend-v3/src/features/overall/timeline.test.ts
   s_22b399281058a2::t_a693396d8775c4 1-10,12-115,123-168,170-238,241-261,268-304,307,312-358,375
   s_22b399281058a2::t_9811054c89952e 116-122
