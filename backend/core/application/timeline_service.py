@@ -59,10 +59,15 @@ from core.domain.forecast import (
     CommitmentScope,
     CommitmentScopeKind,
     ForecastDayRecord,
+    HistoryForecast,
     OpenItem,
     Release,
+    TeamForecast,
     Verdict,
     team_forecast,
+)
+from core.domain.forecast import (
+    verdict as judged,
 )
 from core.domain.graph import GraphNode, NodeKind
 from core.domain.impact import POINTS_UNIT
@@ -408,7 +413,12 @@ class TimelineService:
             else ()
         )
         added = [marker for marker in markers if marker.kind == "scope_added"]
-        verdict = latest.verdict if latest is not None else None
+        jira_date = (
+            await self._forecasts.jira_release_date(tenant_id, release, as_of)
+            if release is not None
+            else None
+        )
+        verdict = _verdict(latest, committed if committed is not None else jira_date, team)
         sentence = row_sentence(
             SentenceParts(
                 name=name,
@@ -439,11 +449,7 @@ class TimelineService:
             start=start,
             committed=committed,
             committed_history=history,
-            jira_release_date=(
-                await self._forecasts.jira_release_date(tenant_id, release, as_of)
-                if release is not None
-                else None
-            ),
+            jira_release_date=jira_date,
             p50=p50 if banded else None,
             p85=p85 if banded else None,
             forecast_on=latest.day if latest is not None else None,
@@ -599,3 +605,29 @@ def _progress(
     if snapshot.has_points and snapshot.points_total > 0:
         return snapshot.points_done, snapshot.points_total, POINTS_UNIT
     return float(snapshot.done), float(snapshot.total), "requirements"
+
+
+def _verdict(
+    latest: ForecastDayRecord | None, target: date | None, team: TeamForecast
+) -> Verdict | None:
+    """The row's verdict: the kept day's, unless the date it was measured against has
+    changed since (a date set or moved after the hourly run kept the day). Then the kept
+    band is judged against today's date by the forecast's own rule, with the team's
+    dates as they stand: a comparison of stored dates, never a forecast run."""
+    if latest is None:
+        return None
+    if target == latest.target_date:
+        return latest.verdict
+    return judged(
+        target,
+        HistoryForecast(
+            p50=latest.p50,
+            p85=latest.p85,
+            remaining=latest.remaining,
+            unit=latest.unit,
+            sample_days=latest.sample_days,
+            completed_in_sample=latest.completed_in_sample,
+            needed_days=latest.min_sample_days,
+        ),
+        team,
+    )

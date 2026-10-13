@@ -21,7 +21,7 @@ from core.domain.auth import Role
 from core.domain.blockers import BlockerResolutionReason, BlockerSource, DeveloperBlocker
 from core.domain.delivery import DEFAULT_STAGE_MAPPING
 from core.domain.errors import AuthorizationDenied
-from core.domain.forecast import ReleaseMatch, ReleaseMatchKind, Verdict
+from core.domain.forecast import DateChange, ReleaseMatch, ReleaseMatchKind, Verdict
 from core.domain.graph import Task
 from core.domain.hygiene import HygieneFinding, HygieneState
 from core.domain.impact import Measure
@@ -267,6 +267,40 @@ async def test_an_addition_without_the_label_is_ringed_while_jira_hygiene_has_it
         await service.pod_timeline(_principal(Role.DEV, "dev-asha"), "pod-pay", as_of=TODAY)
     ).rows
     assert all(item.hygiene is None for marker in row.markers for item in marker.items)
+
+
+async def test_a_date_set_after_the_day_was_kept_is_judged_against_the_kept_band() -> None:
+    registry, _store = await _reconstructed()
+    service = registry.timeline_service()
+    manager = _principal(Role.MGR)
+
+    async def moved_to(target: date | None) -> object:
+        await registry.commitment_repository().append(
+            DateChange(
+                tenant_id=TENANT,
+                scope=PROJECT,
+                target_date=target,
+                changed_at=datetime(2026, 10, 12, 8, 0, tzinfo=UTC),
+                changed_by="dev-mina",
+                note="",
+            )
+        )
+        return (await service.project_timeline(manager, "checkout", as_of=TODAY)).rows[0]
+
+    before = (await service.project_timeline(manager, "checkout", as_of=TODAY)).rows[0]
+    kept = (await registry.forecast_day_repository().list_between(TENANT, PROJECT, FRIDAY, FRIDAY))[
+        0
+    ]
+    assert before.verdict is kept.verdict and kept.target_date == date(2026, 11, 27)
+
+    # Today has no kept row yet: Friday's band, judged against the date set this morning.
+    late = await moved_to(date(2027, 12, 31))
+    assert late.committed == date(2027, 12, 31)
+    assert late.p85 == kept.p85 and late.verdict is Verdict.ON_TRACK  # type: ignore[attr-defined]
+    early = await moved_to(date(2026, 10, 13))
+    assert early.verdict is Verdict.OFF_TRACK  # type: ignore[attr-defined]
+    cleared = await moved_to(None)
+    assert cleared.verdict is Verdict.NO_DATE  # type: ignore[attr-defined]
 
 
 async def test_a_past_day_is_read_as_it_stood_that_day() -> None:
