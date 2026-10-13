@@ -416,3 +416,23 @@ export type ProjectAsksResponse = components["schemas"]["ProjectAsksResponse"];
 export type ProjectAskDto = components["schemas"]["ProjectAskDto"];
 export type TodayCountsResponse = components["schemas"]["TodayCountsResponse"];
 export type RepliesCountDto = components["schemas"]["RepliesCountDto"];
+
+// The portfolio's bulk reads (D90): Will we make the date?, Scope control, Early warnings.
+export type PortfolioDeliveryResponse = components["schemas"]["PortfolioDeliveryResponse"];
+export type PortfolioProjectDto = components["schemas"]["PortfolioProjectDto"];
+export type PortfolioPodDto = components["schemas"]["PortfolioPodDto"];
+export type PortfolioReleaseDto = components["schemas"]["PortfolioReleaseDto"];
+export type PortfolioMarkDto = components["schemas"]["PortfolioMarkDto"];
+export type PortfolioProgramDto = components["schemas"]["PortfolioProgramDto"];
+export type VerdictCountsDto = components["schemas"]["VerdictCountsDto"];
+export type AgainstPlanDto = components["schemas"]["AgainstPlanDto"];
+export type VerdictFilter = components["schemas"]["VerdictFilter"];
+export type PortfolioSort = components["schemas"]["PortfolioSort"];
+export type PortfolioScopeResponse = components["schemas"]["PortfolioScopeResponse"];
+export type ScopeProjectDto = components["schemas"]["ScopeProjectDto"];
+export type ScopeFindingDto = components["schemas"]["ScopeFindingDto"];
+export type ScopeRuleCountDto = components["schemas"]["ScopeRuleCountDto"];
+export type PortfolioWarningsResponse = components["schemas"]["PortfolioWarningsResponse"];
+export type WarningGroupDto = components["schemas"]["WarningGroupDto"];
+export type WarningItemDto = components["schemas"]["WarningItemDto"];
+export type WarningKind = components["schemas"]["WarningKind"];

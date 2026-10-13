@@ -1,75 +1,80 @@
+import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
+import { apiClient } from "../api/client";
 import { useRole } from "../app/role";
 import { PanelState, SectionHeader } from "../components/PanelState";
 import { BaselineSection } from "../features/overall/BaselineSection";
 import { HygieneSection } from "../features/overall/HygieneSection";
 import { useReadsReadiness } from "../features/overall/queries";
-import { defaultProject } from "../features/project/projectChoice";
-import { useProjectOptions } from "../features/project/useProjectOptions";
+import { BaselineTable, HygieneTable } from "../features/scope/ScopeTables";
+import { planningWords } from "../features/scope/scopeWords";
 
 /**
- * Scope control (`/scope`): what joined after planning, and whether Jira is
- * tidy, one project at a time (`?project=`). For now Overall's planning
- * baseline and Jira hygiene sections as they were; lane P builds the table
- * across projects.
+ * Scope control (`/scope`): what joined each project after planning, and whether
+ * Jira is tidy, in one read across projects (`GET /portfolio/scope`, D90). A
+ * project picked (`?project=`) opens its own planning baseline and Jira hygiene
+ * below, where they are acted on, as each reader's project board allows.
  */
 export function ScopePage() {
   const { overall } = useRole().access;
   const [search, setSearch] = useSearchParams();
-  const choice = useProjectOptions();
+  const scope = useQuery({
+    queryKey: ["portfolio", "scope"],
+    queryFn: () => apiClient.portfolioScope(),
+  });
   const asked = search.get("project");
-  const projectId =
-    (asked && choice.options.some((option) => option.id === asked) ? asked : null) ??
-    defaultProject(choice.options, choice.recent) ??
-    "";
+  const picked =
+    asked && scope.data?.projects.some((project) => project.id === asked) ? asked : null;
+  const project = scope.data?.projects.find((item) => item.id === picked) ?? null;
   // Jira hygiene follows the readiness board's rule: a scrum master their pods' projects.
-  const hygiene = useReadsReadiness(projectId);
+  const hygiene = useReadsReadiness(picked ?? "");
+
+  const pick = (projectId: string) =>
+    setSearch(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (next.get("project") === projectId) next.delete("project");
+        else next.set("project", projectId);
+        return next;
+      },
+      { replace: true },
+    );
+
   return (
-    <>
+    <div className="op-viz">
       <SectionHeader
         title="Scope control"
-        meta="What joined after planning, and whether Jira is tidy."
+        meta="What joined each project after planning, and whether Jira is tidy."
       />
       <PanelState
-        isLoading={choice.loading}
-        error={choice.error}
-        isEmpty={choice.options.length === 0}
+        isLoading={scope.isLoading}
+        error={scope.error}
+        onRetry={() => void scope.refetch()}
+        isEmpty={scope.data?.projects.length === 0}
         emptyText="No project is yours to read yet."
       >
-        <div className="mb-6">
-          <label htmlFor="scope-project" className="sr-only">
-            Project
-          </label>
-          <select
-            id="scope-project"
-            className="h-10 max-w-full rounded-full border border-grey-border bg-white px-4 text-[14px] font-bold"
-            value={projectId}
-            onChange={(event) =>
-              setSearch(
-                (current) => {
-                  const next = new URLSearchParams(current);
-                  next.set("project", event.target.value);
-                  return next;
-                },
-                { replace: true },
-              )
-            }
-          >
-            {choice.options.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        {projectId ? (
-          <div className="op-viz grid grid-cols-[minmax(0,1fr)] gap-10 max-sm:gap-8">
-            {overall.forecast ? <BaselineSection projectId={projectId} releaseId="" /> : null}
-            {hygiene ? <HygieneSection projectId={projectId} /> : null}
+        {scope.data ? (
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+            <BaselineTable scope={scope.data} picked={picked} onPick={pick} />
+            <HygieneTable scope={scope.data} />
+            {project ? (
+              <section aria-labelledby="scope-project" className="grid gap-6">
+                <div>
+                  <h3 id="scope-project" className="text-[18px] font-extrabold">
+                    {project.name}
+                  </h3>
+                  {planningWords(project) ? (
+                    <p className="mt-1 text-[13px] text-grey-secondary">{planningWords(project)}</p>
+                  ) : null}
+                </div>
+                {overall.forecast ? <BaselineSection projectId={project.id} releaseId="" /> : null}
+                {hygiene ? <HygieneSection projectId={project.id} /> : null}
+              </section>
+            ) : null}
           </div>
         ) : null}
       </PanelState>
-    </>
+    </div>
   );
 }

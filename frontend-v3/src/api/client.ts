@@ -127,6 +127,11 @@ import type {
   PortfolioFeedResponse,
   PortfolioFlowResponse,
   PortfolioRisksResponse,
+  PortfolioDeliveryResponse,
+  PortfolioScopeResponse,
+  PortfolioWarningsResponse,
+  PortfolioSort,
+  VerdictFilter,
   ProgramProjectLinkRequest,
   ProgramTreeResponse,
   ProjectProgressResponse,
@@ -389,6 +394,35 @@ export const apiClient = {
     requestJson<ProjectRisksResponse>(withQuery(`/projects/${projectId}/risks`, { as_of: asOf })),
   portfolioRisks: (asOf?: string) =>
     requestJson<PortfolioRisksResponse>(withQuery("/portfolio/risks", { as_of: asOf })),
+  /** Will we make the date?, from the kept forecast rows: one page, worst first (D90). */
+  portfolioDelivery: (query: {
+    q?: string;
+    verdicts?: readonly VerdictFilter[];
+    programId?: string | null;
+    sort?: PortfolioSort;
+    offset?: number;
+    limit?: number;
+  }) => {
+    const search = new URLSearchParams();
+    if (query.q) search.set("q", query.q);
+    (query.verdicts ?? []).forEach((verdict) => search.append("verdict", verdict));
+    if (query.programId) search.set("program_id", query.programId);
+    if (query.sort) search.set("sort", query.sort);
+    if (query.offset) search.set("offset", String(query.offset));
+    if (query.limit) search.set("limit", String(query.limit));
+    const text = search.toString();
+    return requestJson<PortfolioDeliveryResponse>(`/portfolio/delivery${text ? `?${text}` : ""}`);
+  },
+  /** Scope control: each project against its plan, and the open Jira hygiene findings. */
+  portfolioScope: (query: { q?: string; programId?: string | null } = {}) =>
+    requestJson<PortfolioScopeResponse>(
+      withQuery("/portfolio/scope", { q: query.q, program_id: query.programId ?? undefined }),
+    ),
+  /** Early warnings across the readable projects, grouped by kind. */
+  portfolioWarnings: (query: { projectId?: string | null } = {}) =>
+    requestJson<PortfolioWarningsResponse>(
+      withQuery("/portfolio/warnings", { project_id: query.projectId ?? undefined }),
+    ),
   portfolioCrossPersonRequests: (status: CrossPersonRequestStatus | null = "open") =>
     requestJson<CrossPersonRequestsResponse>(
       withQuery("/portfolio/cross-person-requests", {

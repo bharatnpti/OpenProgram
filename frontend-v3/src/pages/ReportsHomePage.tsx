@@ -7,7 +7,6 @@ import { dailyPath, projectPath } from "../app/links";
 import { useRole } from "../app/role";
 import { PanelState, SectionHeader } from "../components/PanelState";
 import { dayReportCountWords } from "../features/daily/reportView";
-import { ProjectCompactStrip } from "../features/delivery/DeliveryStrips";
 import { ProjectStatus } from "../features/reports/ProjectStatus";
 import { ReportSetupDialog } from "../features/reports/ReportSetupDialog";
 import { ReportsTabs } from "../features/reports/ReportsTabs";
@@ -16,13 +15,14 @@ import { ragSeverity } from "../lib/status";
 
 /**
  * Every project with its day report one click away, and its Project page (the
- * state since it started, which was Overall), and, for whoever reads a
- * project's progress, its dates on one line. A developer sees the
+ * state since it started, which was Overall). The dates are said once, on Will
+ * we make the date? (the Portfolio), never again here: one live forecast read per
+ * card was what that page's bulk read replaced (D90). A developer sees the
  * projects of their own pods (every project when they are in none). Whoever may
  * set reports up can start one here.
  */
 export function ReportsHomePage() {
-  const { canSetUpDayReports, canReadProjectProgress } = useRole();
+  const { canSetUpDayReports } = useRole();
   // The same list the project picker inside a project's reports offers.
   const shown = useReportProjects();
   const reports = useQuery({
@@ -72,9 +72,6 @@ export function ReportsHomePage() {
                   <span className="text-[17px] font-extrabold">{project.name}</span>
                   <ProjectStatus project={project} />
                 </div>
-                {canReadProjectProgress ? (
-                  <ProjectCompactStrip projectId={project.id} className="" verdict={false} />
-                ) : null}
                 <span className="text-[13px] text-grey-secondary">
                   {dayReportCountWords(reports.data ? list.length : undefined, reports.isError)}
                   {podCount > 0 ? ` · ${podCount} ${podCount === 1 ? "pod" : "pods"}` : ""}
