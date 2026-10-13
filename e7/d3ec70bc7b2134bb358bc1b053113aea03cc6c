@@ -1,0 +1,29 @@
+backend/core/application/forecast_service.py
+  s_ed47025cfc8469::t_6b05fb30c2c662 608-620
+backend/core/application/impact_service.py
+  s_ed47025cfc8469::t_0b1427fc155e94 693-695
+backend/core/application/timeline_service.py
+  s_ed47025cfc8469::t_608cd64b8186ae 12,18-24,44,221,226,236,240-242,257,290,359,370,374-381,391,400-403,638-641
+backend/tests/unit/test_timeline.py
+  s_ed47025cfc8469::t_ea08d4f4c7fabb 15,95-96,135,139-140,143,145-149,153-162,164-213,335,346,351,353,359,538
+docs/lld/timeline.md
+  s_ed47025cfc8469::t_3be1410ca5e0b8 18-31,44-48
+features.md
+  s_ed47025cfc8469::t_68b997871e70a4 707
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e7d3ec70bc7b2134bb358bc1b053113aea03cc6c",
+  "prompts": {},
+  "sessions": {
+    "s_ed47025cfc8469": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c3dacc8-00da-46b1-a2f5-ce44e164bb12",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
