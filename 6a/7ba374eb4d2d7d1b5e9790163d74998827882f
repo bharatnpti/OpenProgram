@@ -1,0 +1,38 @@
+backend/tests/conftest.py
+  s_ed47025cfc8469::t_7955078f6f5e5f 3,5,8,19-37
+  s_ed47025cfc8469::t_b49e7986a568aa 38
+backend/tests/unit/test_dbos_database_guard.py
+  s_ed47025cfc8469::t_591b6dbc0c4a95 1-336
+backend/tests/fixtures/stack_database.py
+  s_ed47025cfc8469::t_0e9af095358053 1-91
+.env.example
+  s_ed47025cfc8469::t_80d1887ac71d62 5-7
+backend/config/settings.py
+  s_ed47025cfc8469::t_6b484bdb5dd0f3 27-31,62,861-878
+backend/infra/adapters/catalog.py
+  s_ed47025cfc8469::t_e859da8a30f29c 377,403,420,437
+backend/infra/adapters/workflows/dbos.py
+  s_ed47025cfc8469::t_9955c0cde074cb 133-136,145-150,157,921,929,1082,1090,1126,1134,1155,1164,1170-1171,1187-1195,1198-1199
+backend/tests/unit/test_api.py
+  s_ed47025cfc8469::t_87e281225c932c 40-43,456,2149
+backend/tests/unit/test_dbos_sync_catch_up.py
+  s_ed47025cfc8469::t_b9cb3603f01cfb 447
+backend/tests/unit/test_observed_day_views.py
+  s_ed47025cfc8469::t_ba761c2f5b135d 276-283
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6a7ba374eb4d2d7d1b5e9790163d74998827882f",
+  "prompts": {},
+  "sessions": {
+    "s_ed47025cfc8469": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c3dacc8-00da-46b1-a2f5-ce44e164bb12",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
