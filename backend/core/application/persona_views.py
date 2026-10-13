@@ -432,6 +432,9 @@ class TreeNodeView:
     source: StatusSource | None
     confidence: float | None
     factors: tuple[RollupFactor, ...]
+    #: How many people a pod, project or program holds on the day; None for any
+    #: other node, and for a group a counts-only reader may not count (D103, D104).
+    people: int | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1176,6 +1179,7 @@ class PersonaViewService:
             and node.id != tree.root.id
         }
         nodes: list[TreeNodeView] = []
+        people = _people_under(tree, as_of)
         for node in _sorted_nodes(tuple(node for node in tree.nodes if node.id not in hidden)):
             if node.kind is NodeKind.TASK:
                 task_status = await self._task_status(node, as_of)
@@ -1201,6 +1205,7 @@ class PersonaViewService:
                     source=status.source if status else None,
                     confidence=None,
                     factors=status.factors if status else (),
+                    people=people.get(node.id),
                 )
             )
         return ProgramTreeView(
@@ -2457,6 +2462,16 @@ def _confidence_from_fact(fact: FactEvent | None) -> float | None:
 
 # The heat-map row a person in no team sits on (N5), apart from every team's.
 NO_POD_ROW = "no pod"
+
+
+def _people_under(tree: GraphTree, as_of: date) -> dict[str, int]:
+    """How many people each pod, project and program of the tree holds along ``contains``."""
+    graph = TeamGraph.from_graph(tree.nodes, tree.edges, as_of)
+    return {
+        node.id: len(graph.under(node.id, NodeKind.DEVELOPER))
+        for node in tree.nodes
+        if node.kind in (NodeKind.POD, NodeKind.PROJECT, NodeKind.PROGRAM)
+    }
 
 
 def _without_no_pod(status: NodeStatus) -> NodeStatus:

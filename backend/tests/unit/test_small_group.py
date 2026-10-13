@@ -249,3 +249,52 @@ def test_a_program_under_five_counts_nobody_for_an_executive(settings: Settings)
     # Today's replies over a portfolio of two: none for an executive.
     assert _get(settings, store, "exec", f"/me/today-counts?as_of={DAY}")["replies"] is None
     assert _get(settings, store, "mgr", f"/me/today-counts?as_of={DAY}")["replies"]["people"] == 2
+
+
+def test_an_executives_program_tree_counts_people_and_names_nobody(settings: Settings) -> None:
+    """D103: developer nodes become counts on their groups; none under five (D99, D104)."""
+    store = InMemoryGraphStore()
+    _seed(store)
+    path = f"/programs/program-1/tree?as_of={DAY.isoformat()}"
+
+    executive = _get(settings, store, "exec", path)
+    manager = _get(settings, store, "mgr", path)
+
+    nodes = {node["id"]: node for node in executive["nodes"]}
+    assert not [node for node in executive["nodes"] if node["kind"] == "developer"]
+    assert not [
+        edge
+        for edge in executive["edges"]
+        if edge["from_node_id"].startswith("dev-") or edge["to_node_id"].startswith("dev-")
+    ]
+    assert "Person" not in str(executive)
+    assert {group: nodes[group]["people"] for group in nodes if nodes[group]["kind"] != "task"} == {
+        "program-1": 10,
+        "project-1": 7,
+        "project-2": None,
+        "pod-big": 5,
+        "pod-small": None,
+        "pod-tiny": None,
+    }
+    # No person's own status among a team's factors.
+    assert not [
+        factor
+        for node in executive["nodes"]
+        for factor in node["factors"]
+        if factor["kind"] == "status" and factor["source_ref"]["kind"] == "developer"
+    ]
+    # A manager reads every person, and every group's count.
+    assert len([node for node in manager["nodes"] if node["kind"] == "developer"]) == 10
+    counts = {node["id"]: node["people"] for node in manager["nodes"]}
+    assert (counts["pod-small"], counts["project-2"]) == (2, 3)
+
+
+def test_a_manager_keeps_every_pods_counts(settings: Settings) -> None:
+    store = InMemoryGraphStore()
+    _seed(store)
+
+    cells = _cells(settings, store, "mgr")
+
+    assert "1 of 2" in _said(cells["pod-small"])
+    assert SMALL_GROUP_LINE not in cells["pod-small"]["reasons"]
+    assert "1 of 5" in _said(cells["pod-big"])

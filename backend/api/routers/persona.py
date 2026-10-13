@@ -61,7 +61,7 @@ from core.application.flow_metrics_service import FlowMetricsService
 from core.application.person_names import PersonNames, person_name
 from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
-from core.application.portfolio_privacy import counted_progress, reads_people
+from core.application.portfolio_privacy import counted_progress, counted_tree, reads_people
 from core.application.pull_request_flow_service import FlowScopeInvalid, PullRequestFlowService
 from core.application.request_trail_service import REQUEST_COUNTS_ONLY, reads_request_names
 from core.application.risk_service import RiskService
@@ -227,8 +227,16 @@ async def program_tree(
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
 ) -> ProgramTreeResponse:
+    """The tree under a node with each node's status.
+
+    A reader who counts people only (an executive) reads it with nobody in it
+    (D103): no person's node, each pod, project and program with how many people
+    it holds (none under five, D99, D104), and its factors worded as on the heat map.
+    """
     _ensure(principal, Capability.READ_PROGRAM_ROLLUP)
     view = await persona_service.program_tree(principal.tenant_id, program_id, as_of)
+    if not reads_people(principal):
+        view = counted_tree(view)
     return ProgramTreeResponse.from_view(view)
 
 

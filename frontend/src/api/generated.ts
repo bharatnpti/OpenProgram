@@ -2734,7 +2734,14 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Program Tree */
+    /**
+     * Program Tree
+     * @description The tree under a node with each node's status.
+     *
+     *     A reader who counts people only (an executive) reads it with nobody in it
+     *     (D103): no person's node, each pod, project and program with how many people
+     *     it holds (none under five, D99, D104), and its factors worded as on the heat map.
+     */
     get: operations["program_tree_programs__program_id__tree_get"];
     put?: never;
     post?: never;
@@ -6941,6 +6948,11 @@ export interface components {
       confidence: number | null;
       /** Factors */
       factors: components["schemas"]["RollupFactorDto"][];
+      /**
+       * People
+       * @description How many people a pod, project or program holds on the day; null for any other node, and for a group of fewer than five read by someone who counts people only (D99, D104).
+       */
+      people?: number | null;
     };
     /** PlanningBaselineResponse */
     PlanningBaselineResponse: {

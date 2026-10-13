@@ -1538,6 +1538,14 @@ class PersonaTreeNodeDto(BaseModel):
     source: StatusSource | None
     confidence: float | None
     factors: list[RollupFactorDto]
+    people: int | None = Field(
+        default=None,
+        description=(
+            "How many people a pod, project or program holds on the day; null for any "
+            "other node, and for a group of fewer than five read by someone who counts "
+            "people only (D99, D104)."
+        ),
+    )
 
     @classmethod
     def from_view(cls, node: TreeNodeView) -> PersonaTreeNodeDto:
@@ -1549,6 +1557,7 @@ class PersonaTreeNodeDto(BaseModel):
             source=node.source,
             confidence=node.confidence,
             factors=[RollupFactorDto.from_domain(factor) for factor in node.factors],
+            people=node.people,
         )
 
 

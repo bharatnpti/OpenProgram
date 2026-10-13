@@ -29,12 +29,13 @@ from typing import TYPE_CHECKING
 from core.application.attention import AttentionDay, TeamGraph
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.people_words import is_small, small_group_line
+from core.application.status_summaries import NO_REPLY_BLOCKER
 from core.domain.auth import Principal
 from core.domain.graph import NodeKind
 from core.domain.rollup import FactorKind, NodeStatus, RollupFactor
 
 if TYPE_CHECKING:
-    from core.application.persona_views import ProjectProgressView
+    from core.application.persona_views import ProgramTreeView, ProjectProgressView
 
 #: The groups people are counted in, smallest first: a pod, a project, a program.
 _GROUP_KINDS = (NodeKind.POD, NodeKind.PROJECT, NodeKind.PROGRAM)
@@ -138,6 +139,37 @@ def without_small_group_people(
     ]
 
 
+def counted_tree(view: ProgramTreeView) -> ProgramTreeView:
+    """A program's tree with nobody in it, for a reader who counts people (D103).
+
+    No person's node and no edge to one: each pod, project and program says how
+    many people it holds instead, and none at all under ``SMALL_GROUP`` (D99,
+    D104). Every factor is worded as on the heat map: a blocker is "Open
+    blocker." on its work item, a dependency another team's, and no person's
+    own status is among a team's factors.
+    """
+    people = {node.id for node in view.nodes if node.kind is NodeKind.DEVELOPER}
+    nodes = tuple(
+        replace(
+            node,
+            factors=tuple(
+                _counted(factor)
+                for factor in node.factors
+                if not _own_update(factor) and not _no_reply(factor)
+            ),
+            people=None if node.people is None or is_small(node.people) else node.people,
+        )
+        for node in view.nodes
+        if node.id not in people
+    )
+    edges = tuple(
+        edge
+        for edge in view.edges
+        if edge.from_node_id not in people and edge.to_node_id not in people
+    )
+    return replace(view, nodes=nodes, edges=edges)
+
+
 def counted_progress(view: ProjectProgressView) -> ProjectProgressView:
     """A project's progress with nobody in its factors, for an executive (D87).
 
@@ -189,6 +221,14 @@ def _own_update(factor: RollupFactor) -> bool:
     return factor.kind is FactorKind.STATUS and factor.source_ref.kind is NodeKind.DEVELOPER
 
 
+def _no_reply(factor: RollupFactor) -> bool:
+    """A stored "no confirmed reply" placeholder: a person's non-reply, never a blocker."""
+    return (
+        factor.kind is FactorKind.BLOCKER
+        and factor.description.removeprefix("Blocker:").strip().lower() == NO_REPLY_BLOCKER
+    )
+
+
 def _anonymous_id(description: str) -> str:
     """A blocker without an id is told apart by its words, which are not shown."""
     return "words:" + hashlib.sha256(description.encode()).hexdigest()[:16]
@@ -200,6 +240,7 @@ __all__ = [
     "counted_factor",
     "counted_progress",
     "counted_statuses",
+    "counted_tree",
     "own_cells_only",
     "reads_people",
     "small_groups",
