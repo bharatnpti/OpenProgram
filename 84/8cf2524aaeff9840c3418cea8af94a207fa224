@@ -1,0 +1,63 @@
+frontend-v3/src/features/pods/podWords.test.ts
+  s_5f08a60d42019a::t_84ddd0f1c28f70 6,168-189
+  s_5f08a60d42019a::t_a8d0559973c480 190
+frontend-v3/src/features/portfolio/portfolioWords.test.ts
+  s_5f08a60d42019a::t_f83208367dbe03 14,86,212,226-230
+  s_5f08a60d42019a::t_6f4eacd71e1069 231
+frontend-v3/src/features/pods/podWords.ts
+  s_5f08a60d42019a::t_84ddd0f1c28f70 8,17-23
+  s_5f08a60d42019a::t_73dbaf90bcf2d9 24
+frontend-v3/src/features/portfolio/portfolioWords.ts
+  s_5f08a60d42019a::t_f83208367dbe03 8,22-23,25,77-86,290,294
+frontend-v3/src/pages/PodPage.tsx
+  s_5f08a60d42019a::t_3cfda411aec714 31
+  s_5f08a60d42019a::t_84ddd0f1c28f70 295,298,301-304,346
+frontend-v3/src/features/coordination/pageSurface.ts
+  s_5f08a60d42019a::t_581b8680aadf9d 4-6,8
+frontend-v3/src/features/overall/TimelineChart.tsx
+  s_5f08a60d42019a::t_0ea4b6502847de 439
+frontend-v3/src/features/overall/timeline.test.ts
+  s_5f08a60d42019a::t_db8cbddc0bc080 209-211
+frontend-v3/src/features/overall/timeline.ts
+  s_5f08a60d42019a::t_268da6188c61b8 201-209
+frontend-v3/src/features/portfolio/ProjectCard.tsx
+  s_5f08a60d42019a::t_4eaf4895ae4bd5 8-15,146
+frontend-v3/src/features/today/WhoMustAct.tsx
+  s_5f08a60d42019a::t_bc0fb51176a680 1,11,40-52,57
+frontend-v3/src/features/today/todayWords.test.ts
+  s_5f08a60d42019a::t_065323166682ba 206-219
+frontend-v3/src/features/today/todayWords.ts
+  s_5f08a60d42019a::t_eced973e332863 178,180-185
+frontend-v3/src/features/warnings/warningWords.test.ts
+  s_5f08a60d42019a::t_da748acb8c9f73 5-12,69-85
+frontend-v3/src/features/warnings/warningWords.ts
+  s_5f08a60d42019a::t_54b56361d9ea69 67-79
+frontend-v3/src/index.css
+  s_5f08a60d42019a::t_2b254c3c82da5b 209-213
+frontend-v3/src/features/warnings/WarningGroups.tsx
+  s_38f6ce69e14a8a::t_7f90cc6d245154 8,90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "848cf2524aaeff9840c3418cea8af94a207fa224",
+  "prompts": {},
+  "sessions": {
+    "s_38f6ce69e14a8a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a40ce9a8419575a77",
+        "model": "unknown"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
