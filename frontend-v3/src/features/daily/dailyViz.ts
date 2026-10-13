@@ -734,7 +734,16 @@ export type AskRow = {
   stop: string | null;
 };
 
-export type LaneView = { heading: string; named: boolean; asks: AskRow[] };
+export type LaneView = {
+  heading: string;
+  named: boolean;
+  asks: AskRow[];
+  /**
+   * "Nobody above Noah Weber is told", said once under the person when every one of
+   * their asks (two or more) would say it; each ask then says it no more.
+   */
+  stop: string | null;
+};
 
 export type WhoActsView = {
   lanes: LaneView[];
@@ -765,11 +774,17 @@ const NEED_ORDER: NeedType[] = ["fix", "review", "answer", "decision"];
 export function whoActs(owners: OwnerAsks[]): WhoActsView {
   const asks = owners.flatMap((owner) => owner.asks);
   const scale = dayScale(Math.max(0, ...asks.map((ask) => ask.waited_days ?? 0)));
-  const lanes = owners.map((owner): LaneView => ({
-    heading: owner.heading,
-    named: owner.named,
-    asks: owner.asks.map((ask) => askRow(ask, scale.max)),
-  }));
+  const lanes = owners.map((owner): LaneView => {
+    const rows = owner.asks.map((ask) => askRow(ask, scale.max));
+    const stops = new Set(rows.map((row) => row.stop));
+    const shared = rows.length > 1 && stops.size === 1 ? rows[0].stop : null;
+    return {
+      heading: owner.heading,
+      named: owner.named,
+      asks: shared ? rows.map((row) => ({ ...row, stop: null })) : rows,
+      stop: shared,
+    };
+  });
   const targets: { who: string; count: number }[] = [];
   for (const ask of asks) {
     if (!ask.escalated_to) continue;

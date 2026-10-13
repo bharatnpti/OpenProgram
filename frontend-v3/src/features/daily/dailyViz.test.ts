@@ -519,6 +519,28 @@ test("a date bar with nothing to say under it is shorter, as on a tenant new to 
   assert.deepEqual(view.legend, { committed: true, team: false, forecast: null });
 });
 
+test("a person whose every ask has nobody above says it once, under their name", () => {
+  const stopped = asks[2].asks[0];
+  const view = whoActs([
+    { ...asks[2], asks: [stopped, { ...stopped, text: "CHK-9: another fix", waited_days: 2 }] },
+  ]);
+  const [lane] = view.lanes;
+  assert.equal(lane.stop, "Nobody above Asha Rao is told");
+  assert.deepEqual(
+    lane.asks.map((ask) => ask.stop),
+    [null, null],
+  );
+  // One ask keeps it on the ask; asks that differ keep their own.
+  assert.equal(whoActs([asks[2]]).lanes[0].stop, null);
+  const mixed = whoActs([{ ...asks[2], asks: [stopped, { ...stopped, nobody_above: undefined }] }])
+    .lanes[0];
+  assert.equal(mixed.stop, null);
+  assert.deepEqual(
+    mixed.asks.map((ask) => ask.stop),
+    ["Nobody above Asha Rao is told", null],
+  );
+});
+
 test("one escalation target reads as one line, none as nothing", () => {
   const single = whoActs([asks[1]]);
   assert.equal(single.escalated, "2 escalated to Ira Novak (Scrum master)");
