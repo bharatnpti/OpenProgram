@@ -1103,7 +1103,7 @@ async def test_status_reasons_give_the_rollups_own_reasons_by_name() -> None:
     """The live answer read "Omar Haddad, Ira Novak, and Hana Kobayashi have not
     provided complete check-ins" -- two partial updates and a non-reply as one."""
     store = await _attention_store()
-    tool = _tool(_ask_service(store, FakeLlmProvider()), _principal(Role.EXEC), "status_reasons")
+    tool = _tool(_ask_service(store, FakeLlmProvider()), _principal(Role.MGR), "status_reasons")
 
     payload = json.loads(await tool.run({"node_id": "program-platform"}))
 
@@ -1149,7 +1149,7 @@ async def test_status_reasons_carry_the_open_signals_beneath_the_node() -> None:
     """Told to call open_risks beside it, the live model never did, so issues
     merged but still open in the tracker went unmentioned."""
     store = await _delivery_store()
-    tool = _tool(_ask_service(store, FakeLlmProvider()), _principal(Role.EXEC), "status_reasons")
+    tool = _tool(_ask_service(store, FakeLlmProvider()), _principal(Role.MGR), "status_reasons")
 
     checkout = json.loads(await tool.run({"node_id": "project-checkout"}))
     cart = json.loads(await tool.run({"node_id": "ws-cart"}))
@@ -1275,7 +1275,7 @@ async def test_an_answer_names_people_and_items_and_labels_its_sources() -> None
     )
 
     view = await _ask_service(store, llm).ask(
-        principal=_principal(Role.EXEC),
+        principal=_principal(Role.MGR),
         question="why Digital Platform Program needs attention",
         correlation_id="ask-test",
         as_of=AS_OF,
@@ -1341,7 +1341,7 @@ async def test_a_member_cited_by_chat_id_is_named_and_their_own_id_wins() -> Non
     )
 
     view = await _ask_service(store, llm).ask(
-        principal=_principal(Role.EXEC),
+        principal=_principal(Role.MGR),
         question="Who replied in part?",
         correlation_id="ask-test",
         as_of=AS_OF,
@@ -1380,7 +1380,7 @@ _LABELLED_SOURCES = (
 async def _ask_once(store: InMemoryGraphStore, reply: str) -> AskResponseView:
     llm = FakeLlmProvider(responses=[_llm_response(text=reply)])
     return await _ask_service(store, llm).ask(
-        principal=_principal(Role.EXEC),
+        principal=_principal(Role.MGR),
         question="why Digital Platform Program needs attention",
         correlation_id="ask-test",
         as_of=AS_OF,

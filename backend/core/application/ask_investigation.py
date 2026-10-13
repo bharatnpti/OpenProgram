@@ -43,6 +43,7 @@ from core.application.ask_service import (
     said_it_ran_out,
     without_unread_negatives,
 )
+from core.application.people_words import hides_names
 from core.domain.auth import Principal
 from core.domain.graph import JsonScalar
 from core.domain.llm import LlmRequest, LlmResponse
@@ -330,7 +331,9 @@ class InvestigationService:
         """
         asked_for = as_of or date.today()
         llm = _MeteredProvider(inner=self._llm_provider)
-        reader = await self._ask_service.reader(principal.tenant_id, asked_for)
+        reader = await self._ask_service.reader(
+            principal.tenant_id, asked_for, people=not hides_names(principal)
+        )
         context = await context_for(
             conversation,
             llm=llm,

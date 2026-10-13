@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from core.application.ask_hygiene import JiraHygieneTool
 from core.application.ask_investigation import STEP_GUIDANCE
+from core.application.ask_people import NamelessTool
 from core.application.ask_service import ASK_SYSTEM_PROMPT, AskService
 from core.application.delivery_scope import DeliveryScopeService
 from core.application.flow_metrics_service import FlowMetricsService
@@ -56,8 +57,10 @@ def _tool(client: TestClient, role: Role, subject: str = "someone") -> JiraHygie
     principal = Principal(tenant_id=TENANT, subject=subject, roles=frozenset({role}))
     tools = _service(client).tools_for(principal, date.today())
     tool = next((tool for tool in tools if tool.name == "jira_hygiene"), None)
-    assert tool is None or isinstance(tool, JiraHygieneTool)
-    return tool
+    # An executive's tools say each person as their role or team (D103).
+    inner = tool.inner if isinstance(tool, NamelessTool) else tool
+    assert inner is None or isinstance(inner, JiraHygieneTool)
+    return tool  # type: ignore[return-value]
 
 
 async def test_it_says_what_the_board_says_by_key_title_and_owner(client: TestClient) -> None:  # noqa: F811

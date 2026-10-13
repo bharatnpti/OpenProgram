@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from config.settings import Settings
+from core.application.ask_people import NamelessTool
 from core.application.ask_service import (
     ASK_SYSTEM_PROMPT,
     AskService,
@@ -155,8 +156,11 @@ def _tool(client: TestClient, role: Role, subject: str = "someone") -> ReleaseRe
     principal = Principal(tenant_id=TENANT, subject=subject, roles=frozenset({role}))
     tools = service.tools_for(principal, date.today())
     tool = next(tool for tool in tools if tool.name == "release_readiness")
-    assert isinstance(tool, ReleaseReadinessTool)
-    return tool
+    # An executive's tools say each person as their role or team (D103).
+    inner = tool.inner if isinstance(tool, NamelessTool) else tool
+    assert isinstance(inner, ReleaseReadinessTool)
+    assert isinstance(tool, NamelessTool) is (role is Role.EXEC)
+    return tool  # type: ignore[return-value]
 
 
 async def _read(tool: ReleaseReadinessTool, **arguments: str) -> dict[str, object]:

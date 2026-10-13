@@ -9,6 +9,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.ask_conversation import AskContext, AskConversation, context_for
 from core.application.ask_hygiene import HYGIENE_TOOL_GUIDANCE, JiraHygieneTool
+from core.application.ask_people import AskPeopleWords, NamelessTool
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.delivery_scope import DeliveryScopeService, reads_pod_dates, reads_project
 from core.application.flow_metrics_service import (
@@ -26,6 +27,7 @@ from core.application.impact_service import (
     ImpactView,
     PeriodKind,
 )
+from core.application.people_words import hides_names
 from core.application.persona_views import (
     PersonaViewService,
     PortfolioHeatmapView,
@@ -37,7 +39,7 @@ from core.application.portfolio_feed_service import (
     PortfolioFeedService,
     state_label,
 )
-from core.application.portfolio_privacy import reads_people
+from core.application.portfolio_privacy import counted_tree, reads_people
 from core.application.profile_service import ProfileService
 from core.application.readiness_access import pod_viewer, project_viewer, reads_some_board
 from core.application.release_readiness_service import (
@@ -977,6 +979,9 @@ class StatusReasonsTool:
     repository: GraphRepository
     as_of: date
     kinds: frozenset[NodeKind]
+    #: The reader counts people only (an executive): the tree as /programs/{id}/tree
+    #: gives it them, nobody's node and no one's own status among the factors (D103).
+    counts_only: bool = False
 
     name: str = "status_reasons"
     description: str = (
@@ -1027,6 +1032,8 @@ class StatusReasonsTool:
                 {"error": f"the reasons behind a {node.kind.value}'s status are not available"}
             )
         tree = await self.service.program_tree(self.tenant_id, node_id, as_of)
+        if self.counts_only:
+            tree = counted_tree(tree)
         labels = {
             graph_node.id: node_label(graph_node)
             for graph_node in await self.repository.list_nodes(self.tenant_id, as_of=as_of)
@@ -2193,17 +2200,36 @@ class AskService:
             RecordedTool(inner=tool, calls=calls) for tool in self.tools_for(principal, asked_for)
         )
         result = await self._tool_agent.run_loop(request, tools)
-        reader = await self.reader(principal.tenant_id, asked_for)
+        reader = await self.reader(
+            principal.tenant_id, asked_for, people=not hides_names(principal)
+        )
         response = result.response
         view = reader.view(response.text, trace_id=response.trace_id, tools_used=calls)
         if result.cap_reached:
             view = reader.cut_short(view, read=calls, unrun=result.unrun)
         return remembered(view, context)
 
-    async def reader(self, tenant_id: str, as_of: date) -> AnswerReader:
-        """What turns a model's reply into an answer for the nodes of ``as_of``."""
+    async def reader(self, tenant_id: str, as_of: date, *, people: bool = True) -> AnswerReader:
+        """What turns a model's reply into an answer for the nodes of ``as_of``.
+
+        ``people`` False is a reader who reads no person's name (an executive,
+        D103): a person's id in an answer, or among its sources, reads as their
+        role or team, and no name in the answer is taken for a person.
+        """
         nodes = await _nodes_by_any_id(self._graph_repository, tenant_id, as_of)
-        return AnswerReader(nodes=nodes, labelled=_nodes_by_label(nodes))
+        if people:
+            return AnswerReader(nodes=nodes, labelled=_nodes_by_label(nodes))
+        words = await AskPeopleWords(
+            repository=self._graph_repository, tenant_id=tenant_id, as_of=as_of
+        ).get()
+        said = {
+            key: replace(node, name=words.label(node.id))
+            if node.kind is NodeKind.DEVELOPER
+            else node
+            for key, node in nodes.items()
+        }
+        teams = {key: node for key, node in said.items() if node.kind is not NodeKind.DEVELOPER}
+        return AnswerReader(nodes=said, labelled=_nodes_by_label(teams))
 
     def tools_for(self, principal: Principal, as_of: date) -> tuple[AgentTool, ...]:
         """The tools this principal may use, each gated as its REST twin is.
@@ -2276,6 +2302,7 @@ class AskService:
                     repository=graph,
                     as_of=as_of,
                     kinds=_reason_kinds(principal),
+                    counts_only=not reads_people(principal),
                 ),
                 lambda asker: bool(_reason_kinds(asker)),
             ),
@@ -2332,9 +2359,10 @@ class AskService:
                 reads_some_board,
             ),
         )
-        if self._profile_service is not None:
-            # Names and pod roles are directory data, which every role reads: behind
-            # /ask's own check, as the graph reads are.
+        if self._profile_service is not None and not hides_names(principal):
+            # Names and pod roles are directory data, which every role reads but an
+            # executive (no People & roles for them, D87): behind /ask's own check, as
+            # the graph reads are.
             offered = (
                 *offered,
                 (
@@ -2380,7 +2408,13 @@ class AskService:
                     reads_some_board,
                 ),
             )
-        return tuple(tool for tool, allowed in offered if allowed(principal))
+        tools = tuple(tool for tool, allowed in offered if allowed(principal))
+        if hides_names(principal):
+            # An executive's answers say each person as the Project page does: their
+            # role or team, never a name or an id that leads to one (D103).
+            words = AskPeopleWords(repository=graph, tenant_id=tenant_id, as_of=as_of)
+            tools = tuple(NamelessTool(inner=tool, words=words) for tool in tools)
+        return tools
 
 
 def fact_window(arguments: Mapping[str, JsonScalar], as_of: date) -> DateWindow:

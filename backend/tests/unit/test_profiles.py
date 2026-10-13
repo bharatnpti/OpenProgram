@@ -753,7 +753,7 @@ class _Request:
         self.app = app
 
 
-def test_team_profiles_is_offered_to_whoever_may_ask_and_never_to_a_developer(
+def test_team_profiles_is_offered_to_whoever_may_ask_but_an_executive_or_a_developer(
     client: TestClient,
 ) -> None:
     service = get_ask_service(_Request(client.app))  # type: ignore[arg-type]
@@ -763,7 +763,9 @@ def test_team_profiles_is_offered_to_whoever_may_ask_and_never_to_a_developer(
         return {tool.name for tool in service.tools_for(principal, date.today())}
 
     assert "team_profiles" in tools(Role.SM)
-    assert "team_profiles" in tools(Role.EXEC)
+    assert "team_profiles" in tools(Role.MGR)
+    # Who is who, by name, in which pod: an executive has no People & roles (D87, D103).
+    assert "team_profiles" not in tools(Role.EXEC)
     assert tools(Role.DEV) == set()
 
 
