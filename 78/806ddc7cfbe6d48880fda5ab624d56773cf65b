@@ -1,0 +1,23 @@
+frontend-v3/src/features/admin/adminTabs.ts
+  s_5f08a60d42019a::t_1d9f6699718513 1-51
+frontend-v3/src/features/admin/adminTabs.test.ts
+  s_5f08a60d42019a::t_ba813b5ddf5ee7 1-40
+frontend-v3/src/pages/AdminPage.tsx
+  s_5f08a60d42019a::t_50dce134e633e7 19,22-28,31-32,40-64,67-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "78806ddc7cfbe6d48880fda5ab624d56773cf65b",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
