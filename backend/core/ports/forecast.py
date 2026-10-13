@@ -6,7 +6,9 @@ from typing import Protocol
 
 from core.domain.forecast import (
     CommitmentScope,
+    CommitmentScopeKind,
     DateChange,
+    ForecastDayChange,
     ForecastDayRecord,
     ForecastSettings,
     Release,
@@ -24,6 +26,10 @@ class CommitmentRepository(Protocol):
 
     async def changes_for_project(self, tenant_id: str, project_id: str) -> list[DateChange]:
         """Every scope's changes within the project, oldest first."""
+        ...
+
+    async def changes_for_tenant(self, tenant_id: str) -> list[DateChange]:
+        """Every scope's changes in the tenant, oldest first: one read for the portfolio."""
         ...
 
 
@@ -74,5 +80,28 @@ class ForecastDayRepository(Protocol):
 
         Nothing else of the row changes: a day the hourly run kept before its
         breakdown was computed keeps its forecast and gains only the breakdown.
+        """
+        ...
+
+    async def latest_per_scope(
+        self,
+        tenant_id: str,
+        on_or_before: date,
+        kinds: Sequence[CommitmentScopeKind] | None = None,
+    ) -> list[ForecastDayRecord]:
+        """The latest kept row of every scope on or before ``on_or_before``, one per
+        (scope kind, scope id, project): a pod two projects share has one under each,
+        read in that project's context. ``kinds`` narrows it (every kind for None).
+
+        One read for the portfolio, so its rows come without ``attribution``.
+        """
+        ...
+
+    async def changes_between(
+        self, tenant_id: str, kind: CommitmentScopeKind, start: date, end: date
+    ) -> list[ForecastDayChange]:
+        """The kept days of every scope of ``kind`` from ``start`` to ``end`` whose
+        breakdown added, removed or reopened requirements, with each part's working
+        days; oldest first. The breakdown is summed in the store, never sent whole.
         """
         ...

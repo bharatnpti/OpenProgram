@@ -6,13 +6,16 @@ from datetime import date
 
 from core.domain.forecast import (
     CommitmentScope,
+    CommitmentScopeKind,
     DateChange,
+    ForecastDayChange,
     ForecastDayKey,
     ForecastDayRecord,
     ForecastSettings,
     Release,
     forecast_day_key,
 )
+from core.domain.impact import attribution_from_payload
 from infra.persistence.forecast_day_rows import distinct_forecast_days
 
 
@@ -36,6 +39,12 @@ class InMemoryCommitmentRepository:
                 for c in self._changes
                 if c.tenant_id == tenant_id and c.scope.project_id == project_id
             ),
+            key=lambda change: change.changed_at,
+        )
+
+    async def changes_for_tenant(self, tenant_id: str) -> list[DateChange]:
+        return sorted(
+            (c for c in self._changes if c.tenant_id == tenant_id),
             key=lambda change: change.changed_at,
         )
 
@@ -113,3 +122,54 @@ class InMemoryForecastDayRepository:
             ),
             key=lambda row: row.day,
         )
+
+    async def latest_per_scope(
+        self,
+        tenant_id: str,
+        on_or_before: date,
+        kinds: Sequence[CommitmentScopeKind] | None = None,
+    ) -> list[ForecastDayRecord]:
+        wanted = {kind.value for kind in kinds} if kinds is not None else None
+        latest: dict[tuple[str, str, str], ForecastDayRecord] = {}
+        for (tenant, kind, scope_id, project_id, day), row in self._rows.items():
+            if tenant != tenant_id or day > on_or_before:
+                continue
+            if wanted is not None and kind not in wanted:
+                continue
+            key = (kind, scope_id, project_id)
+            kept = latest.get(key)
+            if kept is None or kept.day < day:
+                latest[key] = row
+        # As Postgres reads them: one row a scope, the breakdown left out.
+        return [
+            replace(row, attribution=None)
+            for _key, row in sorted(latest.items(), key=lambda item: item[0])
+        ]
+
+    async def changes_between(
+        self, tenant_id: str, kind: CommitmentScopeKind, start: date, end: date
+    ) -> list[ForecastDayChange]:
+        found: list[ForecastDayChange] = []
+        for (tenant, row_kind, _scope_id, _project_id, day), row in self._rows.items():
+            if tenant != tenant_id or row_kind != kind.value or not start <= day <= end:
+                continue
+            attribution = attribution_from_payload(row.attribution)
+            if attribution is None or not (
+                attribution.added or attribution.removed or attribution.reopened
+            ):
+                continue
+            found.append(
+                ForecastDayChange(
+                    scope=row.scope,
+                    day=day,
+                    added=len(attribution.added),
+                    added_days=sum(item.share.p85 for item in attribution.added),
+                    removed=len(attribution.removed),
+                    removed_days=sum(item.share.p85 for item in attribution.removed),
+                    reopened=len(attribution.reopened),
+                    reopened_days=sum(item.share.p85 for item in attribution.reopened),
+                    taken_apart=attribution.taken_apart,
+                    reconstructed=row.reconstructed,
+                )
+            )
+        return sorted(found, key=lambda change: (change.scope.project_id, change.day))

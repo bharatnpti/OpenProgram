@@ -265,6 +265,29 @@ class ForecastDayRecord:
     attribution: Mapping[str, object] | None = None
 
 
+@dataclass(frozen=True, kw_only=True)
+class ForecastDayChange:
+    """What one kept day of a scope changed in its scope, read off the day's breakdown.
+
+    The requirements added, removed and reopened that day, and each part's working
+    days on the 85% date: the sum of its items' shares (core/domain/impact.py), which
+    is exact for the day. A day whose move was not taken apart lists its items with
+    no days. Read in bulk for the portfolio's bar, without the breakdown itself.
+    """
+
+    scope: CommitmentScope
+    day: date
+    added: int = 0
+    added_days: float = 0.0
+    removed: int = 0
+    removed_days: float = 0.0
+    reopened: int = 0
+    reopened_days: float = 0.0
+    #: Whether the day's move was taken apart, so its days say anything.
+    taken_apart: bool = True
+    reconstructed: bool = False
+
+
 #: A stored row's key: the tenant, the scope's kind, id and project, and the day.
 ForecastDayKey = tuple[str, str, str, str, date]
 

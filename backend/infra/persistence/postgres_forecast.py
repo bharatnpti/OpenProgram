@@ -12,6 +12,7 @@ from core.domain.forecast import (
     CommitmentScope,
     CommitmentScopeKind,
     DateChange,
+    ForecastDayChange,
     ForecastDayRecord,
     ForecastDaysNotKept,
     Release,
@@ -87,6 +88,18 @@ class PostgresCommitmentRepository:
                 ORDER BY changed_at, id
                 """,
                 (tenant_id, project_id),
+            )
+        return [_change(row) for row in rows]
+
+    async def changes_for_tenant(self, tenant_id: str) -> list[DateChange]:
+        with _tracer.start_as_current_span("postgres.forecast.changes_for_tenant"):
+            rows = await self._executor.fetch(
+                f"""
+                SELECT {_CHANGE_COLUMNS} FROM delivery_date_changes
+                WHERE tenant_id = %s
+                ORDER BY changed_at, id
+                """,
+                (tenant_id,),
             )
         return [_change(row) for row in rows]
 
@@ -253,6 +266,93 @@ class PostgresForecastDayRepository:
                 (tenant_id, scope.kind.value, scope.id, scope.project_id, start, end),
             )
         return [_forecast_day(row) for row in rows]
+
+    async def latest_per_scope(
+        self,
+        tenant_id: str,
+        on_or_before: date,
+        kinds: Sequence[CommitmentScopeKind] | None = None,
+    ) -> list[ForecastDayRecord]:
+        # The breakdown stays in the store: the portfolio reads the dates only.
+        columns = _FORECAST_DAY_COLUMNS.replace("attribution", "NULL::jsonb AS attribution")
+        clauses = ["tenant_id = %s", "day <= %s"]
+        params: list[object] = [tenant_id, on_or_before]
+        if kinds is not None:
+            if not kinds:
+                return []
+            clauses.append(f"scope_kind IN ({', '.join(['%s'] * len(kinds))})")
+            params.extend(kind.value for kind in kinds)
+        with _tracer.start_as_current_span("postgres.forecast.latest_forecast_days"):
+            rows = await self._executor.fetch(
+                f"""
+                SELECT DISTINCT ON (scope_kind, scope_id, project_id) {columns}
+                FROM forecast_days
+                WHERE {" AND ".join(clauses)}
+                ORDER BY scope_kind, scope_id, project_id, day DESC
+                """,
+                tuple(params),
+            )
+        return [_forecast_day(row) for row in rows]
+
+    async def changes_between(
+        self, tenant_id: str, kind: CommitmentScopeKind, start: date, end: date
+    ) -> list[ForecastDayChange]:
+        # Each part's count and its items' 85% shares, summed here: a row's breakdown
+        # (attribution, version 1) is never sent whole for a bulk read.
+        with _tracer.start_as_current_span("postgres.forecast.forecast_day_changes"):
+            rows = await self._executor.fetch(
+                f"""
+                SELECT scope_kind, scope_id, project_id, day, reconstructed,
+                    attribution->>'not_taken_apart' AS not_taken_apart,
+                    {_part_sql("added")},
+                    {_part_sql("removed")},
+                    {_part_sql("reopened")}
+                FROM forecast_days
+                WHERE tenant_id = %s AND scope_kind = %s AND day BETWEEN %s AND %s
+                    AND attribution IS NOT NULL
+                    AND attribution->>'version' = '1'
+                ORDER BY project_id, day
+                """,
+                (tenant_id, kind.value, start, end),
+            )
+        return [
+            change
+            for row in rows
+            if (change := _forecast_day_change(row)).added or change.removed or change.reopened
+        ]
+
+
+def _part_sql(part: str) -> str:
+    """One breakdown part's item count and its items' 85% working days, as two columns."""
+    items = f"attribution->'{part}'"
+    array = f"(CASE WHEN jsonb_typeof({items}) = 'array' THEN {items} ELSE '[]'::jsonb END)"
+    return (
+        f"jsonb_array_length({array}) AS {part}, "
+        f"COALESCE((SELECT sum(COALESCE((item->>'p85')::float8, 0)) "
+        f"FROM jsonb_array_elements({array}) AS item), 0) AS {part}_days"
+    )
+
+
+def _forecast_day_change(row: Mapping[str, object]) -> ForecastDayChange:
+    day = row["day"]
+    if not isinstance(day, date):
+        raise TypeError("forecast_days row has no day")
+    return ForecastDayChange(
+        scope=CommitmentScope(
+            kind=CommitmentScopeKind(str(row["scope_kind"])),
+            id=str(row["scope_id"]),
+            project_id=str(row["project_id"]),
+        ),
+        day=day,
+        added=int(_number(row.get("added"))),
+        added_days=_number(row.get("added_days")),
+        removed=int(_number(row.get("removed"))),
+        removed_days=_number(row.get("removed_days")),
+        reopened=int(_number(row.get("reopened"))),
+        reopened_days=_number(row.get("reopened_days")),
+        taken_apart=row.get("not_taken_apart") is None,
+        reconstructed=bool(row.get("reconstructed")),
+    )
 
 
 def _forecast_day_params(record: ForecastDayRecord) -> tuple[object, ...]:

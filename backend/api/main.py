@@ -33,6 +33,7 @@ from api.routers import (
     jira_writes,
     ops,
     persona,
+    portfolio_reads,
     profiles,
     readiness,
     reports,
@@ -166,6 +167,7 @@ def create_app(
     app.include_router(persona.router)
     app.include_router(today.router)
     app.include_router(jira_changes.router)
+    app.include_router(portfolio_reads.router)
     app.include_router(profiles.router)
     app.include_router(test_support.router)
     app.include_router(webhooks.router)

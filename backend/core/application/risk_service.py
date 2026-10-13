@@ -57,6 +57,9 @@ from core.ports.repositories import (
 ACTIVE_WORK_ITEM_STATES = {"proposed", "in_progress", "in_review", "blocked"}
 RISK_FACT_SOURCE = "risk"
 DRIFT_FACT_SOURCE = "drift"
+#: When each drift finding was first seen and when it cleared, one fact per change:
+#: written by the scheduled drift scan, so a finding's age is real (D90's warnings).
+DRIFT_SEEN_FACT_SOURCE = "drift_seen"
 _RISK_FACT_SCAN_LIMIT = 5000
 # Stated-status confidences presented as "green"/positive; a hard-signal
 # contradiction against one of these is a watermelon worth downgrading.
@@ -175,15 +178,79 @@ class RiskService:
     async def project_drift(
         self, tenant_id: str, project_id: str, as_of: date
     ) -> list[DriftFinding]:
+        """The project's drift findings, each ``detected_at`` when it was first seen."""
         await self._ensure_project(tenant_id, project_id, as_of)
-        return await self._detect_project_drift(tenant_id, project_id, as_of)
+        findings = await self._detect_project_drift(tenant_id, project_id, as_of)
+        seen = await self._drift_seen(tenant_id, as_of)
+        return [_first_seen(finding, project_id, seen) for finding in findings]
 
     async def portfolio_drift(self, tenant_id: str, as_of: date) -> list[DriftFinding]:
         projects = await self._graph_repository.list_nodes(tenant_id, NodeKind.PROJECT, as_of=as_of)
-        findings: list[DriftFinding] = []
-        for project in projects:
-            findings.extend(await self._detect_project_drift(tenant_id, project.id, as_of))
-        return findings
+        by_project = await self.drift_by_project(
+            tenant_id, [project.id for project in projects], as_of
+        )
+        return [finding for findings in by_project.values() for finding in findings]
+
+    async def drift_by_project(
+        self, tenant_id: str, project_ids: Sequence[str], as_of: date
+    ) -> dict[str, list[DriftFinding]]:
+        """Each project's drift findings, first seen when the scan first recorded them."""
+        seen = await self._drift_seen(tenant_id, as_of)
+        return {
+            project_id: [
+                _first_seen(finding, project_id, seen)
+                for finding in await self._detect_project_drift(tenant_id, project_id, as_of)
+            ]
+            for project_id in project_ids
+        }
+
+    async def risks_by_project(
+        self, tenant_id: str, as_of: date
+    ) -> dict[str | None, list[RiskFinding]]:
+        """The open risk findings by the project each was assessed in (None: not recorded).
+
+        The portfolio list's findings (``portfolio_risks``), read once, with the
+        project their fact names, for a read that groups them per project.
+        """
+        requests = self._merge_requests(tenant_id, as_of)
+        facts = await self._time_series_repository.list_recent_facts(
+            tenant_id, sources=(RISK_FACT_SOURCE,), limit=_RISK_FACT_SCAN_LIMIT
+        )
+        found: dict[str | None, list[RiskFinding]] = {}
+        for project_id in sorted(
+            {_payload_str(fact.payload, "project_id") for fact in facts},
+            key=lambda value: value or "",
+        ):
+            findings = await self._load_open_findings(
+                tenant_id,
+                project_id=project_id,
+                as_of=as_of,
+                requests=requests,
+                facts=[
+                    fact for fact in facts if _payload_str(fact.payload, "project_id") == project_id
+                ],
+            )
+            if findings:
+                found[project_id] = await self._without_settled_requests(findings, requests)
+        return found
+
+    async def drift_seen_since(self, tenant_id: str, as_of: date) -> date | None:
+        """The first day the scan recorded when a drift finding was first seen: an age
+        that starts on it is "seen since" that day, not known to be that old. None
+        before the first scan recorded one."""
+        seen = await self._drift_seen(tenant_id, as_of)
+        return min((fact.observed_at.date() for fact in seen.facts), default=None)
+
+    async def _drift_seen(self, tenant_id: str, as_of: date) -> _DriftSeen:
+        cutoff = datetime.combine(as_of + timedelta(days=1), time.min, tzinfo=UTC)
+        facts = [
+            fact
+            for fact in await self._time_series_repository.list_recent_facts(
+                tenant_id, sources=(DRIFT_SEEN_FACT_SOURCE,), limit=_RISK_FACT_SCAN_LIMIT
+            )
+            if fact.observed_at < cutoff
+        ]
+        return _DriftSeen(facts=tuple(facts))
 
     # ---- drift on its owner's rollup cell (N3) ---------------------------
 
@@ -312,6 +379,7 @@ class RiskService:
         findings = await self._detect_project_drift(tenant_id, project_id, as_of)
         for finding in findings:
             await self._append_drift_fact(finding, project_id, as_of)
+        await self._record_drift_seen(tenant_id, project_id, findings, as_of)
         downgraded = await self._enrich_contradicted_confidence(tenant_id, findings, as_of)
         return DriftScanResult(
             project_id=project_id,
@@ -1117,6 +1185,61 @@ class RiskService:
             )
         )
 
+    async def _record_drift_seen(
+        self,
+        tenant_id: str,
+        project_id: str,
+        findings: Sequence[DriftFinding],
+        as_of: date,
+    ) -> None:
+        """Record each finding the scan sees open for the first time, and each it no
+        longer sees: one ``drift_seen`` fact per change, never one per scan.
+
+        A finding open since an earlier scan keeps the day it was first seen, so its
+        age counts from then; one that cleared and came back is first seen again.
+        """
+        seen = await self._drift_seen(tenant_id, as_of)
+        open_now = seen.open_in(project_id)
+        current = {_drift_seen_key(finding, project_id): finding for finding in findings}
+        for key, finding in current.items():
+            if key not in open_now:
+                await self._append_drift_seen(tenant_id, key, project_id, finding, as_of)
+        for key, fact in open_now.items():
+            if key in current:
+                continue
+            await self._time_series_repository.append_fact_once(
+                FactEvent(
+                    tenant_id=tenant_id,
+                    source=DRIFT_SEEN_FACT_SOURCE,
+                    entity_ref=fact.entity_ref,
+                    payload={**fact.payload, "transition": "cleared"},
+                    observed_at=datetime.now(tz=UTC),
+                    correlation_id=f"drift-seen:{key}:cleared:{as_of.isoformat()}",
+                )
+            )
+
+    async def _append_drift_seen(
+        self, tenant_id: str, key: str, project_id: str, finding: DriftFinding, as_of: date
+    ) -> None:
+        await self._time_series_repository.append_fact_once(
+            FactEvent(
+                tenant_id=tenant_id,
+                source=DRIFT_SEEN_FACT_SOURCE,
+                entity_ref=finding.entity_ref,
+                payload={
+                    "key": key,
+                    "project_id": project_id,
+                    "kind": finding.kind.value,
+                    "entity_kind": finding.entity_ref.kind.value,
+                    "entity_id": finding.entity_ref.id,
+                    "first_seen_at": finding.detected_at.isoformat(),
+                    "transition": "opened",
+                },
+                observed_at=finding.detected_at,
+                correlation_id=f"drift-seen:{key}:opened:{as_of.isoformat()}",
+            )
+        )
+
     async def _enrich_contradicted_confidence(
         self,
         tenant_id: str,
@@ -1260,11 +1383,13 @@ class RiskService:
         project_id: str | None,
         as_of: date,
         requests: _MergeRequests | None = None,
+        facts: Sequence[FactEvent] | None = None,
     ) -> list[RiskFinding]:
         requests = requests or self._merge_requests(tenant_id, as_of)
-        facts = await self._time_series_repository.list_recent_facts(
-            tenant_id, sources=(RISK_FACT_SOURCE,), limit=_RISK_FACT_SCAN_LIMIT
-        )
+        if facts is None:
+            facts = await self._time_series_repository.list_recent_facts(
+                tenant_id, sources=(RISK_FACT_SOURCE,), limit=_RISK_FACT_SCAN_LIMIT
+            )
         if project_id is not None:
             facts = [
                 fact for fact in facts if _payload_str(fact.payload, "project_id") == project_id
@@ -1566,6 +1691,47 @@ def _drift_key(finding: DriftFinding, project_id: str, as_of: date) -> str:
         f"drift:{finding.kind.value}:{project_id}:{finding.entity_ref.id}:"
         f"{child}:{as_of.isoformat()}"
     )
+
+
+def _drift_seen_key(finding: DriftFinding, project_id: str) -> str:
+    """What makes a drift finding the same one on the next scan: its kind and what it is on."""
+    child = finding.child_entity_ref.id if finding.child_entity_ref is not None else ""
+    return f"{finding.kind.value}:{project_id}:{finding.entity_ref.id}:{child}"
+
+
+@dataclass(frozen=True, kw_only=True)
+class _DriftSeen:
+    """The ``drift_seen`` facts up to the day read: when each finding opened and cleared."""
+
+    facts: tuple[FactEvent, ...]
+
+    def latest(self) -> dict[str, FactEvent]:
+        found: dict[str, FactEvent] = {}
+        for fact in sorted(self.facts, key=lambda item: (item.observed_at, item.ingested_at)):
+            key = _payload_str(fact.payload, "key")
+            if key is not None:
+                found[key] = fact
+        return found
+
+    def open_in(self, project_id: str) -> dict[str, FactEvent]:
+        return {
+            key: fact
+            for key, fact in self.latest().items()
+            if _payload_str(fact.payload, "transition") == "opened"
+            and _payload_str(fact.payload, "project_id") == project_id
+        }
+
+    def first_seen(self, key: str) -> datetime | None:
+        fact = self.latest().get(key)
+        if fact is None or _payload_str(fact.payload, "transition") != "opened":
+            return None
+        return _optional_datetime(_payload_str(fact.payload, "first_seen_at")) or fact.observed_at
+
+
+def _first_seen(finding: DriftFinding, project_id: str, seen: _DriftSeen) -> DriftFinding:
+    """The finding dated when the scan first saw it open; as detected now when it has not yet."""
+    first = seen.first_seen(_drift_seen_key(finding, project_id))
+    return replace(finding, detected_at=first) if first is not None else finding
 
 
 def _threshold_for_rule(thresholds: RiskThresholds, rule_id: RiskRuleId) -> int:

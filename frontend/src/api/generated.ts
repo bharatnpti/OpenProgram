@@ -2770,7 +2770,14 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Portfolio Heatmap */
+    /**
+     * Portfolio Heatmap
+     * @description The day's heat, each cell with why it has its colour.
+     *
+     *     An executive reads it with nobody in it (D87): no person's cell but their
+     *     own, and reasons that count people and name work items, never a name or a
+     *     blocker's own words. Decided here by role, never by the console hiding it.
+     */
     get: operations["portfolio_heatmap_portfolio_heatmap_get"];
     put?: never;
     post?: never;
@@ -2793,6 +2800,7 @@ export interface paths {
      *
      *     The heat map's read (the same colours and reasons) with the portfolio's
      *     risk and drift findings, so it needs both: manager, exec and admin hold them.
+     *     An executive's names nobody, as their heat map does (D87).
      */
     get: operations["portfolio_attention_portfolio_attention_get"];
     put?: never;
@@ -3129,6 +3137,70 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/portfolio/delivery": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Portfolio Delivery
+     * @description Will we make the date? for every project the reader reads, worst first.
+     *
+     *     Each project's three dates (committed, likely, the team's own), its verdict
+     *     and one reason line, today's health in words, done of total per pod, and the
+     *     changes on its bar, from the kept rows "as of" ``computed_at``.
+     */
+    get: operations["portfolio_delivery_portfolio_delivery_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/portfolio/scope": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Portfolio Scope
+     * @description What joined each project after planning, and its open Jira hygiene findings.
+     */
+    get: operations["portfolio_scope_portfolio_scope_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/portfolio/warnings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Portfolio Warnings
+     * @description Early warnings across the readable projects, grouped by kind with a count each.
+     */
+    get: operations["portfolio_warnings_portfolio_warnings_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/profiles": {
     parameters: {
       query?: never;
@@ -3417,6 +3489,46 @@ export interface components {
     AcceptProfilesResponse: {
       /** Accepted */
       accepted: components["schemas"]["MemberProfileResponse"][];
+    };
+    /**
+     * AgainstPlanDto
+     * @description The scope today against the planning baseline: keys counted, never who.
+     */
+    AgainstPlanDto: {
+      /**
+       * Planned On
+       * Format: date
+       */
+      planned_on: string;
+      /** Planned */
+      planned: number;
+      /**
+       * Added
+       * @description Requirements in scope now that were not in the baseline.
+       */
+      added: number;
+      /**
+       * Without Label
+       * @description Of those added, the ones without the baseline's change label.
+       */
+      without_label: number;
+      /**
+       * Without Label Percent
+       * @description without_label as a whole percentage of added; null with none added.
+       */
+      without_label_percent: number | null;
+      /**
+       * Change Label
+       * @description The baseline's change label: tenant data.
+       */
+      change_label: string;
+      /** Removed */
+      removed: number;
+      /**
+       * Added Days
+       * @description Working days the additions since planning moved the 85% date, summed from the kept days' breakdowns; null when no kept day took them apart.
+       */
+      added_days?: number | null;
     };
     /**
      * AppliesTo
@@ -7029,6 +7141,37 @@ export interface components {
       /** Signals */
       signals: components["schemas"]["AttentionSignalDto"][];
     };
+    /**
+     * PortfolioDeliveryResponse
+     * @description Every project the reader reads, worst first, from the kept forecast rows.
+     *
+     *     ``counts`` cover every project the search matches (the verdict filter aside), so
+     *     each tile is a filter; ``total`` is how many match the filters, of which
+     *     ``projects`` is the page from ``offset``.
+     */
+    PortfolioDeliveryResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /**
+       * Computed At
+       * @description The newest kept row's time: 'as of HH:MM'.
+       */
+      computed_at: string | null;
+      counts: components["schemas"]["VerdictCountsDto"];
+      /** Total */
+      total: number;
+      /** Offset */
+      offset: number;
+      /** Limit */
+      limit: number;
+      /** Projects */
+      projects: components["schemas"]["PortfolioProjectDto"][];
+      /** Programs */
+      programs: components["schemas"]["PortfolioProgramDto"][];
+    };
     /** PortfolioFeedItemResponse */
     PortfolioFeedItemResponse: {
       /** Source */
@@ -7106,6 +7249,158 @@ export interface components {
       /** Cells */
       cells: components["schemas"]["HeatmapCellDto"][];
     };
+    /**
+     * PortfolioMarkDto
+     * @description One change on a project's bar.
+     */
+    PortfolioMarkDto: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /**
+       * Kind
+       * @description scope_added, scope_removed, reopened or committed_date_changed.
+       */
+      kind: string;
+      /** Count */
+      count: number;
+      /**
+       * Working Days
+       * @description Working days it moved the 85% date that day, later positive; null for a committed date's move or a day not taken apart.
+       */
+      working_days: number | null;
+      /**
+       * Pushed
+       * @description It moved the 85% date later: a change that pushed it.
+       */
+      pushed: boolean;
+      /**
+       * Moved To
+       * @description A committed date's move: the date it moved to.
+       */
+      moved_to?: string | null;
+    };
+    /** PortfolioPodDto */
+    PortfolioPodDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Done */
+      done: number;
+      /** Total */
+      total: number;
+      verdict: components["schemas"]["Verdict"] | null;
+      /** Target */
+      target: string | null;
+      /** P85 */
+      p85: string | null;
+    };
+    /** PortfolioProgramDto */
+    PortfolioProgramDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      counts: components["schemas"]["VerdictCountsDto"];
+    };
+    /** PortfolioProjectDto */
+    PortfolioProjectDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Program Id */
+      program_id: string | null;
+      /** Program Name */
+      program_name: string | null;
+      /** @description Null while no forecast row is kept for it. */
+      verdict: components["schemas"]["Verdict"] | null;
+      /**
+       * Target
+       * @description The committed date, else Jira's release date.
+       */
+      target: string | null;
+      /**
+       * Target Source
+       * @description committed, jira_release, or null.
+       */
+      target_source: string | null;
+      /** P50 */
+      p50: string | null;
+      /** P85 */
+      p85: string | null;
+      /**
+       * Team Date
+       * @description The team's own date: the latest ETA or due date.
+       */
+      team_date: string | null;
+      /** Team Key */
+      team_key: string | null;
+      /**
+       * Days Late
+       * @description Working days the 85% date lies after the target; negative: before it.
+       */
+      days_late: number | null;
+      /**
+       * Reason
+       * @description Why it has its verdict, in one line that counts work items.
+       */
+      reason: string;
+      /**
+       * Health
+       * @description Today's health in words (D92), e.g. '1 open blocker, 2 of 8 not replied'; never a colour.
+       */
+      health: string;
+      /**
+       * Health Day
+       * @description The day the rollup it is read from was kept.
+       */
+      health_day: string | null;
+      /** Done */
+      done: number;
+      /** Total */
+      total: number;
+      /** Pods */
+      pods: components["schemas"]["PortfolioPodDto"][];
+      /** Releases */
+      releases: components["schemas"]["PortfolioReleaseDto"][];
+      /** Marks */
+      marks: components["schemas"]["PortfolioMarkDto"][];
+      plan: components["schemas"]["AgainstPlanDto"] | null;
+      /**
+       * Start
+       * Format: date
+       * @description Where the bar starts: planning, else a month back.
+       */
+      start: string;
+      /**
+       * Kept On
+       * @description The day of the forecast row read.
+       */
+      kept_on: string | null;
+      /**
+       * Computed At
+       * @description When that row was computed.
+       */
+      computed_at: string | null;
+      /** Reconstructed */
+      reconstructed: boolean;
+    };
+    /** PortfolioReleaseDto */
+    PortfolioReleaseDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      verdict: components["schemas"]["Verdict"] | null;
+      /** Target */
+      target: string | null;
+      /** P85 */
+      p85: string | null;
+    };
     /** PortfolioRisksResponse */
     PortfolioRisksResponse: {
       /**
@@ -7120,6 +7415,60 @@ export interface components {
        * @default []
        */
       drift: components["schemas"]["DriftFindingResponse"][];
+    };
+    /**
+     * PortfolioScopeResponse
+     * @description Each readable project against its plan, and the open Jira hygiene findings.
+     *
+     *     ``counts_only``: the reader reads each rule's count, never an issue or an owner.
+     */
+    PortfolioScopeResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Reads Baselines */
+      reads_baselines: boolean;
+      /** Hygiene Enabled */
+      hygiene_enabled: boolean;
+      /** Counts Only */
+      counts_only: boolean;
+      /** Projects */
+      projects: components["schemas"]["ScopeProjectDto"][];
+      /** Rules */
+      rules: components["schemas"]["ScopeRuleCountDto"][];
+      /** Findings */
+      findings: components["schemas"]["ScopeFindingDto"][];
+      /** Findings Total */
+      findings_total: number;
+    };
+    /**
+     * PortfolioSort
+     * @enum {string}
+     */
+    PortfolioSort: "worst" | "days_late" | "committed" | "name";
+    /**
+     * PortfolioWarningsResponse
+     * @description Early warnings grouped by kind, each with its count; findings attach to work items.
+     */
+    PortfolioWarningsResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /**
+       * Seen Since
+       * @description The first day drift sightings were recorded: an age from it is a lower bound.
+       */
+      seen_since: string | null;
+      /** Groups */
+      groups: components["schemas"]["WarningGroupDto"][];
+      /** Total */
+      total: number;
+      /** Projects */
+      projects: number;
     };
     /** ProfileHistoryEntry */
     ProfileHistoryEntry: {
@@ -8748,6 +9097,44 @@ export interface components {
       /** Open */
       open: number;
     };
+    /** ScopeFindingDto */
+    ScopeFindingDto: {
+      /** Id */
+      id: string;
+      /** Issue Key */
+      issue_key: string;
+      /** Title */
+      title: string;
+      /** Rule Id */
+      rule_id: string;
+      /** Rule Name */
+      rule_name: string;
+      /** Project Id */
+      project_id: string;
+      /** Project Name */
+      project_name: string;
+      /**
+       * Owner Name
+       * @description Null for a reader who sees no person.
+       */
+      owner_name: string | null;
+      /** Owner Team */
+      owner_team: string | null;
+      /**
+       * Found On
+       * Format: date
+       */
+      found_on: string;
+      /** Open Days */
+      open_days: number;
+      /**
+       * Asks
+       * @description Its rule asks the owner in the day report: nothing to send.
+       */
+      asks: boolean;
+      /** Held */
+      held: boolean;
+    };
     /**
      * ScopeGroup
      * @description What kind of addition a requirement that joined the scope was.
@@ -8759,6 +9146,44 @@ export interface components {
      * @enum {string}
      */
     ScopeKind: "project" | "release" | "pod";
+    /** ScopeProjectDto */
+    ScopeProjectDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Program Id */
+      program_id: string | null;
+      /** Program Name */
+      program_name: string | null;
+      /** @description Null without a baseline, or for a reader of no baselines. */
+      plan: components["schemas"]["AgainstPlanDto"] | null;
+      /** Added Keys */
+      added_keys: string[];
+      /** Without Label Keys */
+      without_label_keys: string[];
+      /**
+       * Scope Day
+       * @description The stored snapshot the scope is read from.
+       */
+      scope_day: string | null;
+      /** Hygiene Open */
+      hygiene_open: number;
+    };
+    /** ScopeRuleCountDto */
+    ScopeRuleCountDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /**
+       * Asks
+       * @description The rule asks each owner in the day report.
+       */
+      asks: boolean;
+      /** Open */
+      open: number;
+    };
     /**
      * ScopeSinceBaselineResponse
      * @description Today's scope against one baseline: keys only (at most 50 listed), never who.
@@ -9427,6 +9852,124 @@ export interface components {
      * @enum {string}
      */
     Verdict: "on_track" | "at_risk" | "off_track" | "done" | "no_date" | "not_enough_data";
+    /** VerdictCountsDto */
+    VerdictCountsDto: {
+      /**
+       * On Track
+       * @default 0
+       */
+      on_track: number;
+      /**
+       * At Risk
+       * @default 0
+       */
+      at_risk: number;
+      /**
+       * Off Track
+       * @default 0
+       */
+      off_track: number;
+      /**
+       * Done
+       * @default 0
+       */
+      done: number;
+      /**
+       * No Date
+       * @default 0
+       */
+      no_date: number;
+      /**
+       * Not Enough Data
+       * @default 0
+       */
+      not_enough_data: number;
+      /**
+       * None
+       * @description Projects with no forecast row kept yet.
+       * @default 0
+       */
+      none: number;
+    };
+    /**
+     * VerdictFilter
+     * @description The filter chips: a project's verdict, as the reader picks it.
+     * @enum {string}
+     */
+    VerdictFilter: "late" | "at_risk" | "no_date" | "on_track" | "done" | "not_enough_data";
+    /** WarningGroupDto */
+    WarningGroupDto: {
+      kind: components["schemas"]["WarningKind"];
+      /** Title */
+      title: string;
+      /** Count */
+      count: number;
+      /**
+       * Items
+       * @description Oldest first.
+       */
+      items: components["schemas"]["WarningItemDto"][];
+      /**
+       * Counts Only
+       * @description The reader reads this group's count, not its items.
+       */
+      counts_only: boolean;
+    };
+    /** WarningItemDto */
+    WarningItemDto: {
+      /** Id */
+      id: string;
+      /**
+       * Kind
+       * @description The drift kind, the risk rule, or 'blocker'.
+       */
+      kind: string;
+      /** Key */
+      key: string;
+      /** Line */
+      line: string;
+      /** Age Days */
+      age_days: number;
+      /** Since */
+      since: string | null;
+      /**
+       * Age Known
+       * @description False: the age only counts from the first recording ('seen since').
+       */
+      age_known: boolean;
+      /**
+       * Owner
+       * @description Who acts on it, by name; null where the reader sees the team instead.
+       */
+      owner: string | null;
+      /** Owner Team */
+      owner_team: string | null;
+      /** Owner Is You */
+      owner_is_you: boolean;
+      /** Project Id */
+      project_id: string;
+      /** Project Name */
+      project_name: string;
+      severity: components["schemas"]["Rag"];
+      /** Evidence Url */
+      evidence_url?: string | null;
+      /**
+       * Watermelon
+       * @default false
+       */
+      watermelon: boolean;
+    };
+    /**
+     * WarningKind
+     * @enum {string}
+     */
+    WarningKind:
+      | "blockers"
+      | "tools_disagree"
+      | "done_in_code"
+      | "review_stuck"
+      | "no_movement"
+      | "no_code_yet";
     /** WorkItemCreateRequest */
     WorkItemCreateRequest: {
       /** Id */
@@ -16976,6 +17519,118 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  portfolio_delivery_portfolio_delivery_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        /** @description Name, code, Jira key or programme. */
+        q?: string;
+        /** @description Keep these verdicts: late, at_risk, no_date, on_track, ... */
+        verdict?: components["schemas"]["VerdictFilter"][] | null;
+        program_id?: string | null;
+        sort?: components["schemas"]["PortfolioSort"];
+        offset?: number;
+        limit?: number;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PortfolioDeliveryResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  portfolio_scope_portfolio_scope_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        q?: string;
+        program_id?: string | null;
+        project_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PortfolioScopeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  portfolio_warnings_portfolio_warnings_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        q?: string;
+        project_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PortfolioWarningsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
       };
     };
   };

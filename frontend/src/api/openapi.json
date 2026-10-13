@@ -11577,6 +11577,7 @@
       "get": {
         "tags": ["personas"],
         "summary": "Portfolio Heatmap",
+        "description": "The day's heat, each cell with why it has its colour.\n\nAn executive reads it with nobody in it (D87): no person's cell but their\nown, and reasons that count people and name work items, never a name or a\nblocker's own words. Decided here by role, never by the console hiding it.",
         "operationId": "portfolio_heatmap_portfolio_heatmap_get",
         "parameters": [
           {
@@ -11650,7 +11651,7 @@
       "get": {
         "tags": ["personas"],
         "summary": "Portfolio Attention",
-        "description": "Exec Today's headline, its next drivers and the top signals for one day.\n\nThe heat map's read (the same colours and reasons) with the portfolio's\nrisk and drift findings, so it needs both: manager, exec and admin hold them.",
+        "description": "Exec Today's headline, its next drivers and the top signals for one day.\n\nThe heat map's read (the same colours and reasons) with the portfolio's\nrisk and drift findings, so it needs both: manager, exec and admin hold them.\nAn executive's names nobody, as their heat map does (D87).",
         "operationId": "portfolio_attention_portfolio_attention_get",
         "parameters": [
           {
@@ -12888,6 +12889,332 @@
         }
       }
     },
+    "/portfolio/delivery": {
+      "get": {
+        "tags": ["portfolio"],
+        "summary": "Portfolio Delivery",
+        "description": "Will we make the date? for every project the reader reads, worst first.\n\nEach project's three dates (committed, likely, the team's own), its verdict\nand one reason line, today's health in words, done of total per pod, and the\nchanges on its bar, from the kept rows \"as of\" ``computed_at``.",
+        "operationId": "portfolio_delivery_portfolio_delivery_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 120,
+              "description": "Name, code, Jira key or programme.",
+              "default": "",
+              "title": "Q"
+            },
+            "description": "Name, code, Jira key or programme."
+          },
+          {
+            "name": "verdict",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VerdictFilter"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keep these verdicts: late, at_risk, no_date, on_track, ...",
+              "title": "Verdict"
+            },
+            "description": "Keep these verdicts: late, at_risk, no_date, on_track, ..."
+          },
+          {
+            "name": "program_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Program Id"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PortfolioSort",
+              "default": "worst"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioDeliveryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portfolio/scope": {
+      "get": {
+        "tags": ["portfolio"],
+        "summary": "Portfolio Scope",
+        "description": "What joined each project after planning, and its open Jira hygiene findings.",
+        "operationId": "portfolio_scope_portfolio_scope_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 120,
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "program_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Program Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioScopeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portfolio/warnings": {
+      "get": {
+        "tags": ["portfolio"],
+        "summary": "Portfolio Warnings",
+        "description": "Early warnings across the readable projects, grouped by kind with a count each.",
+        "operationId": "portfolio_warnings_portfolio_warnings_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 120,
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioWarningsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/profiles": {
       "get": {
         "tags": ["profiles"],
@@ -13795,6 +14122,74 @@
         "type": "object",
         "required": ["accepted"],
         "title": "AcceptProfilesResponse"
+      },
+      "AgainstPlanDto": {
+        "properties": {
+          "planned_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Planned On"
+          },
+          "planned": {
+            "type": "integer",
+            "title": "Planned"
+          },
+          "added": {
+            "type": "integer",
+            "title": "Added",
+            "description": "Requirements in scope now that were not in the baseline."
+          },
+          "without_label": {
+            "type": "integer",
+            "title": "Without Label",
+            "description": "Of those added, the ones without the baseline's change label."
+          },
+          "without_label_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Without Label Percent",
+            "description": "without_label as a whole percentage of added; null with none added."
+          },
+          "change_label": {
+            "type": "string",
+            "title": "Change Label",
+            "description": "The baseline's change label: tenant data."
+          },
+          "removed": {
+            "type": "integer",
+            "title": "Removed"
+          },
+          "added_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added Days",
+            "description": "Working days the additions since planning moved the 85% date, summed from the kept days' breakdowns; null when no kept day took them apart."
+          }
+        },
+        "type": "object",
+        "required": [
+          "planned_on",
+          "planned",
+          "added",
+          "without_label",
+          "without_label_percent",
+          "change_label",
+          "removed"
+        ],
+        "title": "AgainstPlanDto",
+        "description": "The scope today against the planning baseline: keys counted, never who."
       },
       "AppliesTo": {
         "type": "string",
@@ -22957,6 +23352,70 @@
         "title": "PortfolioAttentionResponse",
         "description": "What a director should know about a program on one day (Exec Today).\n\n``headline`` is one plain sentence with the colour and its cause; ``detail``\nthe next drivers, or null. ``signals`` are at most five items to act on,\nworst and oldest first; empty only when nothing needs attention."
       },
+      "PortfolioDeliveryResponse": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "computed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Computed At",
+            "description": "The newest kept row's time: 'as of HH:MM'."
+          },
+          "counts": {
+            "$ref": "#/components/schemas/VerdictCountsDto"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioProjectDto"
+            },
+            "type": "array",
+            "title": "Projects"
+          },
+          "programs": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioProgramDto"
+            },
+            "type": "array",
+            "title": "Programs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "computed_at",
+          "counts",
+          "total",
+          "offset",
+          "limit",
+          "projects",
+          "programs"
+        ],
+        "title": "PortfolioDeliveryResponse",
+        "description": "Every project the reader reads, worst first, from the kept forecast rows.\n\n``counts`` cover every project the search matches (the verdict filter aside), so\neach tile is a filter; ``total`` is how many match the filters, of which\n``projects`` is the page from ``offset``."
+      },
       "PortfolioFeedItemResponse": {
         "properties": {
           "source": {
@@ -23147,6 +23606,439 @@
         "required": ["as_of", "rows", "columns", "cells"],
         "title": "PortfolioHeatmapResponse"
       },
+      "PortfolioMarkDto": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "scope_added, scope_removed, reopened or committed_date_changed."
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "working_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Working Days",
+            "description": "Working days it moved the 85% date that day, later positive; null for a committed date's move or a day not taken apart."
+          },
+          "pushed": {
+            "type": "boolean",
+            "title": "Pushed",
+            "description": "It moved the 85% date later: a change that pushed it."
+          },
+          "moved_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moved To",
+            "description": "A committed date's move: the date it moved to."
+          }
+        },
+        "type": "object",
+        "required": ["day", "kind", "count", "working_days", "pushed"],
+        "title": "PortfolioMarkDto",
+        "description": "One change on a project's bar."
+      },
+      "PortfolioPodDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Verdict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "p85": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P85"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "done", "total", "verdict", "target", "p85"],
+        "title": "PortfolioPodDto"
+      },
+      "PortfolioProgramDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/VerdictCountsDto"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "counts"],
+        "title": "PortfolioProgramDto"
+      },
+      "PortfolioProjectDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "program_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Program Id"
+          },
+          "program_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Program Name"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Verdict"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null while no forecast row is kept for it."
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target",
+            "description": "The committed date, else Jira's release date."
+          },
+          "target_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Source",
+            "description": "committed, jira_release, or null."
+          },
+          "p50": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50"
+          },
+          "p85": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P85"
+          },
+          "team_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Date",
+            "description": "The team's own date: the latest ETA or due date."
+          },
+          "team_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Key"
+          },
+          "days_late": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Late",
+            "description": "Working days the 85% date lies after the target; negative: before it."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why it has its verdict, in one line that counts work items."
+          },
+          "health": {
+            "type": "string",
+            "title": "Health",
+            "description": "Today's health in words (D92), e.g. '1 open blocker, 2 of 8 not replied'; never a colour."
+          },
+          "health_day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Day",
+            "description": "The day the rollup it is read from was kept."
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "pods": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioPodDto"
+            },
+            "type": "array",
+            "title": "Pods"
+          },
+          "releases": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioReleaseDto"
+            },
+            "type": "array",
+            "title": "Releases"
+          },
+          "marks": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioMarkDto"
+            },
+            "type": "array",
+            "title": "Marks"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgainstPlanDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start": {
+            "type": "string",
+            "format": "date",
+            "title": "Start",
+            "description": "Where the bar starts: planning, else a month back."
+          },
+          "kept_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kept On",
+            "description": "The day of the forecast row read."
+          },
+          "computed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Computed At",
+            "description": "When that row was computed."
+          },
+          "reconstructed": {
+            "type": "boolean",
+            "title": "Reconstructed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "program_id",
+          "program_name",
+          "verdict",
+          "target",
+          "target_source",
+          "p50",
+          "p85",
+          "team_date",
+          "team_key",
+          "days_late",
+          "reason",
+          "health",
+          "health_day",
+          "done",
+          "total",
+          "pods",
+          "releases",
+          "marks",
+          "plan",
+          "start",
+          "kept_on",
+          "computed_at",
+          "reconstructed"
+        ],
+        "title": "PortfolioProjectDto"
+      },
+      "PortfolioReleaseDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Verdict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "p85": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P85"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "verdict", "target", "p85"],
+        "title": "PortfolioReleaseDto"
+      },
       "PortfolioRisksResponse": {
         "properties": {
           "as_of": {
@@ -23173,6 +24065,111 @@
         "type": "object",
         "required": ["as_of", "risks"],
         "title": "PortfolioRisksResponse"
+      },
+      "PortfolioScopeResponse": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "reads_baselines": {
+            "type": "boolean",
+            "title": "Reads Baselines"
+          },
+          "hygiene_enabled": {
+            "type": "boolean",
+            "title": "Hygiene Enabled"
+          },
+          "counts_only": {
+            "type": "boolean",
+            "title": "Counts Only"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeProjectDto"
+            },
+            "type": "array",
+            "title": "Projects"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeRuleCountDto"
+            },
+            "type": "array",
+            "title": "Rules"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeFindingDto"
+            },
+            "type": "array",
+            "title": "Findings"
+          },
+          "findings_total": {
+            "type": "integer",
+            "title": "Findings Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "reads_baselines",
+          "hygiene_enabled",
+          "counts_only",
+          "projects",
+          "rules",
+          "findings",
+          "findings_total"
+        ],
+        "title": "PortfolioScopeResponse",
+        "description": "Each readable project against its plan, and the open Jira hygiene findings.\n\n``counts_only``: the reader reads each rule's count, never an issue or an owner."
+      },
+      "PortfolioSort": {
+        "type": "string",
+        "enum": ["worst", "days_late", "committed", "name"],
+        "title": "PortfolioSort"
+      },
+      "PortfolioWarningsResponse": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "seen_since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen Since",
+            "description": "The first day drift sightings were recorded: an age from it is a lower bound."
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/WarningGroupDto"
+            },
+            "type": "array",
+            "title": "Groups"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "projects": {
+            "type": "integer",
+            "title": "Projects"
+          }
+        },
+        "type": "object",
+        "required": ["as_of", "seen_since", "groups", "total", "projects"],
+        "title": "PortfolioWarningsResponse",
+        "description": "Early warnings grouped by kind, each with its count; findings attach to work items."
       },
       "ProfileHistoryEntry": {
         "properties": {
@@ -27471,6 +28468,96 @@
         "title": "ScopeDeliveryResponse",
         "description": "One scope's committed date and forecast: a project, a pod's part, or a release."
       },
+      "ScopeFindingDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "issue_key": {
+            "type": "string",
+            "title": "Issue Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "rule_id": {
+            "type": "string",
+            "title": "Rule Id"
+          },
+          "rule_name": {
+            "type": "string",
+            "title": "Rule Name"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name",
+            "description": "Null for a reader who sees no person."
+          },
+          "owner_team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Team"
+          },
+          "found_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Found On"
+          },
+          "open_days": {
+            "type": "integer",
+            "title": "Open Days"
+          },
+          "asks": {
+            "type": "boolean",
+            "title": "Asks",
+            "description": "Its rule asks the owner in the day report: nothing to send."
+          },
+          "held": {
+            "type": "boolean",
+            "title": "Held"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "issue_key",
+          "title",
+          "rule_id",
+          "rule_name",
+          "project_id",
+          "project_name",
+          "owner_name",
+          "owner_team",
+          "found_on",
+          "open_days",
+          "asks",
+          "held"
+        ],
+        "title": "ScopeFindingDto"
+      },
       "ScopeGroup": {
         "type": "string",
         "enum": ["change_request", "no_label", "bug", "moved_in", "planned", "before_planning"],
@@ -27481,6 +28568,119 @@
         "type": "string",
         "enum": ["project", "release", "pod"],
         "title": "ScopeKind"
+      },
+      "ScopeProjectDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "program_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Program Id"
+          },
+          "program_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Program Name"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgainstPlanDto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null without a baseline, or for a reader of no baselines."
+          },
+          "added_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Added Keys"
+          },
+          "without_label_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Without Label Keys"
+          },
+          "scope_day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Day",
+            "description": "The stored snapshot the scope is read from."
+          },
+          "hygiene_open": {
+            "type": "integer",
+            "title": "Hygiene Open"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "program_id",
+          "program_name",
+          "plan",
+          "added_keys",
+          "without_label_keys",
+          "scope_day",
+          "hygiene_open"
+        ],
+        "title": "ScopeProjectDto"
+      },
+      "ScopeRuleCountDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "asks": {
+            "type": "boolean",
+            "title": "Asks",
+            "description": "The rule asks each owner in the day report."
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "asks", "open"],
+        "title": "ScopeRuleCountDto"
       },
       "ScopeSinceBaselineResponse": {
         "properties": {
@@ -29180,6 +30380,210 @@
         "type": "string",
         "enum": ["on_track", "at_risk", "off_track", "done", "no_date", "not_enough_data"],
         "title": "Verdict"
+      },
+      "VerdictCountsDto": {
+        "properties": {
+          "on_track": {
+            "type": "integer",
+            "title": "On Track",
+            "default": 0
+          },
+          "at_risk": {
+            "type": "integer",
+            "title": "At Risk",
+            "default": 0
+          },
+          "off_track": {
+            "type": "integer",
+            "title": "Off Track",
+            "default": 0
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done",
+            "default": 0
+          },
+          "no_date": {
+            "type": "integer",
+            "title": "No Date",
+            "default": 0
+          },
+          "not_enough_data": {
+            "type": "integer",
+            "title": "Not Enough Data",
+            "default": 0
+          },
+          "none": {
+            "type": "integer",
+            "title": "None",
+            "description": "Projects with no forecast row kept yet.",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "VerdictCountsDto"
+      },
+      "VerdictFilter": {
+        "type": "string",
+        "enum": ["late", "at_risk", "no_date", "on_track", "done", "not_enough_data"],
+        "title": "VerdictFilter",
+        "description": "The filter chips: a project's verdict, as the reader picks it."
+      },
+      "WarningGroupDto": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/WarningKind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WarningItemDto"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Oldest first."
+          },
+          "counts_only": {
+            "type": "boolean",
+            "title": "Counts Only",
+            "description": "The reader reads this group's count, not its items."
+          }
+        },
+        "type": "object",
+        "required": ["kind", "title", "count", "items", "counts_only"],
+        "title": "WarningGroupDto"
+      },
+      "WarningItemDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "The drift kind, the risk rule, or 'blocker'."
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "line": {
+            "type": "string",
+            "title": "Line"
+          },
+          "age_days": {
+            "type": "integer",
+            "title": "Age Days"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "age_known": {
+            "type": "boolean",
+            "title": "Age Known",
+            "description": "False: the age only counts from the first recording ('seen since')."
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner",
+            "description": "Who acts on it, by name; null where the reader sees the team instead."
+          },
+          "owner_team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Team"
+          },
+          "owner_is_you": {
+            "type": "boolean",
+            "title": "Owner Is You"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "evidence_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Url"
+          },
+          "watermelon": {
+            "type": "boolean",
+            "title": "Watermelon",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "key",
+          "line",
+          "age_days",
+          "since",
+          "age_known",
+          "owner",
+          "owner_team",
+          "owner_is_you",
+          "project_id",
+          "project_name",
+          "severity"
+        ],
+        "title": "WarningItemDto"
+      },
+      "WarningKind": {
+        "type": "string",
+        "enum": [
+          "blockers",
+          "tools_disagree",
+          "done_in_code",
+          "review_stuck",
+          "no_movement",
+          "no_code_yet"
+        ],
+        "title": "WarningKind"
       },
       "WorkItemCreateRequest": {
         "properties": {
