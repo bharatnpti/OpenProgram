@@ -1,0 +1,39 @@
+backend/api/dtos.py
+  s_5f08a60d42019a::t_3ed13cb7d18d7e 1541-1548,1560
+backend/api/routers/persona.py
+  s_5f08a60d42019a::t_67b7adc0423175 64,230-235,238-239
+backend/core/application/persona_views.py
+  s_5f08a60d42019a::t_02e3b48e954c1e 435-437,1182,1208,2467-2476
+backend/core/application/portfolio_privacy.py
+  s_5f08a60d42019a::t_0bf5d60809f2cb 32,38,142-172,224-231,243
+backend/tests/unit/test_small_group.py
+  s_5f08a60d42019a::t_40fe1f6329a597 252-300
+frontend-v2/src/api/generated.ts
+  s_5f08a60d42019a::t_7345ec13c5f840 2737-2744,6938-6942
+frontend-v2/src/api/openapi.json
+  s_5f08a60d42019a::t_45aef5165f618f 11457,22872-22883
+frontend-v3/src/api/generated.ts
+  s_5f08a60d42019a::t_c99d4174a46f73 2737-2744,6938-6942
+frontend-v3/src/api/openapi.json
+  s_5f08a60d42019a::t_30b7e5f1aa3b9c 11457,22872-22883
+frontend/src/api/generated.ts
+  s_5f08a60d42019a::t_9961faba8e9191 2737-2744,6951-6955
+frontend/src/api/openapi.json
+  s_5f08a60d42019a::t_f0b73b1fdf8062 11457,22872-22883
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bebe2ebcb993f75cbb53272f14620edb732db220",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
