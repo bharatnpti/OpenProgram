@@ -1292,6 +1292,31 @@ class PostgresConversationRepository:
             await self._touch_conversation_turns(rows)
         return [_conversation_turn_from_row(row) for row in rows]
 
+    async def peek_turns_for_day(
+        self, tenant_id: str, developer_id: str, on: date
+    ) -> list[ConversationTurn]:
+        # The same rows and order as list_turns_for_day; only the touch is left out.
+        with _tracer.start_as_current_span("postgres.conversation.peek_turns_for_day"):
+            rows = await self._executor.fetch(
+                """
+                SELECT id::text AS turn_id, tenant_id, developer_id, conversation_id,
+                       conversation_date, role, content, correlation_id, chat_message_id,
+                       observed_at, last_accessed_at
+                FROM conversation_turns
+                WHERE tenant_id = %s
+                  AND developer_id = %s
+                  AND conversation_date = %s
+                ORDER BY observed_at ASC,
+                         conversation_id ASC,
+                         COALESCE(correlation_id, '') ASC,
+                         COALESCE(chat_message_id, '') ASC,
+                         role ASC,
+                         content ASC
+                """,
+                (tenant_id, developer_id, on),
+            )
+        return [_conversation_turn_from_row(row) for row in rows]
+
     async def list_recent_turns(
         self,
         tenant_id: str,

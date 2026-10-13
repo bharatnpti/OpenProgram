@@ -3029,6 +3029,106 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/me/conversation": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * My Conversation
+     * @description The caller's own conversation of ``day``, read-only; past the window, "not kept".
+     */
+    get: operations["my_conversation_me_conversation_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/asks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Project Asks
+     * @description Who must act on the project: each ask's what, who, how long and why, by the item.
+     */
+    get: operations["project_asks_projects__project_id__asks_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/today-counts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * My Today Counts
+     * @description Replies of the day and open warnings over the caller's part; none for a developer.
+     */
+    get: operations["my_today_counts_me_today_counts_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/jira-changes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * My Jira Changes
+     * @description The caller's own changes waiting for their yes, each with the gate a yes would meet.
+     */
+    get: operations["my_jira_changes_me_jira_changes_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/jira-changes/{item_id}/answer": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Answer My Jira Change
+     * @description Say yes or no to one change. Every gate of the write applies again to a yes.
+     */
+    post: operations["answer_my_jira_change_me_jira_changes__item_id__answer_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/profiles": {
     parameters: {
       query?: never;
@@ -4243,6 +4343,43 @@ export interface components {
      * @enum {string}
      */
     ContactSource: "team_scrum_master" | "team_manager" | "member";
+    /**
+     * ConversationResponse
+     * @description The person's own conversation of one day, read-only, oldest first.
+     *
+     *     ``kept`` False: past the retention window, so nothing is shown and
+     *     ``note`` says why.
+     */
+    ConversationResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** Kept */
+      kept: boolean;
+      /** Retention Days */
+      retention_days: number;
+      /** Note */
+      note?: string | null;
+      /** Turns */
+      turns: components["schemas"]["ConversationTurnDto"][];
+    };
+    /** ConversationTurnDto */
+    ConversationTurnDto: {
+      /**
+       * Role
+       * @enum {string}
+       */
+      role: "agent" | "user";
+      /** Text */
+      text: string;
+      /**
+       * At
+       * Format: date-time
+       */
+      at: string;
+    };
     /**
      * CrossPersonDelivery
      * @description Whether the counterpart has been sent the DM about a request.
@@ -5974,6 +6111,124 @@ export interface components {
      * @enum {string}
      */
     ItemStatus: "suggested" | "dismissed" | "pending" | "met" | "failed" | "waived";
+    /** JiraChangeAnswerRequest */
+    JiraChangeAnswerRequest: {
+      /**
+       * Answer
+       * @enum {string}
+       */
+      answer: "yes" | "no";
+    };
+    /**
+     * JiraChangeAnswerResponse
+     * @description What the answer did. ``already_answered``: the chat (or another tab) answered first.
+     */
+    JiraChangeAnswerResponse: {
+      /** Item Id */
+      item_id: string;
+      /** Issue Key */
+      issue_key: string;
+      /**
+       * Outcome
+       * @enum {string}
+       */
+      outcome:
+        | "applied"
+        | "declined"
+        | "held_open_mr"
+        | "not_owner"
+        | "no_change"
+        | "failed"
+        | "off"
+        | "already_answered";
+      /** Detail */
+      detail: string;
+      /**
+       * Checkin Finished
+       * @default false
+       */
+      checkin_finished: boolean;
+      /**
+       * Line Sent
+       * @default false
+       */
+      line_sent: boolean;
+    };
+    /**
+     * JiraChangeDto
+     * @description One change waiting for the person's yes.
+     *
+     *     ``kind``: ``proposal`` (from a check-in), ``suggestion`` (a merged merge
+     *     request, the issue still open) or ``due_date`` (no answer here: change it
+     *     in the tracker). ``holds_checkin``: the day's check-in waits for this answer.
+     */
+    JiraChangeDto: {
+      /** Id */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "proposal" | "suggestion" | "due_date";
+      /** Issue Key */
+      issue_key: string;
+      /** Issue Title */
+      issue_title?: string | null;
+      /** Why */
+      why: string;
+      /** Asked On */
+      asked_on?: string | null;
+      /** Target Label */
+      target_label?: string | null;
+      gate?: components["schemas"]["JiraChangeGateDto"] | null;
+      /** Answerable */
+      answerable: boolean;
+      /**
+       * Holds Checkin
+       * @default false
+       */
+      holds_checkin: boolean;
+      /** Due On */
+      due_on?: string | null;
+      /** Eta On */
+      eta_on?: string | null;
+    };
+    /**
+     * JiraChangeGateDto
+     * @description What a yes would meet now, read from the same gates the write passes.
+     *
+     *     ``yes_allowed`` is False for every state but ``open`` and ``no_change``: the
+     *     console offers no yes a gate would refuse. A no is always allowed for a
+     *     proposal or a suggestion: it never writes.
+     */
+    JiraChangeGateDto: {
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "open" | "no_change" | "off" | "not_owner" | "held_open_mr" | "unreadable";
+      /** Yes Allowed */
+      yes_allowed: boolean;
+      /** Tracker Status */
+      tracker_status?: string | null;
+      /**
+       * Merge Requests
+       * @default []
+       */
+      merge_requests: string[];
+    };
+    /** JiraChangesResponse */
+    JiraChangesResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Tracker */
+      tracker: string;
+      /** Items */
+      items: components["schemas"]["JiraChangeDto"][];
+    };
     /**
      * JiraCreateProjectsDto
      * @description The Jira projects release readiness may create issues in.
@@ -6950,6 +7205,52 @@ export interface components {
       /** Edges */
       edges: components["schemas"]["PersonaTreeEdgeDto"][];
     };
+    /**
+     * ProjectAskDto
+     * @description One ask of who must act: what, who, how long, why. Ordered by the item, never by person.
+     *
+     *     For an executive ``who`` is the owning team and ``detail`` and
+     *     ``escalated_to`` are empty: no one's name reaches them.
+     */
+    ProjectAskDto: {
+      need: components["schemas"]["NeedType"];
+      /** Need Label */
+      need_label: string;
+      /** What */
+      what: string;
+      /** Who */
+      who?: string | null;
+      /** Team */
+      team?: string | null;
+      /** Waited Days */
+      waited_days?: number | null;
+      /** Detail */
+      detail?: string | null;
+      /** Issue Key */
+      issue_key?: string | null;
+      /** Level */
+      level: number;
+      /** Escalated To */
+      escalated_to?: string | null;
+      /** Escalation Label */
+      escalation_label?: string | null;
+    };
+    /** ProjectAsksResponse */
+    ProjectAsksResponse: {
+      /** Project Id */
+      project_id: string;
+      /** Project Name */
+      project_name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Names Hidden */
+      names_hidden: boolean;
+      /** Asks */
+      asks: components["schemas"]["ProjectAskDto"][];
+    };
     /** ProjectDeliveryResponse */
     ProjectDeliveryResponse: {
       project: components["schemas"]["ScopeDeliveryResponse"];
@@ -7806,6 +8107,21 @@ export interface components {
       updated_at: string;
       /** Updated By */
       updated_by: string;
+    };
+    /**
+     * RepliesCountDto
+     * @description The day's replies: ``replied`` (confirmed or partial) of ``people``, and
+     *     ``inferred``, filled from the tracker and Git, never green.
+     */
+    RepliesCountDto: {
+      /** People */
+      people: number;
+      /** Replied */
+      replied: number;
+      /** Inferred */
+      inferred: number;
+      /** Waiting */
+      waiting: number;
     };
     /** ReportAskFactsResponse */
     ReportAskFactsResponse: {
@@ -8995,6 +9311,27 @@ export interface components {
        * Format: date
        */
       date: string;
+    };
+    /**
+     * TodayCountsResponse
+     * @description Today's counts over what the caller reads: the portfolio, or their own pods and projects.
+     */
+    TodayCountsResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /**
+       * Scope
+       * @enum {string}
+       */
+      scope: "portfolio" | "own";
+      replies: components["schemas"]["RepliesCountDto"];
+      /** Open Warnings */
+      open_warnings: number;
+      /** Project Count */
+      project_count: number;
     };
     /** TrackedQuestionResponse */
     TrackedQuestionResponse: {
@@ -16445,6 +16782,187 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
         };
+      };
+    };
+  };
+  my_conversation_me_conversation_get: {
+    parameters: {
+      query?: {
+        day?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConversationResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_asks_projects__project_id__asks_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectAsksResponse"];
+        };
+      };
+      /** @description No such project. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  my_today_counts_me_today_counts_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TodayCountsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  my_jira_changes_me_jira_changes_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JiraChangesResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  answer_my_jira_change_me_jira_changes__item_id__answer_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["JiraChangeAnswerRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JiraChangeAnswerResponse"];
+        };
+      };
+      /** @description No such change is waiting for the caller. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description A change the console cannot make, such as a due date. */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

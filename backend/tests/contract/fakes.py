@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
@@ -911,6 +912,20 @@ class FakeConversationRepository:
         self._touch_turns(matched)
         return matched
 
+    async def peek_turns_for_day(
+        self, tenant_id: str, developer_id: str, on: date
+    ) -> list[ConversationTurn]:
+        return sorted(
+            (
+                turn
+                for turn in self.turns
+                if turn.tenant_id == tenant_id
+                and turn.developer_id == developer_id
+                and turn.conversation_date == on
+            ),
+            key=_conversation_sort_key,
+        )
+
     async def list_recent_turns(
         self,
         tenant_id: str,
@@ -1168,6 +1183,7 @@ class FakeWriteBackConfigRepository:
 @dataclass
 class FakeWriteBackAuditRepository:
     audits: dict[str, WriteBackAudit] = field(default_factory=dict)
+    answer_locks: dict[tuple[str, str], asyncio.Lock] = field(default_factory=dict)
 
     async def record(self, audit: WriteBackAudit) -> None:
         self.audits.setdefault(audit.id, audit)
@@ -1218,6 +1234,14 @@ class FakeWriteBackAuditRepository:
         if audit is None or audit.tenant_id != tenant_id:
             return None
         return audit
+
+    @asynccontextmanager
+    async def exclusive_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> AsyncIterator[None]:
+        lock = self.answer_locks.setdefault((tenant_id, correlation_id), asyncio.Lock())
+        async with lock:
+            yield
 
     async def count_applied_writebacks(self, tenant_id: str, since: datetime | None = None) -> int:
         return sum(1 for _ in self._applied(tenant_id, since))

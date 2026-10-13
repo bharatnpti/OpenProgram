@@ -25,7 +25,7 @@ about work, not people; the report never ranks or scores anyone.
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
@@ -125,6 +125,14 @@ _HEARD_BACK = {
     QuestionStatus.ANSWERED: "Yes",
     QuestionStatus.CLOSED_UNANSWERED: "No, the issue closed",
 }
+
+
+@dataclass(frozen=True, kw_only=True)
+class ProjectAsks:
+    """A project's asks for one day, flat, and who is who in it (``AskScope``)."""
+
+    scope: AskScope
+    asks: tuple[Ask, ...]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -256,6 +264,31 @@ class DayReportBuilder:
             ),
         )
 
+    async def asks(
+        self,
+        tenant_id: str,
+        project_id: str,
+        day: date,
+        *,
+        release_id: str | None = None,
+    ) -> ProjectAsks:
+        """The day's asks for the project, flat and escalated, exactly as ``build`` makes them.
+
+        The same gathering as the report's "What we need, and from whom":
+        blockers, waits from outside, requests, signals, gates, questions,
+        readiness and hygiene asks, each escalated on the project's matrix. It
+        leaves out the forecast, the progress snapshots and the impact line,
+        which no ask reads. Ordered by the item: the level it reached, how
+        long it waited, then its kind; never grouped or ranked by person.
+        """
+        facts = await self._ask_facts(tenant_id, project_id, day, release_id)
+        hygiene = await self._hygiene_part(tenant_id, facts, day)
+        asks = [
+            escalated(ask, facts.matrix, facts.scope)
+            for ask in [*await self._asks(tenant_id, facts, day), *hygiene.asks]
+        ]
+        return ProjectAsks(scope=facts.scope, asks=tuple(most_needed(asks, limit=len(asks))))
+
     async def check_release(self, tenant_id: str, project_id: str, release_id: str) -> None:
         """Raise GraphNotFound unless the release belongs to the project."""
         await self._release(tenant_id, project_id, release_id)
@@ -265,15 +298,28 @@ class DayReportBuilder:
     async def _facts(
         self, tenant_id: str, project_id: str, day: date, release_id: str | None
     ) -> _Facts:
-        release = await self._release(tenant_id, project_id, release_id)
-        scope = await self._scope(tenant_id, project_id, day, release)
+        facts = await self._ask_facts(tenant_id, project_id, day, release_id)
+        release = facts.release
         previous = await self._delivery.previous_snapshot(tenant_id, project_id, day, release)
-        return _Facts(
-            scope=scope,
-            release=release,
+        return replace(
+            facts,
             snapshot=await self._delivery.snapshot(tenant_id, project_id, day, release),
             previous=previous,
             delivery=await self._delivery_view(tenant_id, project_id, day, release),
+            impact=await self._impact_line(tenant_id, project_id, release, previous, day),
+        )
+
+    async def _ask_facts(
+        self, tenant_id: str, project_id: str, day: date, release_id: str | None
+    ) -> _Facts:
+        """What the asks read: who is who, the gates, the matrix, findings and readiness."""
+        release = await self._release(tenant_id, project_id, release_id)
+        return _Facts(
+            scope=await self._scope(tenant_id, project_id, day, release),
+            release=release,
+            snapshot=None,
+            previous=None,
+            delivery=None,
             board=await self._gates.board(tenant_id, project_id, day, release),
             matrix=(await self._escalation.matrix_for(tenant_id, project_id)).matrix,
             findings=(
@@ -285,7 +331,6 @@ class DayReportBuilder:
                 if self._readiness is not None
                 else ReportGaps()
             ),
-            impact=await self._impact_line(tenant_id, project_id, release, previous, day),
         )
 
     async def _impact_line(

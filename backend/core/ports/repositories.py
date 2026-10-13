@@ -431,6 +431,18 @@ class ConversationRepository(Protocol):
         self, tenant_id: str, developer_id: str, on: date
     ) -> list[ConversationTurn]: ...
 
+    async def peek_turns_for_day(
+        self, tenant_id: str, developer_id: str, on: date
+    ) -> list[ConversationTurn]:
+        """The person's turns of ``on``, as ``list_turns_for_day``, without touching them.
+
+        The other reads mark each turn accessed, which moves its retention
+        purge back. A person reading their own conversation in the console
+        must never keep it for good, so this read leaves ``last_accessed_at``
+        as it is.
+        """
+        ...
+
     async def list_recent_turns(
         self,
         tenant_id: str,
@@ -629,6 +641,19 @@ class WriteBackAuditRepository(Protocol):
     ) -> WriteBackAudit | None: ...
 
     async def get_writeback_audit(self, tenant_id: str, audit_id: str) -> WriteBackAudit | None: ...
+
+    def exclusive_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> AbstractAsyncContextManager[None]:
+        """Hold one correlation's write-back answers alone while one is resolved.
+
+        A proposal can be answered in the chat and in the console at nearly the
+        same moment, and both would read it pending and write the issue. Held
+        around the pending read and the write, the second waits, then finds the
+        first one's row and writes nothing. Across processes: the API and the
+        worker both answer.
+        """
+        ...
 
     async def count_applied_writebacks(
         self, tenant_id: str, since: datetime | None = None

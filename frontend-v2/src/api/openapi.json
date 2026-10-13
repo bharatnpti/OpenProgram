@@ -12591,6 +12591,303 @@
         }
       }
     },
+    "/me/conversation": {
+      "get": {
+        "tags": ["persona"],
+        "summary": "My Conversation",
+        "description": "The caller's own conversation of ``day``, read-only; past the window, \"not kept\".",
+        "operationId": "my_conversation_me_conversation_get",
+        "parameters": [
+          {
+            "name": "day",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Day"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/asks": {
+      "get": {
+        "tags": ["persona"],
+        "summary": "Project Asks",
+        "description": "Who must act on the project: each ask's what, who, how long and why, by the item.",
+        "operationId": "project_asks_projects__project_id__asks_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectAsksResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/today-counts": {
+      "get": {
+        "tags": ["persona"],
+        "summary": "My Today Counts",
+        "description": "Replies of the day and open warnings over the caller's part; none for a developer.",
+        "operationId": "my_today_counts_me_today_counts_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodayCountsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/jira-changes": {
+      "get": {
+        "tags": ["checkins"],
+        "summary": "My Jira Changes",
+        "description": "The caller's own changes waiting for their yes, each with the gate a yes would meet.",
+        "operationId": "my_jira_changes_me_jira_changes_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JiraChangesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/jira-changes/{item_id}/answer": {
+      "post": {
+        "tags": ["checkins"],
+        "summary": "Answer My Jira Change",
+        "description": "Say yes or no to one change. Every gate of the write applies again to a yes.",
+        "operationId": "answer_my_jira_change_me_jira_changes__item_id__answer_post",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JiraChangeAnswerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JiraChangeAnswerResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such change is waiting for the caller."
+          },
+          "422": {
+            "description": "A change the console cannot make, such as a due date."
+          }
+        }
+      }
+    },
     "/profiles": {
       "get": {
         "tags": ["profiles"],
@@ -15912,6 +16209,66 @@
         "type": "string",
         "enum": ["team_scrum_master", "team_manager", "member"],
         "title": "ContactSource"
+      },
+      "ConversationResponse": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "kept": {
+            "type": "boolean",
+            "title": "Kept"
+          },
+          "retention_days": {
+            "type": "integer",
+            "title": "Retention Days"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationTurnDto"
+            },
+            "type": "array",
+            "title": "Turns"
+          }
+        },
+        "type": "object",
+        "required": ["day", "kept", "retention_days", "turns"],
+        "title": "ConversationResponse",
+        "description": "The person's own conversation of one day, read-only, oldest first.\n\n``kept`` False: past the retention window, so nothing is shown and\n``note`` says why."
+      },
+      "ConversationTurnDto": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": ["agent", "user"],
+            "title": "Role"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": ["role", "text", "at"],
+        "title": "ConversationTurnDto"
       },
       "CrossPersonDelivery": {
         "type": "string",
@@ -20394,6 +20751,224 @@
         "enum": ["suggested", "dismissed", "pending", "met", "failed", "waived"],
         "title": "ItemStatus"
       },
+      "JiraChangeAnswerRequest": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "enum": ["yes", "no"],
+            "title": "Answer"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["answer"],
+        "title": "JiraChangeAnswerRequest"
+      },
+      "JiraChangeAnswerResponse": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id"
+          },
+          "issue_key": {
+            "type": "string",
+            "title": "Issue Key"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "applied",
+              "declined",
+              "held_open_mr",
+              "not_owner",
+              "no_change",
+              "failed",
+              "off",
+              "already_answered"
+            ],
+            "title": "Outcome"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "checkin_finished": {
+            "type": "boolean",
+            "title": "Checkin Finished",
+            "default": false
+          },
+          "line_sent": {
+            "type": "boolean",
+            "title": "Line Sent",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["item_id", "issue_key", "outcome", "detail"],
+        "title": "JiraChangeAnswerResponse",
+        "description": "What the answer did. ``already_answered``: the chat (or another tab) answered first."
+      },
+      "JiraChangeDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["proposal", "suggestion", "due_date"],
+            "title": "Kind"
+          },
+          "issue_key": {
+            "type": "string",
+            "title": "Issue Key"
+          },
+          "issue_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue Title"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why"
+          },
+          "asked_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asked On"
+          },
+          "target_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Label"
+          },
+          "gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JiraChangeGateDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "answerable": {
+            "type": "boolean",
+            "title": "Answerable"
+          },
+          "holds_checkin": {
+            "type": "boolean",
+            "title": "Holds Checkin",
+            "default": false
+          },
+          "due_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due On"
+          },
+          "eta_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta On"
+          }
+        },
+        "type": "object",
+        "required": ["id", "kind", "issue_key", "why", "answerable"],
+        "title": "JiraChangeDto",
+        "description": "One change waiting for the person's yes.\n\n``kind``: ``proposal`` (from a check-in), ``suggestion`` (a merged merge\nrequest, the issue still open) or ``due_date`` (no answer here: change it\nin the tracker). ``holds_checkin``: the day's check-in waits for this answer."
+      },
+      "JiraChangeGateDto": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": ["open", "no_change", "off", "not_owner", "held_open_mr", "unreadable"],
+            "title": "State"
+          },
+          "yes_allowed": {
+            "type": "boolean",
+            "title": "Yes Allowed"
+          },
+          "tracker_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracker Status"
+          },
+          "merge_requests": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Merge Requests",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["state", "yes_allowed"],
+        "title": "JiraChangeGateDto",
+        "description": "What a yes would meet now, read from the same gates the write passes.\n\n``yes_allowed`` is False for every state but ``open`` and ``no_change``: the\nconsole offers no yes a gate would refuse. A no is always allowed for a\nproposal or a suggestion: it never writes."
+      },
+      "JiraChangesResponse": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "tracker": {
+            "type": "string",
+            "title": "Tracker"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JiraChangeDto"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["as_of", "tracker", "items"],
+        "title": "JiraChangesResponse"
+      },
       "JiraCreateProjectsDto": {
         "properties": {
           "own_project": {
@@ -22800,6 +23375,137 @@
         "required": ["root_id", "as_of", "nodes", "edges"],
         "title": "ProgramTreeResponse"
       },
+      "ProjectAskDto": {
+        "properties": {
+          "need": {
+            "$ref": "#/components/schemas/NeedType"
+          },
+          "need_label": {
+            "type": "string",
+            "title": "Need Label"
+          },
+          "what": {
+            "type": "string",
+            "title": "What"
+          },
+          "who": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Who"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
+          },
+          "waited_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waited Days"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "issue_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue Key"
+          },
+          "level": {
+            "type": "integer",
+            "title": "Level"
+          },
+          "escalated_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalated To"
+          },
+          "escalation_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalation Label"
+          }
+        },
+        "type": "object",
+        "required": ["need", "need_label", "what", "level"],
+        "title": "ProjectAskDto",
+        "description": "One ask of who must act: what, who, how long, why. Ordered by the item, never by person.\n\nFor an executive ``who`` is the owning team and ``detail`` and\n``escalated_to`` are empty: no one's name reaches them."
+      },
+      "ProjectAsksResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "names_hidden": {
+            "type": "boolean",
+            "title": "Names Hidden"
+          },
+          "asks": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectAskDto"
+            },
+            "type": "array",
+            "title": "Asks"
+          }
+        },
+        "type": "object",
+        "required": ["project_id", "project_name", "as_of", "names_hidden", "asks"],
+        "title": "ProjectAsksResponse"
+      },
       "ProjectDeliveryResponse": {
         "properties": {
           "project": {
@@ -24995,6 +25701,30 @@
           "updated_by"
         ],
         "title": "ReleaseResponse"
+      },
+      "RepliesCountDto": {
+        "properties": {
+          "people": {
+            "type": "integer",
+            "title": "People"
+          },
+          "replied": {
+            "type": "integer",
+            "title": "Replied"
+          },
+          "inferred": {
+            "type": "integer",
+            "title": "Inferred"
+          },
+          "waiting": {
+            "type": "integer",
+            "title": "Waiting"
+          }
+        },
+        "type": "object",
+        "required": ["people", "replied", "inferred", "waiting"],
+        "title": "RepliesCountDto",
+        "description": "The day's replies: ``replied`` (confirmed or partial) of ``people``, and\n``inferred``, filled from the tracker and Git, never green."
       },
       "ReportAskFactsResponse": {
         "properties": {
@@ -28245,6 +28975,35 @@
         "required": ["on", "date"],
         "title": "TimelineTickResponse",
         "description": "One value the committed date took, and the day it was set."
+      },
+      "TodayCountsResponse": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "scope": {
+            "type": "string",
+            "enum": ["portfolio", "own"],
+            "title": "Scope"
+          },
+          "replies": {
+            "$ref": "#/components/schemas/RepliesCountDto"
+          },
+          "open_warnings": {
+            "type": "integer",
+            "title": "Open Warnings"
+          },
+          "project_count": {
+            "type": "integer",
+            "title": "Project Count"
+          }
+        },
+        "type": "object",
+        "required": ["as_of", "scope", "replies", "open_warnings", "project_count"],
+        "title": "TodayCountsResponse",
+        "description": "Today's counts over what the caller reads: the portfolio, or their own pods and projects."
       },
       "TrackedQuestionResponse": {
         "properties": {

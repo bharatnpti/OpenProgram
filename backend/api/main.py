@@ -29,6 +29,7 @@ from api.routers import (
     health,
     hygiene,
     integrations,
+    jira_changes,
     jira_writes,
     ops,
     persona,
@@ -37,6 +38,7 @@ from api.routers import (
     reports,
     test_support,
     timeline,
+    today,
     webhooks,
 )
 from config.settings import Settings, get_settings
@@ -162,6 +164,8 @@ def create_app(
     app.include_router(ask.router)
     app.include_router(checkin.router)
     app.include_router(persona.router)
+    app.include_router(today.router)
+    app.include_router(jira_changes.router)
     app.include_router(profiles.router)
     app.include_router(test_support.router)
     app.include_router(webhooks.router)

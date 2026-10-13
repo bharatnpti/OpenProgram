@@ -85,6 +85,8 @@ class InMemoryGraphStore:
     _checkin_reply_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     # One rollup of a tenant's day at a time, as the Postgres advisory lock.
     _rollup_day_locks: dict[tuple[str, date], asyncio.Lock] = field(default_factory=dict)
+    # One write-back answer of a correlation at a time, as the Postgres advisory lock.
+    _writeback_answer_locks: dict[tuple[str, str], asyncio.Lock] = field(default_factory=dict)
     # Stamps a blocker row's updated_at on each write, as the Postgres upsert's now().
     blocker_clock: Callable[[], datetime] = field(default_factory=lambda: _utc_now)
 
@@ -762,6 +764,14 @@ class InMemoryGraphStore:
             return None
         return audit
 
+    @asynccontextmanager
+    async def exclusive_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> AsyncIterator[None]:
+        lock = self._writeback_answer_locks.setdefault((tenant_id, correlation_id), asyncio.Lock())
+        async with lock:
+            yield
+
     async def count_applied_writebacks(self, tenant_id: str, since: datetime | None = None) -> int:
         return sum(1 for _ in self._applied_writebacks(tenant_id, since))
 
@@ -1234,6 +1244,20 @@ class InMemoryGraphStore:
         )
         self._touch_conversation_turns(matched)
         return matched
+
+    async def peek_turns_for_day(
+        self, tenant_id: str, developer_id: str, on: date
+    ) -> list[ConversationTurn]:
+        return sorted(
+            (
+                turn
+                for turn in self._conversation_turns
+                if turn.tenant_id == tenant_id
+                and turn.developer_id == developer_id
+                and turn.conversation_date == on
+            ),
+            key=_conversation_sort_key,
+        )
 
     async def list_recent_turns(
         self,

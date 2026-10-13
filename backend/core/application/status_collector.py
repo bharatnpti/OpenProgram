@@ -93,9 +93,10 @@ from core.application.tools.git_activity import GitActivityTool
 from core.application.tools.issue_tracker import IssueTrackerTool
 from core.application.writeback_service import (
     CHECKIN_CLOSED_SOURCE,
-    CONSENT_REPLY_SOURCE,
     OPEN_MR_SOURCE,
+    PERSON_ANSWER_SOURCES,
     OpenMergeRequestHold,
+    ProposalAnswer,
     WriteBackService,
     canonical_target_state,
     claim_reads_done,
@@ -251,6 +252,65 @@ class ReplyOutcome:
     kind: Literal["processed", "clarifying", "ignored", "acknowledged"]
     status: DeveloperStatus | None = None
     cross_person_requests: tuple[CrossPersonRequestResolution, ...] = ()
+
+
+@dataclass(frozen=True, kw_only=True)
+class ConsoleConsentFinish:
+    """What ``finish_after_console_consent`` did: finished the held check-in, sent a line."""
+
+    finished: bool = False
+    line: str | None = None
+
+
+#: The ``purpose`` of the DM line a console answer sends to the person's thread.
+CONSOLE_ANSWER_PURPOSE = "writeback_console_answer"
+CONSOLE_ANSWER_LEAD = "Answered in the console:"
+
+
+def console_answer_line(
+    answers: Sequence[ProposalAnswer],
+    remaining: Sequence[WriteBackAudit] = (),
+    *,
+    tracker: str = DEFAULT_ISSUE_TRACKER_NAME,
+) -> str | None:
+    """The one DM line saying what a console answer did, or None when it did nothing.
+
+    "Answered in the console: CHK-4 moved to Done in Jira." A proposal the
+    answer left open is named after it ("CHK-5 still waits for your yes or
+    no."). Answers another answer settled first, and a yes the gates refused,
+    are left out. Issue keys and target states only, never anyone's words.
+    """
+    parts = [
+        part for answer in answers if (part := _console_answer_part(answer, tracker)) is not None
+    ]
+    if not parts:
+        return None
+    line = f"{CONSOLE_ANSWER_LEAD} {_joined(parts)}."
+    keys = sorted({proposal.issue_key for proposal in remaining})
+    if keys:
+        verb = "waits" if len(keys) == 1 else "wait"
+        line += f" {_joined(keys)} still {verb} for your yes or no."
+    return line
+
+
+def _console_answer_part(answer: ProposalAnswer, tracker: str) -> str | None:
+    label = target_state_label(answer.target_state)
+    key = answer.issue_key
+    if answer.outcome == "applied":
+        return f"{key} moved to {label} in {tracker}"
+    if answer.outcome == "declined":
+        return f"{key} left as is, as you asked"
+    if answer.outcome == "no_change":
+        return f"{key} is already {label} in {tracker}"
+    if answer.outcome == "held_open_mr":
+        held = ", ".join(answer.merge_requests) or "its merge request"
+        verb = "are" if len(answer.merge_requests) > 1 else "is"
+        return f"{key} not moved, {held} {verb} still open"
+    if answer.outcome == "not_owner":
+        return f"{key} not moved, it is not assigned to you"
+    if answer.outcome == "failed":
+        return f"{key} not moved, the update failed"
+    return None
 
 
 @dataclass(kw_only=True)
@@ -3466,6 +3526,104 @@ class StatusCollector:
         )
         return ReplyOutcome(kind="processed", status=status)
 
+    async def finish_after_console_consent(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        correlation_id: str,
+        answers: Sequence[ProposalAnswer],
+        answered_at: datetime | None = None,
+    ) -> ConsoleConsentFinish:
+        """Finish in the chat what a console answer to a check-in's proposal settled (D89).
+
+        The person answered "Jira changes waiting for your yes" in the console
+        instead of the DM (``WriteBackService.resolve_proposal``). First the DM
+        gets one line, "Answered in the console: CHK-4 moved to Done in Jira.",
+        so the thread does not keep asking. Then:
+
+        - a check-in held open for the answer (G1: "clarifying", its signals
+          kept) is finalized once nothing is pending, exactly as the chat
+          answer finalizes it, with the usual ack;
+        - a finalized check-in (a later yes) has its status marked with the
+          update it applied (N48).
+
+        Only the person's own check-in, and only answers that did something:
+        one another answer settled first (``already_answered``) or a yes the
+        gates refused (``off``) sends no line. ``record_checkin_reply_once``
+        finalizes the check-in once, whichever answer gets there first.
+        """
+        checkin = await self._status_repository.checkin_by_correlation(tenant_id, correlation_id)
+        service = self._write_back_service
+        if checkin is None or checkin.developer_id != developer_id or service is None:
+            return ConsoleConsentFinish()
+        remaining = await service.list_pending_proposals(tenant_id, correlation_id)
+        line = console_answer_line(answers, remaining, tracker=self._issue_tracker_name)
+        if line is not None:
+            await self._send_console_answer_line(checkin, line, answers)
+        at = answered_at or datetime.now(tz=UTC)
+        if checkin.replied_at is not None:
+            await self._mark_finalized_checkin_tracker_updates(
+                checkin, [answer.row for answer in answers if answer.row is not None]
+            )
+            return ConsoleConsentFinish(line=line)
+        held = checkin.signals
+        if remaining or held is None or await self._closed_without_reply(checkin):
+            return ConsoleConsentFinish(line=line)
+        turns = await self._recent_conversation_turns(
+            tenant_id=tenant_id, developer_id=developer_id, reference_at=at
+        )
+        raw_reply = _checkin_status_text(checkin, turns) or held.progress_note
+        reconciliation = await self._reconcile_reply_blockers(
+            checkin=checkin,
+            at=at,
+            prior=await self._prior_open_blockers(checkin, at),
+            signals=held,
+            raw_reply=raw_reply,
+        )
+        await self._finalize_checkin_reply(
+            checkin=checkin,
+            replied_at=at,
+            raw_reply=raw_reply,
+            signals=held,
+            reconciliation=reconciliation,
+        )
+        return ConsoleConsentFinish(finished=True, line=line)
+
+    async def _send_console_answer_line(
+        self, checkin: CheckIn, line: str, answers: Sequence[ProposalAnswer]
+    ) -> None:
+        """DM the person the one line saying what their console answer did. Best-effort."""
+        correlation = await self._status_repository.checkin_correlation_by_id(
+            checkin.tenant_id, checkin.correlation_id
+        )
+        if correlation is None:
+            return
+        rows = sorted(answer.row.id for answer in answers if answer.row is not None)
+        try:
+            await self._chat_provider.send_dm(
+                ChatUserRef(tenant_id=checkin.tenant_id, external_id=correlation.chat_user_ref),
+                OutboundMessage(
+                    tenant_id=checkin.tenant_id,
+                    text=_cap_outbound_dm_text(line, self._outbound_dm_max_chars),
+                    correlation_id=checkin.correlation_id,
+                    metadata={
+                        "purpose": CONSOLE_ANSWER_PURPOSE,
+                        # Per answer: a second answer in the console is a line of its own.
+                        "idempotency_key": (
+                            f"console-answer:{checkin.correlation_id}:" + "+".join(rows)
+                        ),
+                    },
+                ),
+            )
+        except Exception:  # pragma: no cover - defensive; the answer is recorded
+            _logger.warning(
+                "console_answer_line_failed",
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+            )
+
     async def _handle_already_replied(
         self,
         *,
@@ -3833,7 +3991,7 @@ class StatusCollector:
                 issue_key=row.issue_key,
                 change=_tracker_change(row),
                 tracker=self._issue_tracker_name,
-                confirmed=row.source == CONSENT_REPLY_SOURCE,
+                confirmed=row.source in PERSON_ANSWER_SOURCES,
             )
             for row in _applied_rows(rows)
         ]
@@ -4657,7 +4815,7 @@ def _left_as_is_note(rows: Sequence[WriteBackAudit]) -> str | None:
     declined = [
         row.issue_key
         for row in rows
-        if row.status is WriteBackStatus.DECLINED and row.source == CONSENT_REPLY_SOURCE
+        if row.status is WriteBackStatus.DECLINED and row.source in PERSON_ANSWER_SOURCES
     ]
     expired = [
         row.issue_key

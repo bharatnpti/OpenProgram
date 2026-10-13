@@ -63,6 +63,18 @@ CHECKIN_CLOSED_SOURCE = "checkin_closed"
 # ``source`` of the rows a console task update writes: the person ticked "Also
 # move CHK-4 in Jira" while updating the task, which is their yes.
 CONSOLE_SOURCE = "console"
+# ``source`` of the rows a person's yes or no to a check-in's proposal records
+# when they answer it in the console ("Jira changes waiting for your yes")
+# instead of in the chat. The same answer as ``consent_reply``, from elsewhere.
+CONSOLE_CONSENT_SOURCE = "console_consent"
+# ``source`` of the ``declined`` row a no to a console suggestion records (a
+# merged merge request whose issue is still open): it is not offered again
+# that day. A yes is a console move (``CONSOLE_SOURCE``).
+CONSOLE_SUGGESTION_SOURCE = "console_suggestion"
+# The sources of a person's own answer to a proposal, in the chat or the console.
+PERSON_ANSWER_SOURCES = frozenset({CONSENT_REPLY_SOURCE, CONSOLE_CONSENT_SOURCE})
+# The correlation a console suggestion's rows are kept under: one per issue and day.
+SUGGESTION_CORRELATION_PREFIX = "suggest"
 # How many synced merge request facts the open merge request check reads.
 _MERGE_REQUEST_FACT_SCAN_LIMIT = 5000
 
@@ -83,6 +95,10 @@ def _log_warning(event: str, **fields: str) -> None:
 
 class WriteBackOff(OpenProgramError):
     """The tenant's master Jira writes switch is off, so nothing was written (409)."""
+
+
+class WriteBackAnswerNotFound(OpenProgramError):
+    """No proposal of this person's with that id: unknown, not a proposal, or someone else's."""
 
 
 @dataclass(frozen=True)
@@ -135,6 +151,65 @@ class ConsoleWriteBack:
     detail: str
     merge_requests: tuple[str, ...] = ()
     audit: WriteBackAudit | None = None
+
+
+# A person's answer to one proposed or suggested tracker change.
+ConsentDecision = Literal["yes", "no"]
+# What answering one proposal or suggestion did. ``already_answered``: another
+# answer (in the chat, another tab) resolved it first, so nothing was written;
+# ``off``: a yes the system, capability or consent gates no longer let through.
+AnswerOutcome = Literal[
+    "applied",
+    "declined",
+    "held_open_mr",
+    "not_owner",
+    "no_change",
+    "failed",
+    "off",
+    "already_answered",
+]
+# Whether a yes would write now, read-only: ``open`` writes; ``no_change`` resolves
+# with nothing to write (the tracker shows it already); every other state is a
+# gate a yes would meet, so the console offers no yes for it.
+AnswerGateState = Literal["open", "no_change", "off", "not_owner", "held_open_mr", "unreadable"]
+
+
+@dataclass(frozen=True, kw_only=True)
+class AnswerGate:
+    """What a yes to one change would meet now, from the same gates the write passes.
+
+    ``tracker_status`` is the tracker's own status name for the issue when it
+    was read ("In Progress"). ``merge_requests`` names the open ones that hold
+    a ``done`` back.
+    """
+
+    state: AnswerGateState
+    tracker_status: str | None = None
+    merge_requests: tuple[str, ...] = ()
+
+    @property
+    def yes_allowed(self) -> bool:
+        return self.state in ("open", "no_change")
+
+
+@dataclass(frozen=True, kw_only=True)
+class ProposalAnswer:
+    """The outcome of one answer, and the row it recorded.
+
+    For ``already_answered`` the row is the one that resolved the change first.
+    ``merge_requests`` names the open requests that held a ``done`` back.
+    """
+
+    outcome: AnswerOutcome
+    issue_key: str
+    target_state: str
+    row: WriteBackAudit | None = None
+    merge_requests: tuple[str, ...] = ()
+
+
+def suggestion_correlation(issue_key: str, day: date) -> str:
+    """The correlation of a console suggestion's rows: ``suggest:CHK-4:2026-10-13``."""
+    return f"{SUGGESTION_CORRELATION_PREFIX}:{issue_key.strip().upper()}:{day.isoformat()}"
 
 
 class WriteBackService:
@@ -624,29 +699,9 @@ class WriteBackService:
         proposal appends a terminal row, so this naturally becomes empty once
         answered -- the basis for idempotent resolution.
         """
-        rows = await self._audit.list_writeback_by_correlation(tenant_id, correlation_id)
-        resolved = {
-            (row.issue_key, row.target_state)
-            for row in rows
-            if row.status
-            in (
-                WriteBackStatus.APPLIED,
-                WriteBackStatus.DECLINED,
-                WriteBackStatus.REVERTED,
-                WriteBackStatus.EXPIRED,
-            )
-        }
-        pending: list[WriteBackAudit] = []
-        seen: set[tuple[str, str]] = set()
-        for row in rows:
-            if row.status is not WriteBackStatus.PROPOSED:
-                continue
-            key = (row.issue_key, row.target_state)
-            if key in resolved or key in seen:
-                continue
-            seen.add(key)
-            pending.append(row)
-        return pending
+        return _pending_proposals(
+            await self._audit.list_writeback_by_correlation(tenant_id, correlation_id)
+        )
 
     async def resolve_consent_reply(
         self,
@@ -667,10 +722,12 @@ class WriteBackService:
         ``interpret_consent_answer``. Returns the audit rows produced --
         ``applied`` for a yes, ``declined`` for a no, and nothing for an issue
         the answer leaves unclear (it stays pending), when there is no pending
-        proposal, or when the gates have since closed (idempotent: once a
-        proposal is resolved it is no longer pending). All writes still flow
-        through the single audited ``_apply`` path, so the owner check, the
-        open merge request hold and the canonical target apply to every yes.
+        proposal, when the gates have since closed, or when the console
+        answered it first (idempotent: once a proposal is resolved it is no
+        longer pending). Each decision goes through ``resolve_proposal``, the
+        one path the console's answer takes too, so the owner check, the open
+        merge request hold, the canonical target and the per-correlation lock
+        apply to every yes.
         """
         pending = await self.list_pending_proposals(tenant_id, correlation_id)
         if not pending:
@@ -680,16 +737,10 @@ class WriteBackService:
         )
         if not decisions:
             return []
-        principal = Principal(
-            tenant_id=tenant_id,
-            subject=developer_id,
-            roles=frozenset({Role.DEV}),
-        )
-        if not self._policy.can(principal, Capability.WRITE_ISSUE_TRACKER):
-            return []
-        if not await self.gate_open(tenant_id, JiraWriteKind.CHECKIN_UPDATES):
-            return []
-        if await self._consent(tenant_id, developer_id) is WriteBackConsent.NEVER:
+        if (
+            await self._writing_consent(tenant_id, developer_id, JiraWriteKind.CHECKIN_UPDATES)
+            is None
+        ):
             return []
 
         results: list[WriteBackAudit] = []
@@ -697,33 +748,245 @@ class WriteBackService:
             intent = decisions.get(proposal.issue_key)
             if intent is None:
                 continue  # this issue's answer is still open
-            if intent == "affirm":
-                results.append(
-                    await self._apply_confirmed(
-                        tenant_id,
-                        developer_id,
-                        correlation_id,
-                        proposal,
-                        claim=_claim_for(claims, proposal),
-                        reported_on=reported_on,
-                    )
+            try:
+                answer = await self.resolve_proposal(
+                    tenant_id=tenant_id,
+                    developer_id=developer_id,
+                    audit_id=proposal.id,
+                    decision="yes" if intent == "affirm" else "no",
+                    source=CONSENT_REPLY_SOURCE,
+                    claims=claims,
+                    reported_on=reported_on,
                 )
-            else:  # intent == "decline"
-                results.append(
-                    await self._record(
-                        tenant_id=tenant_id,
-                        developer_id=developer_id,
-                        correlation_id=correlation_id,
-                        issue_key=proposal.issue_key,
-                        target_state=proposal.target_state,
-                        status=WriteBackStatus.DECLINED,
-                        before_state=proposal.before_state,
-                        after_state=proposal.before_state,
-                        comment=None,
-                        source=CONSENT_REPLY_SOURCE,
-                    )
-                )
+            except WriteBackAnswerNotFound:  # pragma: no cover - the check-in's own rows
+                continue
+            if answer.outcome != "already_answered" and answer.row is not None:
+                results.append(answer.row)
         return results
+
+    async def resolve_proposal(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        audit_id: str,
+        decision: ConsentDecision,
+        source: str = CONSOLE_CONSENT_SOURCE,
+        claims: Sequence[IssueClaim] = (),
+        reported_on: date | None = None,
+    ) -> ProposalAnswer:
+        """Answer one pending proposal yes or no: the one resolve path, chat and console.
+
+        Held under the correlation's lock (``exclusive_correlation``) from the
+        pending read to the row: a yes in the chat and one in the console at
+        the same moment write the issue once; the second finds the first one's
+        row and is ``already_answered``. Only the proposal's own person may
+        answer it: anyone else's id is ``WriteBackAnswerNotFound``, as an
+        unknown one is.
+
+        A yes passes the gates again (system and ``checkin_updates`` switch,
+        capability, consent not ``never``), then ``_apply_confirmed``: the
+        owner check, the open merge request hold and the canonical target. A
+        no records ``declined`` with ``source`` and never touches the tracker,
+        whatever the gates say: it only closes the question.
+        """
+        proposal = await self._audit.get_writeback_audit(tenant_id, audit_id)
+        if (
+            proposal is None
+            or proposal.status is not WriteBackStatus.PROPOSED
+            or proposal.developer_id != developer_id
+        ):
+            raise WriteBackAnswerNotFound(f"No proposal {audit_id!r} for this person.")
+        async with self._audit.exclusive_correlation(tenant_id, proposal.correlation_id):
+            rows = await self._audit.list_writeback_by_correlation(
+                tenant_id, proposal.correlation_id
+            )
+            pair = (proposal.issue_key, proposal.target_state)
+            if pair not in {(row.issue_key, row.target_state) for row in _pending_proposals(rows)}:
+                return ProposalAnswer(
+                    outcome="already_answered",
+                    issue_key=proposal.issue_key,
+                    target_state=proposal.target_state,
+                    row=_resolving_row(rows, pair),
+                )
+            if decision == "no":
+                row = await self._record(
+                    tenant_id=tenant_id,
+                    developer_id=developer_id,
+                    correlation_id=proposal.correlation_id,
+                    issue_key=proposal.issue_key,
+                    target_state=proposal.target_state,
+                    status=WriteBackStatus.DECLINED,
+                    before_state=proposal.before_state,
+                    after_state=proposal.before_state,
+                    comment=None,
+                    source=source,
+                )
+                return ProposalAnswer(
+                    outcome="declined",
+                    issue_key=proposal.issue_key,
+                    target_state=proposal.target_state,
+                    row=row,
+                )
+            if (
+                await self._writing_consent(tenant_id, developer_id, JiraWriteKind.CHECKIN_UPDATES)
+                is None
+            ):
+                return ProposalAnswer(
+                    outcome="off", issue_key=proposal.issue_key, target_state=proposal.target_state
+                )
+            row = await self._apply_confirmed(
+                tenant_id,
+                developer_id,
+                proposal.correlation_id,
+                proposal,
+                claim=_claim_for(claims, proposal),
+                reported_on=reported_on,
+                source=source,
+            )
+        return await self._answer_from_row(tenant_id, proposal, row)
+
+    async def answer_gate(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        issue_key: str,
+        target_state: str,
+        kind: JiraWriteKind,
+    ) -> AnswerGate:
+        """What a yes to moving ``issue_key`` to ``target_state`` would meet now. Read-only.
+
+        The gates the write itself passes, in its order: the system switch with
+        the kind's own, the capability and a consent that is not ``never``;
+        then the live issue, its owner, whether it is already there, and for
+        ``done`` an open merge request. Nothing is written or recorded.
+        """
+        if await self._writing_consent(tenant_id, developer_id, kind) is None:
+            return AnswerGate(state="off")
+        issue = await self._read_issue(tenant_id, issue_key)
+        if issue is None:
+            return AnswerGate(state="unreadable")
+        shown = issue.metadata.get("status")
+        status = shown.strip() if isinstance(shown, str) and shown.strip() else None
+        if await self._ownership_refusal(tenant_id, developer_id, issue) is not None:
+            return AnswerGate(state="not_owner", tracker_status=status)
+        tracker_state = _stored_target_for_tracker(target_state)
+        if _already_in_target_state(issue, tracker_state):
+            return AnswerGate(state="no_change", tracker_status=status)
+        open_requests = await self._open_merge_requests(tenant_id, issue.key, tracker_state)
+        if open_requests:
+            return AnswerGate(
+                state="held_open_mr", tracker_status=status, merge_requests=open_requests
+            )
+        return AnswerGate(state="open", tracker_status=status)
+
+    async def suggestion_answered(
+        self, tenant_id: str, issue_key: str, day: date
+    ) -> WriteBackAudit | None:
+        """The row that answered the day's suggestion for ``issue_key``, if one did.
+
+        A yes that moved it, a no, or a yes a gate refused on the record (not
+        the person's, an open merge request): any of them keeps the suggestion
+        from being offered again that day. A failed write does not.
+        """
+        rows = await self._audit.list_writeback_by_correlation(
+            tenant_id, suggestion_correlation(issue_key, day)
+        )
+        answered = [
+            row for row in rows if row.status in (WriteBackStatus.APPLIED, WriteBackStatus.DECLINED)
+        ]
+        return answered[-1] if answered else None
+
+    async def answer_suggestion(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        issue_key: str,
+        day: date,
+        decision: ConsentDecision,
+        target: WriteBackTarget = WriteBackTarget.DONE,
+        tracker_name: str = "the issue tracker",
+    ) -> ProposalAnswer:
+        """Answer a console suggestion (a merged merge request's issue still open) yes or no.
+
+        Kept under one correlation per issue and day (``suggestion_correlation``)
+        and held under its lock, so two answers write once. A yes is a console
+        move (``apply_from_console``, under ``console_moves``, with every gate of
+        that path); a no records ``declined`` with source ``console_suggestion``,
+        so the suggestion is not offered again that day.
+        """
+        correlation_id = suggestion_correlation(issue_key, day)
+        async with self._audit.exclusive_correlation(tenant_id, correlation_id):
+            earlier = await self.suggestion_answered(tenant_id, issue_key, day)
+            if earlier is not None:
+                return ProposalAnswer(
+                    outcome="already_answered",
+                    issue_key=issue_key,
+                    target_state=target.value,
+                    row=earlier,
+                )
+            if decision == "no":
+                row = await self._record(
+                    tenant_id=tenant_id,
+                    developer_id=developer_id,
+                    correlation_id=correlation_id,
+                    issue_key=issue_key,
+                    target_state=target.value,
+                    status=WriteBackStatus.DECLINED,
+                    before_state=None,
+                    after_state=None,
+                    comment=None,
+                    source=CONSOLE_SUGGESTION_SOURCE,
+                )
+                return ProposalAnswer(
+                    outcome="declined", issue_key=issue_key, target_state=target.value, row=row
+                )
+            moved = await self.apply_from_console(
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                correlation_id=correlation_id,
+                issue_key=issue_key,
+                target=target,
+                reported_on=day,
+                tracker_name=tracker_name,
+            )
+        return ProposalAnswer(
+            outcome=moved.outcome,
+            issue_key=issue_key,
+            target_state=target.value,
+            row=moved.audit,
+            merge_requests=moved.merge_requests,
+        )
+
+    async def _answer_from_row(
+        self, tenant_id: str, proposal: WriteBackAudit, row: WriteBackAudit
+    ) -> ProposalAnswer:
+        """What a yes did, read off the row ``_apply_confirmed`` recorded."""
+        outcome: AnswerOutcome
+        merge_requests: tuple[str, ...] = ()
+        if row.status is WriteBackStatus.APPLIED:
+            outcome = "applied"
+        elif row.status is WriteBackStatus.FAILED:
+            outcome = "failed"
+        elif row.status is WriteBackStatus.EXPIRED:
+            outcome = "no_change"
+        elif row.source == OPEN_MR_SOURCE:
+            outcome = "held_open_mr"
+            merge_requests = await self._open_merge_requests(
+                tenant_id, row.issue_key, WriteBackTarget.DONE.value
+            )
+        elif row.source in (NOT_OWNER_SOURCE, UNASSIGNED_SOURCE):
+            outcome = "not_owner"
+        else:
+            outcome = "declined"
+        return ProposalAnswer(
+            outcome=outcome,
+            issue_key=proposal.issue_key,
+            target_state=proposal.target_state,
+            row=row,
+            merge_requests=merge_requests,
+        )
 
     async def expire_pending_proposals(
         self, *, tenant_id: str, developer_id: str, correlation_id: str
@@ -731,31 +994,34 @@ class WriteBackService:
         """Close every proposal still waiting for a yes/no when the check-in closes.
 
         Each gets an ``expired`` row with source ``checkin_closed``; nothing is
-        written to the tracker, and a later yes no longer finds it pending.
+        written to the tracker, and a later yes no longer finds it pending. Held
+        under the correlation's lock, so an answer in the console at the close
+        either lands first (and is not expired) or finds the proposal closed.
         """
-        return [
-            await self._record(
-                tenant_id=tenant_id,
-                developer_id=developer_id,
-                correlation_id=correlation_id,
-                issue_key=proposal.issue_key,
-                target_state=proposal.target_state,
-                status=WriteBackStatus.EXPIRED,
-                before_state=proposal.before_state,
-                after_state=proposal.before_state,
-                comment=None,
-                source=CHECKIN_CLOSED_SOURCE,
-            )
-            for proposal in await self.list_pending_proposals(tenant_id, correlation_id)
-        ]
+        async with self._audit.exclusive_correlation(tenant_id, correlation_id):
+            return [
+                await self._record(
+                    tenant_id=tenant_id,
+                    developer_id=developer_id,
+                    correlation_id=correlation_id,
+                    issue_key=proposal.issue_key,
+                    target_state=proposal.target_state,
+                    status=WriteBackStatus.EXPIRED,
+                    before_state=proposal.before_state,
+                    after_state=proposal.before_state,
+                    comment=None,
+                    source=CHECKIN_CLOSED_SOURCE,
+                )
+                for proposal in await self.list_pending_proposals(tenant_id, correlation_id)
+            ]
 
     async def reply_outcomes(self, tenant_id: str, correlation_id: str) -> list[WriteBackAudit]:
         """What the check-in's write-back did, for the reply: one row per issue.
 
         The latest ``applied`` row, a ``declined`` row for an open merge request
-        or a person's no, or the ``expired`` row of a proposal the check-in
-        closed on. Refusals the person need not hear about (not their issue,
-        unassigned) and failed reads are left out.
+        or a person's no (in the chat or the console), or the ``expired`` row of
+        a proposal the check-in closed on. Refusals the person need not hear
+        about (not their issue, unassigned) and failed reads are left out.
         """
         rows = await self._audit.list_writeback_by_correlation(tenant_id, correlation_id)
         latest: dict[str, WriteBackAudit] = {}
@@ -764,7 +1030,7 @@ class WriteBackService:
                 row.status is WriteBackStatus.APPLIED
                 or (
                     row.status is WriteBackStatus.DECLINED
-                    and row.source in (OPEN_MR_SOURCE, CONSENT_REPLY_SOURCE)
+                    and (row.source == OPEN_MR_SOURCE or row.source in PERSON_ANSWER_SOURCES)
                 )
                 or (row.status is WriteBackStatus.EXPIRED and row.source == CHECKIN_CLOSED_SOURCE)
             ):
@@ -780,12 +1046,14 @@ class WriteBackService:
         *,
         claim: IssueClaim | None = None,
         reported_on: date | None = None,
+        source: str = CONSENT_REPLY_SOURCE,
     ) -> WriteBackAudit:
         """Write a proposal the developer said yes to, re-checking owner and state.
 
         Every row keeps the proposal's own target so it resolves the proposal;
         the tracker is asked for the canonical state (older proposals stored
-        free text, which is normalised here when it can be).
+        free text, which is normalised here when it can be). ``source`` says
+        where the yes came from: the chat (``consent_reply``) or the console.
         """
         # The issue may have been reassigned since it was proposed; a yes never
         # writes to an issue the developer no longer owns. A failed read records
@@ -802,7 +1070,7 @@ class WriteBackService:
                 before_state=proposal.before_state,
                 after_state=proposal.before_state,
                 comment=None,
-                source="consent_reply",
+                source=source,
             )
         refusal = await self._ownership_refusal(tenant_id, developer_id, issue)
         if refusal is not None:
@@ -844,7 +1112,7 @@ class WriteBackService:
             correlation_id,
             confirmed,
             proposal.target_state,
-            "consent_reply",
+            source,
             before_state=issue.state.value,
             tracker_state=tracker_state,
             reported_on=reported_on,
@@ -1330,6 +1598,46 @@ class WriteBackService:
         )
         await self._audit.record(audit)
         return audit
+
+
+_TERMINAL_STATUSES = frozenset(
+    {
+        WriteBackStatus.APPLIED,
+        WriteBackStatus.DECLINED,
+        WriteBackStatus.REVERTED,
+        WriteBackStatus.EXPIRED,
+    }
+)
+
+
+def _pending_proposals(rows: Sequence[WriteBackAudit]) -> list[WriteBackAudit]:
+    """The first ``proposed`` row of each (issue, target) pair no terminal row resolved."""
+    resolved = {
+        (row.issue_key, row.target_state) for row in rows if row.status in _TERMINAL_STATUSES
+    }
+    pending: list[WriteBackAudit] = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        if row.status is not WriteBackStatus.PROPOSED:
+            continue
+        key = (row.issue_key, row.target_state)
+        if key in resolved or key in seen:
+            continue
+        seen.add(key)
+        pending.append(row)
+    return pending
+
+
+def _resolving_row(rows: Sequence[WriteBackAudit], pair: tuple[str, str]) -> WriteBackAudit | None:
+    """The first terminal row of an (issue, target) pair: what answered its proposal."""
+    return next(
+        (
+            row
+            for row in sorted(rows, key=lambda item: item.created_at)
+            if row.status in _TERMINAL_STATUSES and (row.issue_key, row.target_state) == pair
+        ),
+        None,
+    )
 
 
 _AFFIRM_TOKENS = frozenset(
