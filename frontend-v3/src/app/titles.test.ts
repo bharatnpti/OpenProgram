@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { NAV } from "./nav.ts";
 import { screenTitle } from "./titles.ts";
 
 const NAMES: Record<string, string> = {
@@ -9,41 +10,55 @@ const NAMES: Record<string, string> = {
 };
 const names = (kind: string, id: string) => NAMES[`${kind}:${id}`];
 
-test("each screen has its own tab title, not the app's one name", () => {
-  assert.equal(screenTitle("/today"), "Today · OpenProgram");
-  assert.equal(screenTitle("/delivery"), "Delivery · OpenProgram");
-  assert.equal(screenTitle("/signals"), "Signals · OpenProgram");
-  assert.equal(screenTitle("/coordination"), "Coordination · OpenProgram");
-  assert.equal(screenTitle("/reports"), "Reports · OpenProgram");
-  assert.equal(screenTitle("/chat"), "Chat · OpenProgram");
-  assert.equal(screenTitle("/ora"), "Ora · OpenProgram");
-  assert.equal(screenTitle("/admin"), "Admin · OpenProgram");
+test("each page of the sidebar has its own tab title, not the app's one name", () => {
+  assert.deepEqual(
+    NAV.map((item) => screenTitle(item.to)),
+    [
+      "Today · OpenProgram",
+      "Check-in · OpenProgram",
+      "Requests · OpenProgram",
+      "Portfolio · OpenProgram",
+      "Projects · OpenProgram",
+      "Pods · OpenProgram",
+      "Early warnings · OpenProgram",
+      "Scope control · OpenProgram",
+      "Reports · OpenProgram",
+      "Review flow · OpenProgram",
+      "Ask Ora · OpenProgram",
+      "People & roles · OpenProgram",
+      "Admin · OpenProgram",
+    ],
+  );
 });
 
-test("a node or a project's report names what it shows", () => {
+test("a project's page, a pod's page and a day report name what they show", () => {
   assert.equal(
-    screenTitle("/delivery/pod/pod-payments", names),
-    "Payments Pod · Delivery · OpenProgram",
+    screenTitle("/projects/project-checkout", names),
+    "Checkout Revamp · Projects · OpenProgram",
   );
-  assert.equal(
-    screenTitle("/reports/project-checkout/overall", names),
-    "Overall report · Checkout Revamp · Reports · OpenProgram",
-  );
+  assert.equal(screenTitle("/pods/pod-payments", names), "Payments Pod · Pods · OpenProgram");
   assert.equal(
     screenTitle("/reports/project-checkout/daily", names),
     "Daily report · Checkout Revamp · Reports · OpenProgram",
   );
+  assert.equal(screenTitle("/reports/briefs", names), "Briefs · Reports · OpenProgram");
 });
 
 test("a node nobody has named yet leaves its name out, never shows an id", () => {
-  assert.equal(screenTitle("/delivery/pod/pod-unknown", names), "Delivery · OpenProgram");
+  assert.equal(screenTitle("/projects/project-unknown", names), "Projects · OpenProgram");
+  assert.equal(screenTitle("/pods/pod-unknown", names), "Pods · OpenProgram");
   assert.equal(
-    screenTitle("/reports/project-unknown/overall", names),
-    "Overall report · Reports · OpenProgram",
+    screenTitle("/reports/project-unknown/daily", names),
+    "Daily report · Reports · OpenProgram",
   );
 });
 
-test("an address no screen owns falls back to the app's name", () => {
+test("an address no page owns falls back to the app's name, an old one too", () => {
   assert.equal(screenTitle("/"), "OpenProgram");
   assert.equal(screenTitle("/nowhere"), "OpenProgram");
+  assert.equal(screenTitle("/constructor"), "OpenProgram");
+  // The old tabs only redirect now: they never show long enough to be named.
+  for (const old of ["/delivery", "/signals", "/coordination", "/chat"]) {
+    assert.equal(screenTitle(old), "OpenProgram", old);
+  }
 });

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import { podPath } from "../../app/links";
 import { Panel, RagDot } from "../../components/ui/Bits";
 import { ragWords } from "../../lib/status";
 import { plural } from "../../lib/words";
@@ -41,7 +42,7 @@ export function ProjectNamesPanel({
               <li key={pod.id}>
                 {pod.opens ? (
                   <Link
-                    to={`/delivery/pod/${encodeURIComponent(pod.id)}`}
+                    to={podPath(pod.id)}
                     className="flex items-center gap-2 rounded-xl px-2 py-1.5 text-[15px] font-bold text-ink no-underline hover:bg-grey-fill"
                   >
                     <RagDot rag={pod.rag} />

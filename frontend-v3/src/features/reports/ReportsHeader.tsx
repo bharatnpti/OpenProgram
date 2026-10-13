@@ -1,33 +1,20 @@
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { pickerProjects, useReportProjects } from "../../app/directory";
-import { cn } from "../../lib/utils";
+import { dailyPath, projectPath } from "../../app/links";
 import { useAssistantSubject } from "../assistant/assistantContext";
 
-/** Inside a project's reports: back to all reports, the project picker, and Daily | Overall. */
+/**
+ * Inside a project's day report: back to all reports, the project picker, and
+ * the project's own page (what was Overall).
+ */
 export function ReportsHeader({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
-  const location = useLocation();
   // The projects the Reports home lists for this person; a link to one outside it still opens,
   // and the picker then shows it as the current one.
   const shown = useReportProjects();
-  const view = location.pathname.endsWith("/overall") ? "overall" : "daily";
   const project = shown.directory.find((item) => item.id === projectId);
   useAssistantSubject(project ? { kind: "project", name: project.name } : null);
-
-  const tab = (to: string, label: string) => (
-    <NavLink
-      to={to}
-      className={({ isActive }) =>
-        cn(
-          "rounded-full px-4 py-2 text-[14px] font-bold no-underline",
-          isActive ? "bg-ink text-white" : "text-grey-body hover:bg-white",
-        )
-      }
-    >
-      {label}
-    </NavLink>
-  );
 
   return (
     <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -44,7 +31,7 @@ export function ReportsHeader({ projectId }: { projectId: string }) {
         id="project-picker"
         className="h-10 max-w-[260px] rounded-full border border-grey-border bg-white px-4 text-[14px] font-bold"
         value={projectId}
-        onChange={(event) => navigate(`/reports/${event.target.value}/${view}`)}
+        onChange={(event) => navigate(dailyPath(event.target.value))}
       >
         {pickerProjects(shown.directory, shown.listed, projectId).map((project) => (
           <option key={project.id} value={project.id}>
@@ -52,10 +39,12 @@ export function ReportsHeader({ projectId }: { projectId: string }) {
           </option>
         ))}
       </select>
-      <nav className="flex gap-1 rounded-full bg-grey-fill p-1" aria-label="Report view">
-        {tab(`/reports/${projectId}/daily`, "Daily")}
-        {tab(`/reports/${projectId}/overall`, "Overall")}
-      </nav>
+      <Link
+        to={projectPath(projectId)}
+        className="inline-flex h-10 items-center rounded-full border border-ink px-4 text-[13px] font-bold text-ink no-underline hover:bg-grey-fill"
+      >
+        Project page
+      </Link>
     </div>
   );
 }

@@ -141,7 +141,15 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
 
   const assistant = useAssistantControl();
   const asks = roleState.access.assistant && assistant !== null;
-  const targets = useMemo(() => paletteTargets(roleState.access), [roleState.access]);
+  // A workstream opens in its first project's Work section.
+  const targets = useMemo(
+    () =>
+      paletteTargets(
+        roleState.access,
+        (id) => directory.workstreams.find((item) => item.id === id)?.project_ids ?? [],
+      ),
+    [directory.workstreams, roleState.access],
+  );
   // Under the `own` scope the palette lists what that person's Delivery lists, and
   // people only in the pods whose whole panel (their check-ins) is theirs to open.
   const own = roleState.access.deliveryScope === "own";

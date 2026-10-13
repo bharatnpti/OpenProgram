@@ -62,30 +62,35 @@ export type AskSubject = { kind: "program" | "project" | "workstream" | "pod"; n
 /** Where the person is: the page, its view, and the one thing it shows. */
 export type AskPlace = {
   page: Page;
-  /** Reports: "daily" or "overall" (null on the home); Signals: "flow" or "risks". */
+  /** Reports: "daily" inside a project's day report, "briefs" on the briefs, else null. */
   view: string | null;
   subject: AskSubject | null;
 };
 
-/**
- * The page a path is, with its view: Today and Reports included, which
- * `pageOf` leaves out because every role has them. Signals without a view in
- * the link is on the role's own first view.
- */
-export function placeOf(
-  pathname: string,
-  search: string,
-  signalsView: string,
-): Omit<AskPlace, "subject"> {
-  const [, first = "", , view = ""] = pathname.split("/");
-  if (first === "reports") {
-    return { page: "reports", view: view === "daily" || view === "overall" ? view : null };
+/** Each page's first path segment (app/access.ts keeps the same map; this module stays pure). */
+const PAGES: Record<string, Page> = {
+  today: "today",
+  "check-in": "checkin",
+  requests: "requests",
+  portfolio: "portfolio",
+  projects: "projects",
+  pods: "pods",
+  warnings: "warnings",
+  scope: "scope",
+  reports: "reports",
+  flow: "flow",
+  ora: "ora",
+  people: "people",
+  admin: "admin",
+};
+
+/** The page a path is, with its view; an address no page owns reads as Today. */
+export function placeOf(pathname: string): Omit<AskPlace, "subject"> {
+  const [, first = "", second = "", third = ""] = pathname.split("/");
+  const page = Object.prototype.hasOwnProperty.call(PAGES, first) ? PAGES[first] : "today";
+  if (page === "reports") {
+    return { page, view: second === "briefs" ? "briefs" : third === "daily" ? "daily" : null };
   }
-  if (first === "signals") {
-    return { page: "signals", view: new URLSearchParams(search).get("view") ?? signalsView };
-  }
-  const pages: Page[] = ["delivery", "coordination", "chat", "admin"];
-  const page = pages.find((item) => item === first) ?? "today";
   return { page, view: null };
 }
 
@@ -116,6 +121,11 @@ export function suggestionsFor(
     "Who do we need an answer from?",
     `What changed in ${name} in the last 7 days?`,
   ];
+  const node = [
+    `Is ${name} on track for its date?`,
+    `What is holding ${name} back?`,
+    `What changed in ${name} in the last 7 days?`,
+  ];
   switch (place.page) {
     case "today":
       if (subject?.kind === "pod" && podDetail) return pod;
@@ -127,43 +137,56 @@ export function suggestionsFor(
         ];
       }
       return portfolio;
+    case "checkin":
+      return ["Which of my tasks are past their due date?", "What changed in the last 7 days?"];
+    case "requests":
+      return [
+        "Which requests have waited longest?",
+        "Who do we need an answer from?",
+        "What did this week's briefs flag?",
+      ];
+    case "portfolio":
+      return [
+        "Which projects will miss their committed date?",
+        "Which project needs attention first?",
+        "What changed in the last 7 days?",
+      ];
+    case "projects":
+      return subject?.kind === "project" ? project : portfolio;
+    case "pods":
+      if (subject?.kind === "pod" && podDetail) return pod;
+      return subject ? node : portfolio;
+    case "warnings":
+      return [
+        "Which risks have been open longest?",
+        "Which merge requests wait longest for review?",
+        "Where do the check-ins and the trackers disagree?",
+      ];
+    case "scope":
+      return [
+        "What was added after planning, and did it move the date?",
+        "Which projects have no committed date?",
+      ];
     case "reports":
+      if (place.view === "briefs") {
+        return ["What did this week's briefs flag?", "Which project needs attention first?"];
+      }
       return subject?.kind === "project"
         ? project
         : [
             "Which projects will miss their committed date?",
             "Which project needs attention first?",
           ];
-    case "delivery":
-      if (subject?.kind === "pod" && podDetail) return pod;
-      if (subject) {
-        return [
-          `Is ${name} on track for its date?`,
-          `What is holding ${name} back?`,
-          `What changed in ${name} in the last 7 days?`,
-        ];
-      }
-      return portfolio;
-    case "signals":
-      return place.view === "risks"
-        ? [
-            "Which risks have been open longest?",
-            "Which merge requests wait longest for review?",
-            "Where do the check-ins and the trackers disagree?",
-          ]
-        : [
-            "Which merge requests wait longest for review?",
-            "Where does work get stuck in review?",
-            "Which repositories take longest to review?",
-          ];
-    case "coordination":
+    case "flow":
       return [
-        "Which requests have waited longest?",
-        "Who do we need an answer from?",
-        "What did this week's briefs flag?",
+        "Which merge requests wait longest for review?",
+        "Where does work get stuck in review?",
+        "Which repositories take longest to review?",
       ];
-    case "chat":
-      return [`Who has not checked in ${day}?`, "What changed in the last 7 days?"];
+    case "ora":
+      return portfolio;
+    case "people":
+      return ["Which pods have no scrum master?", "What changed in the last 7 days?"];
     case "admin":
       return ["Which projects have no committed date?", "Who has not checked in this week?"];
   }

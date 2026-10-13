@@ -12,8 +12,7 @@ import {
   usePods,
   useProjects,
 } from "../app/directory";
-import { useRole } from "../app/role";
-import { PanelState, SectionHeader } from "../components/PanelState";
+import { PanelState } from "../components/PanelState";
 import { ChipPicker, Panel } from "../components/ui/Bits";
 import { Pill } from "../components/ui/Pill";
 import { formatDate } from "../lib/format";
@@ -21,32 +20,14 @@ import { plural, spaced } from "../lib/words";
 import { RequestCard } from "../features/coordination/RequestCard";
 import { requestsAmong, scopePeople } from "../features/coordination/raised";
 
-/**
- * Who is waiting on whom across the teams, and the narrative briefs. What
- * waits on the viewer, and what they raised, is on their Today (Your asks); a
- * question in plain words goes to the assistant, on every tab. The board is
- * for those who may act on some of its cards: not an executive, whom the waits
- * reach through the exec brief and the Daily report.
+/*
+ * What was the Coordination tab, in two parts the sidebar now places apart
+ * (D85): the requests board (Requests, /requests, pages/RequestsPage.tsx) and
+ * the briefs (Reports › Briefs, /reports/briefs, pages/BriefsPage.tsx). What
+ * waits on the viewer, and what they raised, is on their Today (Your asks). The
+ * board is for those who may act on some of its cards: not an executive, whom
+ * the waits reach through the exec brief and the Daily report.
  */
-export function CoordinationPage() {
-  const { coordination } = useRole().access;
-  return (
-    <>
-      <SectionHeader
-        title="Coordination"
-        meta={
-          coordination.board
-            ? "Requests between people, and briefs. Your own asks are on Today."
-            : "Briefs. Your own asks are on Today."
-        }
-      />
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-8">
-        {coordination.board ? <Requests defaultScope={coordination.boardScope} /> : null}
-        {coordination.briefs ? <Briefs fallback={coordination.defaultBrief} /> : null}
-      </div>
-    </>
-  );
-}
 
 const COLUMNS: { status: CrossPersonRequestStatus; label: string }[] = [
   { status: "open", label: "Open" },
@@ -87,7 +68,7 @@ function useBoardScope(defaultScope: Scope) {
   };
 }
 
-function Requests({ defaultScope }: { defaultScope: Scope }) {
+export function Requests({ defaultScope }: { defaultScope: Scope }) {
   const [search, setSearch] = useSearchParams();
   const scope = useBoardScope(defaultScope);
   const board = useQuery({
@@ -179,7 +160,7 @@ const BRIEFS_SHOWN = 5;
  * exec brief for a manager, executive or admin. "All" is a pick like the others
  * (`?brief=all`); a link with no kind opens on the role's own.
  */
-function Briefs({ fallback }: { fallback: BriefKind }) {
+export function Briefs({ fallback }: { fallback: BriefKind }) {
   const [search, setSearch] = useSearchParams();
   const [showAll, setShowAll] = useState(false);
   const raw = search.get("brief");

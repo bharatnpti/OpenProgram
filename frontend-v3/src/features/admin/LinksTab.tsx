@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
+import { podPath, programPath, projectPath, workstreamPath } from "../../app/links";
 import type {
   ConfigNodeResponse,
   MemberProfileResponse,
@@ -291,7 +292,7 @@ function ProgramProjects({ ctx }: { ctx: Ctx }) {
               : { value: project.id, label: project.name };
           });
         return (
-          <LinkRow key={program.id} title={program.name} to={`/delivery/program/${program.id}`}>
+          <LinkRow key={program.id} title={program.name} to={programPath(program.id)}>
             <ChipList
               empty="No projects in it yet."
               items={inside.map((id) => (
@@ -346,7 +347,7 @@ function PodsOnProjects({ ctx }: { ctx: Ctx }) {
           .filter((pod) => !on.includes(pod.id))
           .map((pod) => ({ value: pod.id, label: pod.name }));
         return (
-          <LinkRow key={project.id} title={project.name} to={`/delivery/project/${project.id}`}>
+          <LinkRow key={project.id} title={project.name} to={projectPath(project.id)}>
             <ChipList
               empty="No pods on it yet."
               items={on.map((id) => {
@@ -411,7 +412,7 @@ function PeopleInPods({ ctx }: { ctx: Ctx }) {
       {pods.map((pod) => {
         const inside = links.podMembers[pod.id] ?? [];
         return (
-          <LinkRow key={pod.id} title={pod.name} to={`/delivery/pod/${pod.id}`}>
+          <LinkRow key={pod.id} title={pod.name} to={podPath(pod.id)}>
             <ChipList
               empty="Nobody in it yet."
               items={inside.map((id) => (
@@ -647,7 +648,7 @@ function WorkstreamLinks({ ctx }: { ctx: Ctx }) {
           <li key={ws.id} className="grid gap-3 border-t border-grey-border py-3 first:border-t-0">
             <div className="flex flex-wrap items-center gap-2">
               <Link
-                to={`/delivery/workstream/${ws.id}`}
+                to={workstreamPath(ws.id, inProjects)}
                 className="text-[14px] font-bold text-ink no-underline hover:underline"
               >
                 {ws.name}

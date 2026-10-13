@@ -75,15 +75,11 @@ test("for a manager every node opens its Delivery panel, and an empty workstream
   assert.deepEqual(
     rows.map((row) => [row.label, row.hint, row.to]),
     [
-      ["Digital Platform Program", "Program", "/delivery/program/program-platform"],
-      [
-        "Checkout Revamp",
-        "Project · Digital Platform Program",
-        "/delivery/project/project-checkout",
-      ],
+      ["Digital Platform Program", "Program", "/portfolio?program=program-platform"],
+      ["Checkout Revamp", "Project · Digital Platform Program", "/projects/project-checkout"],
       ["Payments API", "Workstream · Checkout Revamp", "/delivery/workstream/ws-payments"],
-      ["Storefront Pod", "Pod · Checkout Revamp", "/delivery/pod/pod-storefront"],
-      ["Payments Pod", "Pod · Checkout Revamp", "/delivery/pod/pod-payments"],
+      ["Storefront Pod", "Pod · Checkout Revamp", "/pods/pod-storefront"],
+      ["Payments Pod", "Pod · Checkout Revamp", "/pods/pod-payments"],
     ],
   );
 });
@@ -135,8 +131,8 @@ test("a person opens their pod; someone in no pod or with no name is not offered
   assert.deepEqual(
     rows.map((row) => [row.label, row.hint, row.to]),
     [
-      ["Asha Rao", "Person · Payments Pod and 1 more", "/delivery/pod/pod-payments"],
-      ["Kai Thompson", "Backend Engineer · Payments Pod", "/delivery/pod/pod-payments"],
+      ["Asha Rao", "Person · Payments Pod and 1 more", "/pods/pod-payments"],
+      ["Kai Thompson", "Backend Engineer · Payments Pod", "/pods/pod-payments"],
     ],
   );
 });
@@ -184,15 +180,15 @@ test("a person is found by any of their pods, and the row names the pod that mat
   const asha = rows.find((row) => row.label === "Asha Rao");
   // Alphabetically Identity Pod is her first pod, so by default that is what the row opens.
   assert.equal(asha?.hint, "Person · Identity Pod and 1 more");
-  assert.equal(asha?.to, "/delivery/pod/pod-identity");
+  assert.equal(asha?.to, "/pods/pod-identity");
 
   const found = matchRows(rows, "pay");
   assert.deepEqual(
     found.map((row) => [row.label, row.hint, row.to]),
-    [["Asha Rao", "Person · Payments Pod and 1 more", "/delivery/pod/pod-payments"]],
+    [["Asha Rao", "Person · Payments Pod and 1 more", "/pods/pod-payments"]],
   );
   // A query that matches their first pod leaves the row as it is.
-  assert.equal(matchRows(rows, "identity")[0].to, "/delivery/pod/pod-identity");
+  assert.equal(matchRows(rows, "identity")[0].to, "/pods/pod-identity");
   assert.deepEqual(
     matchRows(rows, "asha pay").map((row) => row.label),
     ["Asha Rao"],
@@ -219,8 +215,8 @@ const rowsFor = (role: AppRole) =>
 
 test("an executive gets programs, projects and workstreams in Delivery, and no pods or people", () => {
   assert.deepEqual(rowsFor("exec"), [
-    ["program", "Digital Platform Program", "/delivery/program/program-platform"],
-    ["project", "Checkout Revamp", "/delivery/project/project-checkout"],
+    ["program", "Digital Platform Program", "/portfolio?program=program-platform"],
+    ["project", "Checkout Revamp", "/projects/project-checkout"],
     ["workstream", "Payments API", "/delivery/workstream/ws-payments"],
   ]);
 });
@@ -242,33 +238,23 @@ const status = (tone: string, words: string) => ({ kind: "status", tone, words }
 test("a developer's palette lists their project and own pod; a neighbour's pod opens nothing", () => {
   assert.deepEqual(ownFor("dev", developerTree), [
     // No colour for the project, as the navigator draws none: not a grey "unknown".
-    ["project", "Checkout Revamp", "/delivery/project/project-checkout", { kind: "plain" }],
-    ["pod", "Payments Pod", "/delivery/pod/pod-payments", status("danger", "Off track")],
+    ["project", "Checkout Revamp", "/projects/project-checkout", { kind: "plain" }],
+    ["pod", "Payments Pod", "/pods/pod-payments", status("danger", "Off track")],
     // Their pod's people, whose check-ins are on that pod's panel.
-    ["person", "Asha Rao", "/delivery/pod/pod-payments", { kind: "person" }],
-    ["person", "Kai Thompson", "/delivery/pod/pod-payments", { kind: "person" }],
+    ["person", "Asha Rao", "/pods/pod-payments", { kind: "person" }],
+    ["person", "Kai Thompson", "/pods/pod-payments", { kind: "person" }],
   ]);
 });
 
 test("a scrum master's palette lists their projects and every pod; people only in pods they run", () => {
   assert.deepEqual(ownFor("sm", scrumMasterTree), [
-    [
-      "project",
-      "Checkout Revamp",
-      "/delivery/project/project-checkout",
-      status("danger", "Off track"),
-    ],
-    [
-      "project",
-      "Identity Platform",
-      "/delivery/project/project-identity",
-      status("warning", "At risk"),
-    ],
-    ["pod", "Payments Pod", "/delivery/pod/pod-payments", status("danger", "Off track")],
-    ["pod", "Storefront Pod", "/delivery/pod/pod-storefront", status("success", "On track")],
-    ["pod", "Identity Pod", "/delivery/pod/pod-identity", status("warning", "At risk")],
-    ["person", "Asha Rao", "/delivery/pod/pod-payments", { kind: "person" }],
-    ["person", "Kai Thompson", "/delivery/pod/pod-payments", { kind: "person" }],
+    ["project", "Checkout Revamp", "/projects/project-checkout", status("danger", "Off track")],
+    ["project", "Identity Platform", "/projects/project-identity", status("warning", "At risk")],
+    ["pod", "Payments Pod", "/pods/pod-payments", status("danger", "Off track")],
+    ["pod", "Storefront Pod", "/pods/pod-storefront", status("success", "On track")],
+    ["pod", "Identity Pod", "/pods/pod-identity", status("warning", "At risk")],
+    ["person", "Asha Rao", "/pods/pod-payments", { kind: "person" }],
+    ["person", "Kai Thompson", "/pods/pod-payments", { kind: "person" }],
   ]);
 });
 

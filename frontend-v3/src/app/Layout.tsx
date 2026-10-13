@@ -1,5 +1,6 @@
-import { Search } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { Menu, Search, X } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { AccountMenu } from "../components/shell/AccountMenu";
@@ -10,27 +11,42 @@ import { TabTitle } from "../components/shell/TabTitle";
 import { ViewingDateBanner, ViewingDateControl } from "../components/shell/ViewingDate";
 import { Assistant } from "../features/assistant/Assistant";
 import { cn } from "../lib/utils";
-import { shownNav } from "./nav";
+import { usePods, useProjects } from "./directory";
+import { shownGroups } from "./nav";
 import { RouteGuard } from "./RouteGuard";
 import { useRole } from "./role";
 import { useViewingDate } from "./viewingDate";
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
+/**
+ * The console's frame (D85): the header (logo, Jump to… ⌘K, the viewing day,
+ * acting-as on a local tenant, the avatar), the grouped sidebar on a wide
+ * screen and behind the menu button on a narrower one, and the page.
+ */
 export function Layout() {
   const roleState = useRole();
   const { asOf } = useViewingDate();
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const nav = useRef<HTMLElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const { pathname } = useLocation();
+  const header = useRef<HTMLElement>(null);
+  const [headerHeight, setHeaderHeight] = useState(64);
 
-  // On a phone an admin's seven tabs do not fit and scroll: keep the one shown in
-  // view (Admin is the last, and would otherwise sit off the edge).
-  useEffect(() => {
-    nav.current
-      ?.querySelector<HTMLElement>('[aria-current="page"]')
-      ?.scrollIntoView?.({ inline: "center", block: "nearest" });
-  }, [pathname]);
+  // The sidebar sits under the header, whose height grows with the past-day banner.
+  useLayoutEffect(() => {
+    const element = header.current;
+    if (!element) return;
+    const measure = () => setHeaderHeight(element.getBoundingClientRect().height);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  // A page opened from the menu closes it.
+  useEffect(() => setMenuOpen(false), [pathname]);
 
   // ⌘K on a Mac, Ctrl+K elsewhere, from anywhere in the console.
   useEffect(() => {
@@ -49,11 +65,24 @@ export function Layout() {
     // once, and read by main's padding and the pages' sticky side panels (index.css).
     <div className={cn("min-h-screen bg-white", roleState.access.assistant && "op-float-room")}>
       <TabTitle />
-      <header className="sticky top-0 z-30 border-b border-grey-border bg-white">
-        <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-x-6 gap-y-2 px-4 pt-3 sm:px-8">
-          <NavLink to="/today" className="flex items-center gap-3 py-1 text-ink no-underline">
+      <header ref={header} className="sticky top-0 z-30 border-b border-grey-border bg-white">
+        <div className="mx-auto flex max-w-[1480px] items-center gap-x-3 px-4 py-2.5 sm:px-6">
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            aria-label="Open the menu"
+            aria-expanded={menuOpen}
+            aria-controls="op-menu"
+            className="grid h-10 w-10 flex-none place-items-center rounded-full border border-grey-border text-ink hover:bg-grey-fill lg:hidden"
+          >
+            <Menu size={18} aria-hidden />
+          </button>
+          <NavLink
+            to="/today"
+            className="flex min-w-0 items-center gap-3 py-1 text-ink no-underline"
+          >
             <HeaderLogo />
-            <span className="leading-tight">
+            <span className="min-w-0 leading-tight max-[379px]:hidden">
               <span className="block text-[16px] font-extrabold">OpenProgram</span>
               <span className="block text-[11px] text-grey-secondary">Delivery intelligence</span>
             </span>
@@ -84,42 +113,119 @@ export function Layout() {
             ) : null}
             <AccountMenu />
           </div>
-          <nav
-            ref={nav}
-            aria-label="Main"
-            // Below md the tabs scroll sideways: the right edge fades out to say there are more.
-            className="-mx-1 flex w-full gap-1 overflow-x-auto px-1 [scrollbar-width:none] max-md:[mask-image:linear-gradient(to_right,black_calc(100%-28px),transparent)]"
-          >
-            {shownNav(roleState.access).map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  cn(
-                    "relative flex-none px-3 pb-3 pt-2 text-[15px] font-bold no-underline",
-                    isActive
-                      ? "text-ink after:absolute after:inset-x-3 after:bottom-0 after:h-[3px] after:rounded-full after:bg-magenta"
-                      : "text-grey-body hover:text-ink",
-                  )
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
         </div>
         <ViewingDateBanner />
       </header>
-      {/* Room at the bottom for the assistant's button, so it never covers the last row. */}
-      <main className="mx-auto max-w-[1240px] px-4 py-8 pb-[calc(2rem+var(--op-float-room))] sm:px-8">
-        {/* A link to a page this role is not offered opens the closest one it has. */}
-        <RouteGuard>
-          {/* A different day remounts the screen, so every query on it asks for that day. */}
-          <Outlet key={asOf ?? "today"} />
-        </RouteGuard>
-      </main>
+      <div className="mx-auto flex max-w-[1480px]">
+        <aside
+          className="sticky hidden w-[236px] flex-none self-start overflow-y-auto border-r border-grey-border px-3 py-6 lg:block"
+          style={{ top: headerHeight, height: `calc(100vh - ${headerHeight}px)` }}
+        >
+          <SideNav />
+        </aside>
+        {/* Room at the bottom for the assistant's button, so it never covers the last row. */}
+        <main className="min-w-0 flex-1 px-4 py-8 pb-[calc(2rem+var(--op-float-room))] sm:px-8">
+          {/* An old address opens where it lives now; a page this role is not offered, the closest it has. */}
+          <RouteGuard>
+            {/* A different day remounts the screen, so every query on it asks for that day. */}
+            <Outlet key={asOf ?? "today"} />
+          </RouteGuard>
+        </main>
+      </div>
+      <Dialog.Root open={menuOpen} onOpenChange={setMenuOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30 lg:hidden" />
+          <Dialog.Content
+            id="op-menu"
+            aria-describedby={undefined}
+            className="fixed inset-y-0 left-0 z-50 w-[min(86vw,300px)] overflow-y-auto bg-white px-3 pb-8 pt-3 shadow-op-palette lg:hidden"
+          >
+            <div className="mb-4 flex items-center justify-between px-1">
+              <Dialog.Title className="text-[16px] font-extrabold">Menu</Dialog.Title>
+              <Dialog.Close
+                aria-label="Close the menu"
+                className="grid h-10 w-10 place-items-center rounded-full text-ink hover:bg-grey-fill"
+              >
+                <X size={18} aria-hidden />
+              </Dialog.Close>
+            </div>
+            <SideNav />
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <Assistant />
     </div>
   );
+}
+
+/**
+ * The sidebar's groups, each item named by the question it answers, only what
+ * the role is offered (app/nav.ts). The project or pod open on the page shows
+ * as one small line under its item, for orientation; the nav itself never
+ * lists projects (D86).
+ */
+function SideNav() {
+  const { access } = useRole();
+  const { pathname } = useLocation();
+  const [, section, rawId] = pathname.split("/");
+  const id = rawId ? safeDecode(rawId) : "";
+  const projects = useProjects();
+  const pods = usePods();
+  const openName = (page: string) => {
+    if (!id) return null;
+    if (page === "projects" && section === "projects") {
+      return projects.data?.find((item) => item.id === id)?.name ?? null;
+    }
+    if (page === "pods" && section === "pods") {
+      return pods.data?.find((item) => item.id === id)?.name ?? null;
+    }
+    return null;
+  };
+  return (
+    <nav aria-label="Main" className="grid gap-5">
+      {shownGroups(access).map((group) => (
+        <div key={group.id}>
+          <p className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-grey-secondary">
+            {group.label}
+          </p>
+          <ul className="grid gap-0.5">
+            {group.items.map((item) => {
+              const name = openName(item.page);
+              return (
+                <li key={item.to}>
+                  <NavLink
+                    to={item.to}
+                    className={({ isActive }) =>
+                      cn(
+                        "relative flex min-h-10 items-center rounded-xl px-3 py-2 text-[14px] font-bold no-underline",
+                        isActive
+                          ? "bg-grey-fill text-ink before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-magenta"
+                          : "text-grey-body hover:bg-grey-fill hover:text-ink",
+                      )
+                    }
+                  >
+                    {item.label}
+                  </NavLink>
+                  {name ? (
+                    <p className="truncate py-1 pl-6 pr-2 text-[12.5px] text-grey-secondary">
+                      {name}
+                    </p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+function safeDecode(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
 }

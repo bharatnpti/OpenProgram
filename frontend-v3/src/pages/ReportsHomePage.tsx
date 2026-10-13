@@ -3,19 +3,21 @@ import { Link } from "react-router-dom";
 
 import { apiClient } from "../api/client";
 import { useReportProjects } from "../app/directory";
+import { dailyPath, projectPath } from "../app/links";
 import { useRole } from "../app/role";
 import { PanelState, SectionHeader } from "../components/PanelState";
 import { dayReportCountWords } from "../features/daily/reportView";
 import { ProjectCompactStrip } from "../features/delivery/DeliveryStrips";
 import { ProjectStatus } from "../features/reports/ProjectStatus";
 import { ReportSetupDialog } from "../features/reports/ReportSetupDialog";
+import { ReportsTabs } from "../features/reports/ReportsTabs";
 import { Pill } from "../components/ui/Pill";
 import { ragSeverity } from "../lib/status";
 
 /**
- * Every project with its two report views one click away: Daily (the
- * end-of-day report) and Overall (the state since it started), and, for whoever
- * reads a project's progress, its dates on one line. A developer sees the
+ * Every project with its day report one click away, and its Project page (the
+ * state since it started, which was Overall), and, for whoever reads a
+ * project's progress, its dates on one line. A developer sees the
  * projects of their own pods (every project when they are in none). Whoever may
  * set reports up can start one here.
  */
@@ -40,8 +42,8 @@ export function ReportsHomePage() {
         title="Reports"
         meta={
           shown.own
-            ? "The end-of-day report and overall state of your pods' projects, worst first."
-            : "Each project's end-of-day report and its overall state, worst first."
+            ? "The end-of-day report of your pods' projects, worst first."
+            : "Each project's end-of-day report, worst first."
         }
         actions={
           canSetUpDayReports ? (
@@ -49,6 +51,7 @@ export function ReportsHomePage() {
           ) : undefined
         }
       />
+      <ReportsTabs />
       <PanelState
         isLoading={shown.isLoading}
         error={shown.error}
@@ -78,16 +81,16 @@ export function ReportsHomePage() {
                 </span>
                 <div className="mt-auto flex flex-wrap gap-2">
                   <Link
-                    to={`/reports/${project.id}/daily`}
+                    to={dailyPath(project.id)}
                     className="inline-flex h-9 items-center rounded-full bg-ink px-4 text-[13px] font-bold text-white no-underline hover:bg-ink-hover"
                   >
                     Daily
                   </Link>
                   <Link
-                    to={`/reports/${project.id}/overall`}
+                    to={projectPath(project.id)}
                     className="inline-flex h-9 items-center rounded-full border border-ink px-4 text-[13px] font-bold text-ink no-underline hover:bg-grey-fill"
                   >
-                    Overall
+                    Project
                   </Link>
                 </div>
               </li>

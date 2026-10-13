@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { DeliveryTreeResponse } from "../../api/schema";
 import { developerTree, productOwnerTree, scrumMasterTree } from "./ownTree.fixture.ts";
-import { fullPodIds, ownGroups, ownLanding, ownLinks, ownProjects, trailOf } from "./ownTree.ts";
+import { fullPodIds, ownGroups, ownLinks, ownProjects, trailOf } from "./ownTree.ts";
 
 /** What the navigator draws: each project and its pods, with dot (or none) and whether it opens. */
 const drawn = (tree: DeliveryTreeResponse) =>
@@ -68,13 +68,6 @@ test("a product owner's pods all open on their dates, none on its people", () =>
   assert.equal(fullPodIds(productOwnerTree).size, 0);
 });
 
-test("Delivery opens on the first project the person reads, else a developer's own pod", () => {
-  assert.equal(ownLanding(scrumMasterTree), "/delivery/project/project-checkout");
-  assert.equal(ownLanding(productOwnerTree), "/delivery/project/project-checkout");
-  assert.equal(ownLanding(developerTree), "/delivery/pod/pod-payments");
-  assert.equal(ownLanding({ as_of: "2026-10-06", programs: [], projects: [], pods: [] }), null);
-});
-
 test("a project in no program comes last, under no heading", () => {
   const tree: DeliveryTreeResponse = {
     ...productOwnerTree,
@@ -117,7 +110,7 @@ test("the trail above a panel names the program, and links the project from a po
   ]);
   assert.deepEqual(trailOf(developerTree, "pod", "pod-payments"), [
     { label: "Digital Platform Program", to: null },
-    { label: "Checkout Revamp", to: "/delivery/project/project-checkout" },
+    { label: "Checkout Revamp", to: "/projects/project-checkout" },
   ]);
   assert.deepEqual(trailOf(developerTree, "pod", "pod-nowhere"), []);
 });

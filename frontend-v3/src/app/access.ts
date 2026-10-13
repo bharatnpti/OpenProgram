@@ -1,13 +1,16 @@
-// What each role is offered, in one place: the tabs, what Delivery lists, the
-// sections inside the screens, where the ⌘K palette takes a row, and where a
-// link to a page the role is not offered goes instead. A screen or section the
-// role is not offered is not drawn at all: no struck-through tab, no line
-// saying which role would open it. The flags only forecast the backend, which
-// still decides; a 403 that comes back anyway shows the server's reason.
+// What each role is offered, in one place: the sidebar's pages (D85), the
+// sections inside them, where the ⌘K palette takes a row, where an address from
+// before the sidebar goes now, and where a link to a page the role is not
+// offered goes instead. A page or section the role is not offered is not drawn
+// at all: no struck-through item, no line saying which role would open it. The
+// flags only forecast the backend, which still decides; a 403 that comes back
+// anyway shows the server's reason.
 //
-// Type imports only, so `node --test` runs it as written.
+// Type imports, and runtime imports by their .ts path, so `node --test` runs it.
 import type { DeliveryTreeResponse } from "../api/schema";
+import { ASK_LABEL } from "../features/assistant/persona.ts";
 import type { OwnLinks } from "../features/delivery/ownTree";
+import { dailyPath, podPath, programPath, projectPath, workstreamPath } from "./links.ts";
 import type { AppRole } from "./roleWords";
 
 /**
@@ -50,7 +53,25 @@ export function capabilitiesFor(lens: readonly AppRole[]): Capabilities {
   };
 }
 
-export type Page = "today" | "delivery" | "signals" | "coordination" | "reports" | "chat" | "admin";
+/**
+ * The sidebar's pages (D85), in its order: Daily (Today, Check-in, Requests),
+ * Delivery (the Portfolio, Projects, Pods, Early warnings, Scope control),
+ * Insight (Reports, Review flow, Ask Ora) and Setup (People & roles, Admin).
+ */
+export type Page =
+  | "today"
+  | "checkin"
+  | "requests"
+  | "portfolio"
+  | "projects"
+  | "pods"
+  | "warnings"
+  | "scope"
+  | "reports"
+  | "flow"
+  | "ora"
+  | "people"
+  | "admin";
 export type NodeKind = "program" | "project" | "workstream" | "pod";
 export type SignalsView = "risks" | "flow";
 export type BriefKind = "exec" | "weekly_project" | "daily_pod";
@@ -65,8 +86,10 @@ export type Scope = "pods" | "projects" | "all";
 export type DeliveryScope = "all" | "own";
 
 export type Access = {
-  /** The tabs the role is offered. */
+  /** The sidebar's pages the role is offered (perspective-roles §1, D85). */
   pages: Record<Page, boolean>;
+  /** Check-in: the built-in chat's thread beside the form, on a local tenant only. */
+  checkin: { chat: boolean };
   /**
    * The assistant (POST /ask), floating on every tab: the aggregate readers
    * the endpoint answers (scrum master, product owner, manager, executive,
@@ -154,14 +177,31 @@ export function accessOf({ lens, chatEnabled }: Lens): Access {
   return {
     pages: {
       today: true,
-      // Everyone: the portfolio's readers walk all of it, everyone else their own part.
-      delivery: true,
-      signals: can.canReadAggregate,
-      coordination: can.canReadAggregate,
+      // Everyone's own check-in, read and corrected beside the conversation.
+      checkin: true,
+      // Whoever may act on some ask; an executive reads the waits as counts on Today.
+      requests: has("admin", "mgr", "po", "sm"),
+      // The dates of every project: the project's progress readers (`READ_PROJECT_PROGRESS`).
+      portfolio: can.canReadProjectProgress,
+      // Everyone: the portfolio's readers any project, everyone else their own part
+      // (a developer the name-only form), the server deciding each section.
+      projects: true,
+      // An executive's pod would be closed apart from its dates, which the project shows.
+      pods: portfolio ? can.canReadPodDetail : true,
+      // Risks and drift across projects; a scrum master's and a product owner's are a
+      // section of their project's page.
+      warnings: portfolio,
+      // The planning baseline and Jira hygiene: the readiness board's readers.
+      scope: has("admin", "mgr", "po", "sm", "exec"),
       reports: true,
-      chat: chatEnabled,
+      flow: can.canReadAggregate,
+      ora: can.canReadAggregate,
+      // The pods' people and profiles, for whoever reads a pod's people. Not an
+      // executive (D87: no names) and not a developer (their pod's page has them).
+      people: has("admin", "mgr", "po", "sm"),
       admin: can.canManageConfig,
     },
+    checkin: { chat: chatEnabled },
     assistant: can.canReadAggregate,
     delivery: portfolio
       ? {
@@ -241,24 +281,43 @@ export function readsHygiene(
   return readsReadiness({ readiness: access.hygiene }, projectId, tree);
 }
 
-/** The page a path belongs to; null for a page every role has (Today, Reports). */
+/** Each page's first path segment. */
+const PAGE_PATHS: Record<string, Page> = {
+  today: "today",
+  "check-in": "checkin",
+  requests: "requests",
+  portfolio: "portfolio",
+  projects: "projects",
+  pods: "pods",
+  warnings: "warnings",
+  scope: "scope",
+  reports: "reports",
+  flow: "flow",
+  ora: "ora",
+  people: "people",
+  admin: "admin",
+};
+
+/** The sidebar page a path belongs to; null for an address no page owns (an old one). */
 export function pageOf(pathname: string): Page | null {
   const first = pathname.split("/")[1] ?? "";
-  if (first === "delivery") return "delivery";
-  if (first === "signals") return "signals";
-  if (first === "coordination") return "coordination";
-  if (first === "chat") return "chat";
-  if (first === "admin") return "admin";
-  return null;
+  return Object.prototype.hasOwnProperty.call(PAGE_PATHS, first) ? PAGE_PATHS[first] : null;
 }
 
+/** Each page's name in a sentence: the toast, the tab title. */
 export const PAGE_LABELS: Record<Page, string> = {
   today: "Today",
-  delivery: "Delivery",
-  signals: "Signals",
-  coordination: "Coordination",
+  checkin: "Check-in",
+  requests: "Requests",
+  portfolio: "Portfolio",
+  projects: "Projects",
+  pods: "Pods",
+  warnings: "Early warnings",
+  scope: "Scope control",
   reports: "Reports",
-  chat: "Chat",
+  flow: "Review flow",
+  ora: ASK_LABEL,
+  people: "People & roles",
   admin: "Admin",
 };
 
@@ -266,7 +325,7 @@ export const PAGE_LABELS: Record<Page, string> = {
 export type DirectoryLinks = {
   podProjects: (podId: string) => string[];
   workstreamProjects: (workstreamId: string) => string[];
-  /** The person's own part of the tree, for a Delivery that lists only it (`own`). */
+  /** The person's own part of the tree, for the roles whose pages list only it (`own`). */
   own?: OwnLinks | null;
 };
 
@@ -282,10 +341,149 @@ export type Redirect = {
 
 type Where = { pathname: string; search: string; hash?: string };
 
+function decode(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+function split(path: string): { pathname: string; search: string; hash: string } {
+  const [beforeHash, hash = ""] = path.split("#");
+  const [pathname, query = ""] = beforeHash.split("?");
+  return { pathname, search: query ? `?${query}` : "", hash: hash ? `#${hash}` : "" };
+}
+
+/** A query pair's key, decoded: `row=project%3Ax` is `row`. */
+function keyOf(pair: string): string {
+  const raw = pair.split("=")[0] ?? "";
+  try {
+    return decodeURIComponent(raw.replace(/\+/g, " "));
+  } catch {
+    return raw;
+  }
+}
+
 /**
- * Where a link goes for a role the page is not offered to: the closest page the
- * role has (PROPOSAL §7.2), or null when the role is offered it as it is. The
- * viewing day (`asOf`) goes along.
+ * `target` with the link's other parameters and its hash kept, as written (no
+ * re-encoding): the target's own parameters win, `drop` names the ones the old
+ * address alone used, and the link's hash wins over the target's (an old
+ * `…/overall?row=…#timeline` lands on the timeline, at the same row).
+ */
+function carried(
+  target: string,
+  search: string,
+  hash: string | undefined,
+  drop: readonly string[] = [],
+): string {
+  const own = split(target);
+  const ownPairs = own.search.slice(1).split("&").filter(Boolean);
+  const ownKeys = new Set(ownPairs.map(keyOf));
+  const kept = search
+    .replace(/^\?/, "")
+    .split("&")
+    .filter(Boolean)
+    .filter((pair) => !ownKeys.has(keyOf(pair)) && !drop.includes(keyOf(pair)));
+  const query = [...kept, ...ownPairs].join("&");
+  const tail = hash && hash !== "#" ? hash : own.hash;
+  return `${own.pathname}${query ? `?${query}` : ""}${tail}`;
+}
+
+/**
+ * An address from before the sidebar (D85), where it lives now, with its query
+ * and hash kept, since links in messages already sent carry them (a day
+ * report's, a readiness line's, the impact row's `/reports/<p>/overall?row=…#timeline`).
+ * Null for an address that is current. The role's own rules then apply to the
+ * result (`redirectFor`).
+ *
+ * | old                              | new                                   |
+ * | -------------------------------- | ------------------------------------- |
+ * | /delivery                        | /portfolio, else /projects            |
+ * | /delivery/program/:id            | /portfolio?program=:id, else /projects |
+ * | /delivery/project/:id            | /projects/:id                         |
+ * | /delivery/pod/:id                | /pods/:id                             |
+ * | /delivery/workstream/:id         | /projects/<its first project>#work    |
+ * | /reports/:id/overall             | /projects/:id                         |
+ * | /reports/:id                     | /reports/:id/daily                    |
+ * | /signals?view=risks (drift)      | /warnings                             |
+ * | /signals?view=flow               | /flow                                 |
+ * | /signals                         | /warnings, else /flow                 |
+ * | /coordination?brief=             | /reports/briefs?brief=                |
+ * | /coordination                    | /requests, else /reports/briefs       |
+ * | /chat                            | /check-in                             |
+ * | /today?pod=:id, /today?project=  | /pods/:id, /projects/:id              |
+ * | /projects/:id/daily, …/overall   | /reports/:id/daily, /projects/:id     |
+ * | /risks, /ask                     | /warnings, /ora                       |
+ */
+export function legacyPath(
+  where: Where,
+  access: Pick<Access, "pages" | "coordination">,
+  directory: Pick<DirectoryLinks, "workstreamProjects">,
+): string | null {
+  const [first = "", second = "", third = ""] = where.pathname.split("/").slice(1);
+  const params = new URLSearchParams(where.search);
+  const to = (target: string, ...drop: string[]) => carried(target, where.search, where.hash, drop);
+  const id = decode(third);
+
+  switch (first) {
+    case "delivery": {
+      if (second === "project" && id) return to(projectPath(id));
+      if (second === "pod" && id) return to(podPath(id));
+      if (second === "program" && id) {
+        return to(access.pages.portfolio ? programPath(id) : "/projects");
+      }
+      if (second === "workstream" && id) {
+        const project = directory.workstreamProjects(id)[0];
+        return to(project ? workstreamPath(id, [project]) : "/projects");
+      }
+      return to(access.pages.portfolio ? "/portfolio" : "/projects");
+    }
+    case "reports": {
+      if (!second || second === "briefs") return null;
+      const projectId = decode(second);
+      if (third === "overall") return to(projectPath(projectId));
+      if (!third) return to(dailyPath(projectId));
+      return null;
+    }
+    case "signals": {
+      const view = params.get("view");
+      if (view === "risks" || view === "drift") return to("/warnings", "view");
+      if (view === "flow") return to("/flow", "view");
+      return to(access.pages.warnings ? "/warnings" : "/flow", "view");
+    }
+    case "coordination": {
+      if (params.get("brief") !== null) return to("/reports/briefs", "requests");
+      if (access.pages.requests) return to("/requests");
+      return to(access.coordination.briefs ? "/reports/briefs" : "/today#asks", "requests");
+    }
+    case "chat":
+      return to("/check-in");
+    case "today": {
+      const pod = params.get("pod");
+      const project = params.get("project");
+      if (!pod && !project) return null;
+      return to(pod ? podPath(pod) : projectPath(project ?? ""), "pod", "project");
+    }
+    case "projects": {
+      if (!second || !third) return null;
+      const projectId = decode(second);
+      return to(third === "daily" ? dailyPath(projectId) : projectPath(projectId));
+    }
+    case "risks":
+      return to("/warnings");
+    case "ask":
+      return to("/ora");
+    default:
+      return null;
+  }
+}
+
+/**
+ * Where a link goes: an old address first where it lives now (`legacyPath`),
+ * then, for a role the page is not offered to, the closest page the role has,
+ * or null when the role is offered it as it is. The viewing day (`asOf`) goes
+ * along.
  */
 export function redirectFor(
   where: Where,
@@ -293,105 +491,139 @@ export function redirectFor(
   can: Capabilities,
   directory: DirectoryLinks,
 ): Redirect | null {
+  const legacy = legacyPath(where, access, directory);
+  if (legacy === null) return roleRedirect(where, access, can, directory);
+  return roleRedirect(split(legacy), access, can, directory) ?? { to: legacy, missing: null };
+}
+
+function roleRedirect(
+  where: Where,
+  access: Access,
+  can: Capabilities,
+  directory: DirectoryLinks,
+): Redirect | null {
   const page = pageOf(where.pathname);
-  const params = new URLSearchParams(where.search);
-  const asOf = params.get("asOf");
+  if (page === null) return null;
+  const asOf = new URLSearchParams(where.search).get("asOf");
   const go = (to: string, missing: Page | null = null): Redirect => ({
     to: withAsOf(to, asOf),
     missing,
   });
   const today = (missing: Page) => go("/today", missing);
+  const id = decode(where.pathname.split("/")[2] ?? "");
+  const offered = access.pages[page];
 
-  if (page === "delivery") return deliveryRedirect(where.pathname, access, can, directory, go);
-  if (page === "signals") {
-    if (!access.pages.signals) return today("signals");
-    const view = params.get("view");
-    if (view === null || (access.signals.views as string[]).includes(view)) return null;
-    // Drift joined the risks list; the other views are gone.
-    const next =
-      view === "drift" && access.signals.views.includes("risks")
-        ? "risks"
-        : view === "risks" || view === "drift"
-          ? access.signals.defaultView
-          : null;
-    if (next === null) params.delete("view");
-    else params.set("view", next);
-    params.delete("asOf");
-    const query = params.toString();
-    return go(`/signals${query ? `?${query}` : ""}`);
+  switch (page) {
+    case "today":
+    case "checkin":
+      return null;
+    case "reports":
+      // Briefs are the aggregate readers'; a developer's Reports is the day reports.
+      return id === "briefs" && !access.coordination.briefs ? go("/reports") : null;
+    case "projects":
+      return id ? projectRedirect(id, access, can, directory, go) : null;
+    case "pods":
+      return podRedirect(id, access, can, directory, go, today);
+    case "requests":
+      if (offered) return null;
+      // Your asks on Today hold what a developer did here.
+      return can.canReadAggregate ? today(page) : go("/today#asks");
+    case "portfolio":
+      if (offered) return null;
+      // A scrum master's dates are their pods', on their project's page.
+      return can.canReadAggregate ? go("/projects") : today(page);
+    case "warnings":
+      if (offered) return null;
+      // A scrum master's and a product owner's warnings are a section of their project.
+      return can.canReadAggregate ? go("/projects#warnings") : today(page);
+    case "people":
+      if (offered) return null;
+      // A developer's pod's people are on their pod's page.
+      return access.pages.pods && !can.canReadAggregate ? go("/pods") : today(page);
+    default:
+      return offered ? null : today(page);
   }
-  if (page === "coordination") {
-    // Your asks on Today hold what a developer did here.
-    return access.pages.coordination ? null : go("/today#asks");
-  }
-  if (page === "admin") return access.pages.admin ? null : today("admin");
-  if (page === "chat") return access.pages.chat ? null : today("chat");
-  return null;
 }
 
-function deliveryRedirect(
-  pathname: string,
+/**
+ * A project's page outside the person's own part of the tree. A product owner
+ * reads every project, a scrum master the sections the server gives them (as
+ * Overall did): both are shown. A developer's own projects open on the
+ * name-only form; another project goes to its day report, which they read.
+ * Until the tree is read, the page decides.
+ */
+function projectRedirect(
+  id: string,
+  access: Access,
+  can: Capabilities,
+  directory: DirectoryLinks,
+  go: (to: string) => Redirect,
+): Redirect | null {
+  if (access.deliveryScope !== "own" || can.canReadAggregate) return null;
+  const own = directory.own;
+  if (!own || own.projects.includes(id)) return null;
+  return go(dailyPath(id));
+}
+
+/**
+ * A pod's page. An executive has no Pods: a pod's dates are on its project's
+ * timeline. Under the `own` scope: a pod that opens is shown; one listed by name
+ * only (a developer's neighbours) opens its project; outside the tree a scrum
+ * master's is the server's to decide, a product owner gets its project, and a
+ * developer their own pod.
+ */
+function podRedirect(
+  id: string,
   access: Access,
   can: Capabilities,
   directory: DirectoryLinks,
   go: (to: string, missing?: Page | null) => Redirect,
+  today: (missing: Page) => Redirect,
 ): Redirect | null {
-  const [, , kind, rawId] = pathname.split("/");
-  const id = rawId ? decodeURIComponent(rawId) : "";
-  const known = kind === "program" || kind === "project" || kind === "workstream" || kind === "pod";
-  if (!access.pages.delivery) return go("/today", "delivery");
-  if (access.deliveryScope === "own") {
-    // The guard reads the person's tree before it asks; without it, the page decides.
-    if (!known || !id || !directory.own) return null;
-    return ownRedirect(kind, id, can, directory, directory.own, go);
+  if (!access.pages.pods) {
+    if (!id) return today("pods");
+    const project = directory.podProjects(id)[0];
+    return go(project ? projectPath(project) : "/projects");
   }
-  if (!known || !id || access.delivery[kind]) return null;
-  // Delivery is offered, but not this kind (an executive and a pod): its project instead.
-  const project =
-    kind === "pod" ? directory.podProjects(id)[0] : directory.workstreamProjects(id)[0];
-  return go(project ? `/delivery/project/${encodeURIComponent(project)}` : "/delivery");
+  if (!id || access.deliveryScope !== "own") return null;
+  const own = directory.own;
+  if (!own) return null;
+  const pod = own.pod(id);
+  if (pod?.opens) return null;
+  const ownProject = pod?.projectIds.find((projectId) => own.projects.includes(projectId));
+  if (ownProject) return go(projectPath(ownProject));
+  if (can.canReadPodDetail) return null;
+  const theirs = directory.podProjects(id)[0];
+  if (can.canReadProjectProgress && theirs) return go(projectPath(theirs));
+  return go("/pods");
 }
 
 /**
- * A Delivery link for a person whose Delivery lists their own part of the tree.
- * Inside it, the page; a pod listed by name only, its project; a program, their
- * Delivery; a workstream, its project when that is theirs. Outside it, the
- * closest page the role has elsewhere: a scrum master's Today on the pod, a
- * product owner's Today on the project, a project's reports, else their
- * Delivery. Never plain Today with a note: the role has Delivery.
+ * What the guard must read before it can say where a link goes: the person's
+ * tree (a project or pod link under the `own` scope), the pods (a pod link for
+ * an executive, or outside the tree), the workstreams (an old workstream link).
  */
-function ownRedirect(
-  kind: NodeKind,
-  id: string,
-  can: Capabilities,
-  directory: DirectoryLinks,
-  own: OwnLinks,
-  go: (to: string, missing?: Page | null) => Redirect,
-): Redirect | null {
-  const enc = encodeURIComponent;
-  const ownProject = (ids: string[]) => ids.find((projectId) => own.projects.includes(projectId));
-  if (kind === "project") {
-    if (own.projects.includes(id)) return null;
-    if (can.canReadProjectProgress) return go(`/today?project=${enc(id)}`);
-    return go(`/reports/${enc(id)}/${can.canReadAggregate ? "overall" : "daily"}`);
-  }
-  if (kind === "pod") {
-    const pod = own.pod(id);
-    if (pod?.opens) return null;
-    const project = pod ? ownProject(pod.projectIds) : undefined;
-    if (project) return go(`/delivery/project/${enc(project)}`);
-    if (can.canReadPodDetail) return go(`/today?pod=${enc(id)}`);
-    const theirs = directory.podProjects(id)[0];
-    if (can.canReadProjectProgress && theirs) return go(`/today?project=${enc(theirs)}`);
-    return go("/delivery");
-  }
-  if (kind === "workstream") {
-    const projects = directory.workstreamProjects(id);
-    const project = ownProject(projects);
-    if (project) return go(`/delivery/project/${enc(project)}`);
-    if (can.canReadProjectProgress && projects[0]) return go(`/today?project=${enc(projects[0])}`);
-  }
-  return go("/delivery");
+export function guardNeeds(
+  where: Where,
+  access: Pick<Access, "deliveryScope" | "pages">,
+): { tree: boolean; pods: boolean; workstreams: boolean } {
+  const [first = "", second = "", third = ""] = where.pathname.split("/").slice(1);
+  const params = new URLSearchParams(where.search);
+  const pod =
+    (first === "pods" && second !== "") ||
+    (first === "delivery" && second === "pod" && third !== "") ||
+    (first === "today" && params.get("pod") !== null);
+  const project =
+    (first === "projects" && second !== "") ||
+    (first === "delivery" && second === "project" && third !== "") ||
+    (first === "today" && params.get("project") !== null) ||
+    (first === "reports" && third === "overall");
+  const own = access.deliveryScope === "own";
+  return {
+    tree: own && (pod || project),
+    pods: pod && (own || !access.pages.pods),
+    workstreams: first === "delivery" && second === "workstream" && third !== "",
+  };
 }
 
 /** `to` with the viewing day kept, before any `#`. */
@@ -404,7 +636,7 @@ function withAsOf(to: string, asOf: string | null): string {
   return `${base}?${params.toString()}${hash !== undefined ? `#${hash}` : ""}`;
 }
 
-/** "Opened Today: Signals isn't part of the developer view." */
+/** "Opened Today: Review flow isn't part of the developer view." */
 export function redirectToast(page: Page, roleLabel: string): string {
   return `Opened Today: ${PAGE_LABELS[page]} isn't part of the ${roleLabel.toLowerCase()} view.`;
 }
@@ -433,9 +665,10 @@ export function roleOfferingPage(
 
 /**
  * Where a palette row of each kind goes for this role, or null when the role
- * gets no such rows: the Delivery panel of each kind its Delivery lists. Under
- * the `own` scope the palette lists only the person's part of the tree, and of
- * it only what opens (features/delivery/ownTree.ts).
+ * gets no such rows: a project its page, a pod its page for the roles with
+ * Pods, a program its heading on the Portfolio, a workstream its first
+ * project's Work. Under the `own` scope the palette lists only the person's
+ * part of the tree, and of it only what opens (features/delivery/ownTree.ts).
  */
 export type PaletteTargets = {
   program: ((id: string) => string) | null;
@@ -446,16 +679,16 @@ export type PaletteTargets = {
   person: ((podId: string) => string) | null;
 };
 
-export function paletteTargets(access: Access): PaletteTargets {
-  const delivery = (kind: NodeKind) =>
-    access.pages.delivery && access.delivery[kind]
-      ? (id: string) => `/delivery/${kind}/${encodeURIComponent(id)}`
-      : null;
-  const pod = delivery("pod");
+export function paletteTargets(
+  access: Access,
+  workstreamProjects: (workstreamId: string) => string[] = () => [],
+): PaletteTargets {
+  const own = access.deliveryScope === "own";
+  const pod = access.pages.pods ? (id: string) => podPath(id) : null;
   return {
-    program: delivery("program"),
-    project: delivery("project"),
-    workstream: delivery("workstream"),
+    program: access.pages.portfolio && !own ? (id: string) => programPath(id) : null,
+    project: (id: string) => projectPath(id),
+    workstream: own ? null : (id: string) => workstreamPath(id, workstreamProjects(id)),
     pod,
     person: pod,
   };

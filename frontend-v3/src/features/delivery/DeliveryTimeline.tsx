@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
 import type { DirectoryItemResponse, TimelineResponse } from "../../api/schema";
+import { projectPath } from "../../app/links";
 import { useRole } from "../../app/role";
 import { PanelState } from "../../components/PanelState";
 import { Card } from "../../components/ui/Card";
@@ -87,7 +88,7 @@ function CompactCard({
                 </h2>
                 {access.overall.timeline && explained && projectId ? (
                   <Link
-                    to={`/reports/${encodeURIComponent(projectId)}/overall?row=${encodeURIComponent(explained.row)}#timeline`}
+                    to={`${projectPath(projectId)}?row=${encodeURIComponent(explained.row)}#timeline`}
                     className="text-[13px] font-bold text-ink underline underline-offset-2"
                   >
                     Why it moved

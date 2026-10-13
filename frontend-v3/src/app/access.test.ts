@@ -4,6 +4,8 @@ import { test } from "node:test";
 import {
   accessOf,
   capabilitiesFor,
+  guardNeeds,
+  legacyPath,
   pageOf,
   paletteTargets,
   readsHygiene,
@@ -15,31 +17,98 @@ import {
 } from "./access.ts";
 import { developerTree, scrumMasterTree } from "../features/delivery/ownTree.fixture.ts";
 import type { OwnLinks } from "../features/delivery/ownTree.ts";
+import { shownGroups } from "./nav.ts";
 import { rolePriority, type AppRole } from "./roleWords.ts";
 
 const access = (role: AppRole, chatEnabled = false) => accessOf({ lens: [role], chatEnabled });
-const tabs = (role: AppRole, chatEnabled = false) =>
-  (Object.entries(access(role, chatEnabled).pages) as [Page, boolean][])
+const pages = (role: AppRole) =>
+  (Object.entries(access(role).pages) as [Page, boolean][])
     .filter(([, on]) => on)
     .map(([page]) => page);
 
-test("each role is offered the tabs of PROPOSAL §2, Chat only where it is served", () => {
-  // Delivery for everyone since 2026-10-10: each person drills down their own part.
-  assert.deepEqual(tabs("dev"), ["today", "delivery", "reports"]);
-  assert.deepEqual(tabs("sm"), ["today", "delivery", "signals", "coordination", "reports"]);
-  assert.deepEqual(tabs("po"), ["today", "delivery", "signals", "coordination", "reports"]);
-  assert.deepEqual(tabs("mgr"), ["today", "delivery", "signals", "coordination", "reports"]);
-  assert.deepEqual(tabs("exec"), ["today", "delivery", "signals", "coordination", "reports"]);
-  assert.deepEqual(tabs("admin"), [
+test("each role is offered the sidebar's pages of perspective-roles §1, in the sidebar's order", () => {
+  assert.deepEqual(pages("dev"), ["today", "checkin", "projects", "pods", "reports"]);
+  assert.deepEqual(pages("sm"), [
     "today",
-    "delivery",
-    "signals",
-    "coordination",
+    "checkin",
+    "requests",
+    "projects",
+    "pods",
+    "scope",
     "reports",
-    "admin",
+    "flow",
+    "ora",
+    "people",
   ]);
-  assert.deepEqual(tabs("dev", true), ["today", "delivery", "reports", "chat"]);
-  assert.ok(tabs("exec", true).includes("chat"));
+  assert.deepEqual(pages("po"), [
+    "today",
+    "checkin",
+    "requests",
+    "portfolio",
+    "projects",
+    "pods",
+    "scope",
+    "reports",
+    "flow",
+    "ora",
+    "people",
+  ]);
+  assert.deepEqual(pages("mgr"), [
+    "today",
+    "checkin",
+    "requests",
+    "portfolio",
+    "projects",
+    "pods",
+    "warnings",
+    "scope",
+    "reports",
+    "flow",
+    "ora",
+    "people",
+  ]);
+  // No names for an executive (D87): no Requests board, no Pods, no People.
+  assert.deepEqual(pages("exec"), [
+    "today",
+    "checkin",
+    "portfolio",
+    "projects",
+    "warnings",
+    "scope",
+    "reports",
+    "flow",
+    "ora",
+  ]);
+  assert.equal(pages("admin").length, 13);
+  // The built-in chat is a column of Check-in, never a page of its own.
+  assert.deepEqual(access("dev", true).pages, access("dev").pages);
+  assert.equal(access("dev", true).checkin.chat, true);
+  assert.equal(access("exec").checkin.chat, false);
+});
+
+test("the sidebar's groups hold only offered pages, and a group with none is left out", () => {
+  const groups = (role: AppRole) =>
+    shownGroups(access(role)).map((group) => [group.label, group.items.map((item) => item.label)]);
+  assert.deepEqual(groups("dev"), [
+    ["Daily", ["Today", "Check-in"]],
+    ["Delivery", ["Projects", "Pods"]],
+    ["Insight", ["Reports"]],
+  ]);
+  assert.deepEqual(groups("exec"), [
+    ["Daily", ["Today", "Check-in"]],
+    ["Delivery", ["Will we make the date?", "Projects", "Early warnings", "Scope control"]],
+    ["Insight", ["Reports", "Review flow", "Ask Ora"]],
+  ]);
+  assert.deepEqual(groups("admin"), [
+    ["Daily", ["Today", "Check-in", "Requests"]],
+    ["Delivery", ["Will we make the date?", "Projects", "Pods", "Early warnings", "Scope control"]],
+    ["Insight", ["Reports", "Review flow", "Ask Ora"]],
+    ["Setup", ["People & roles", "Admin"]],
+  ]);
+  // The nav is built from the access map alone: it never grows with the projects (D86).
+  for (const role of ["dev", "sm", "po", "mgr", "exec", "admin"] as const) {
+    assert.ok(shownGroups(access(role)).flatMap((group) => group.items).length <= 13, role);
+  }
 });
 
 test("an executive's Delivery lists no pods; a manager's and an admin's list every kind", () => {
@@ -142,15 +211,19 @@ test("held roles combine under a real sign-in: a product owner and scrum master 
   assert.equal(capabilitiesFor(["po", "sm"]).canReadPodDetail, true);
 });
 
-test("pages by path", () => {
-  assert.equal(pageOf("/delivery/pod/pod-payments"), "delivery");
-  assert.equal(pageOf("/delivery"), "delivery");
-  assert.equal(pageOf("/signals"), "signals");
-  assert.equal(pageOf("/coordination"), "coordination");
+test("pages by path; an old address belongs to no page", () => {
+  assert.equal(pageOf("/today"), "today");
+  assert.equal(pageOf("/check-in"), "checkin");
+  assert.equal(pageOf("/projects/project-checkout"), "projects");
+  assert.equal(pageOf("/pods/pod-payments"), "pods");
+  assert.equal(pageOf("/warnings"), "warnings");
+  assert.equal(pageOf("/reports/project-checkout/daily"), "reports");
+  assert.equal(pageOf("/reports/briefs"), "reports");
   assert.equal(pageOf("/admin"), "admin");
-  assert.equal(pageOf("/chat"), "chat");
-  assert.equal(pageOf("/today"), null);
-  assert.equal(pageOf("/reports/project-checkout/daily"), null);
+  for (const old of ["/delivery/pod/pod-payments", "/signals", "/coordination", "/chat", "/"]) {
+    assert.equal(pageOf(old), null, old);
+  }
+  assert.equal(pageOf("/constructor"), null, "no inherited key is a page");
 });
 
 const directory = {
@@ -198,73 +271,140 @@ const OWN: Partial<Record<AppRole, OwnLinks>> = {
       })[id] ?? null,
   },
 };
-const go = (role: AppRole, path: string, chatEnabled = false) => {
-  const [pathname, search = ""] = path.split("?");
-  return redirectFor(
-    { pathname, search: search ? `?${search}` : "" },
-    access(role, chatEnabled),
-    capabilitiesFor([role]),
-    { ...directory, own: OWN[role] ?? null },
-  );
+const where = (link: string) => {
+  const [beforeHash, hash] = link.split("#");
+  const [pathname, search = ""] = beforeHash.split("?");
+  return { pathname, search: search ? `?${search}` : "", hash: hash ? `#${hash}` : "" };
 };
-const to = (role: AppRole, path: string, chatEnabled = false) =>
-  go(role, path, chatEnabled)?.to ?? "(shown)";
+const go = (role: AppRole, link: string) =>
+  redirectFor(where(link), access(role), capabilitiesFor([role]), {
+    ...directory,
+    own: OWN[role] ?? null,
+  });
+const to = (role: AppRole, link: string) => go(role, link)?.to ?? "(shown)";
+const ROLES: AppRole[] = ["dev", "sm", "po", "mgr", "exec", "admin"];
 
-test("the redirect table of PROPOSAL §7.2, row by row", () => {
+test("every old address opens where it lives now, its query and hash kept (manager)", () => {
+  const rows: [string, string][] = [
+    ["/delivery", "/portfolio"],
+    ["/delivery/program/program-digital", "/portfolio?program=program-digital"],
+    ["/delivery/project/project-checkout", "/projects/project-checkout"],
+    ["/delivery/pod/pod-payments", "/pods/pod-payments"],
+    ["/delivery/workstream/ws-payments", "/projects/project-checkout#work"],
+    ["/delivery/workstream/ws-lonely", "/projects"],
+    ["/reports/project-checkout/overall", "/projects/project-checkout"],
+    ["/reports/project-checkout/overall?release=rel-1", "/projects/project-checkout?release=rel-1"],
+    ["/reports/project-checkout", "/reports/project-checkout/daily"],
+    ["/signals?view=risks", "/warnings"],
+    ["/signals?view=drift", "/warnings"],
+    ["/signals?view=flow&scope=pod:pod-payments&days=90", "/flow?scope=pod:pod-payments&days=90"],
+    ["/signals", "/warnings"],
+    ["/coordination", "/requests"],
+    ["/coordination?requests=own", "/requests?requests=own"],
+    ["/coordination?brief=exec", "/reports/briefs?brief=exec"],
+    ["/coordination?brief=all&requests=own", "/reports/briefs?brief=all"],
+    ["/chat", "/check-in"],
+    ["/today?pod=pod-payments", "/pods/pod-payments"],
+    ["/today?project=project-checkout", "/projects/project-checkout"],
+    ["/projects/project-checkout/overall", "/projects/project-checkout"],
+    ["/projects/project-checkout/daily", "/reports/project-checkout/daily"],
+    ["/risks", "/warnings"],
+    ["/ask", "/ora"],
+  ];
+  for (const [link, next] of rows) assert.equal(to("mgr", link), next, link);
+});
+
+test("a sent impact link lands on the Project page at the same row and anchor, for every role", () => {
+  // impact_service wrote `/reports/<p>/overall?row=<kind>:<id>#timeline` into sent messages.
+  const sent = "/reports/project-checkout/overall?row=pod:pod-payments#timeline";
+  const landed = "/projects/project-checkout?row=pod:pod-payments#timeline";
+  for (const role of ["sm", "po", "mgr", "exec", "admin"] as const) {
+    assert.equal(to(role, sent), landed, role);
+  }
+  // A developer's own project opens too (the name-only form); the row stays in the link.
+  assert.equal(to("dev", sent), landed);
+  // Encoded parameters are kept as written, and the viewing day goes along.
+  assert.equal(
+    to(
+      "mgr",
+      "/reports/project-checkout/overall?row=project%3Aproject-checkout&asOf=2026-10-02#timeline",
+    ),
+    "/projects/project-checkout?row=project%3Aproject-checkout&asOf=2026-10-02#timeline",
+  );
+  // A release readiness line linked the project's Overall too.
+  assert.equal(to("po", "/reports/project-checkout/overall"), "/projects/project-checkout");
+});
+
+test("the day report's link opens its own page for every role, so none is redirected", () => {
+  for (const link of [
+    "/reports/project-checkout/daily?report=rep-1",
+    "/reports/project-checkout/daily?report=rep-1&asOf=2026-10-02",
+    "/reports/project-checkout/daily",
+  ]) {
+    for (const role of ROLES) assert.equal(to(role, link), "(shown)", `${role} ${link}`);
+  }
+});
+
+test("an old address that lands on a page the role lacks goes on to the closest it has", () => {
   const rows: [string, string, string, string, string][] = [
     // link, developer, scrum master, product owner, executive
+    ["/delivery", "/projects", "/projects", "/portfolio", "/portfolio"],
     [
+      "/delivery/program/program-digital",
+      "/projects",
+      "/projects",
+      "/portfolio?program=program-digital",
+      "/portfolio?program=program-digital",
+    ],
+    [
+      // An executive has no Pods: a pod's dates are on its project's timeline.
       "/delivery/pod/pod-payments",
-      "(shown)",
-      "(shown)",
-      "(shown)",
-      "/delivery/project/project-checkout",
+      "/pods/pod-payments",
+      "/pods/pod-payments",
+      "/pods/pod-payments",
+      "/projects/project-checkout",
     ],
     [
       // A developer's neighbouring pod is a name in their tree: its project instead.
       "/delivery/pod/pod-storefront",
-      "/delivery/project/project-checkout",
-      "(shown)",
-      "(shown)",
-      "/delivery/project/project-checkout",
+      "/projects/project-checkout",
+      "/pods/pod-storefront",
+      "/pods/pod-storefront",
+      "/projects/project-checkout",
     ],
     [
-      // Outside their part of the tree: where the role read it before it had Delivery.
+      // Outside their part of the tree.
       "/delivery/pod/pod-data",
-      "/delivery",
-      "/today?pod=pod-data",
-      "/today?project=project-insights",
-      "/delivery/project/project-insights",
+      "/pods",
+      "/pods/pod-data",
+      "/projects/project-insights",
+      "/projects/project-insights",
     ],
-    ["/delivery/project/project-checkout", "(shown)", "(shown)", "(shown)", "(shown)"],
     [
       "/delivery/project/project-insights",
       "/reports/project-insights/daily",
-      "/reports/project-insights/overall",
-      "/today?project=project-insights",
-      "(shown)",
+      "/projects/project-insights",
+      "/projects/project-insights",
+      "/projects/project-insights",
     ],
-    ["/delivery/program/program-digital", "/delivery", "/delivery", "/delivery", "(shown)"],
+    ["/signals?view=risks", "/today", "/projects#warnings", "/projects#warnings", "/warnings"],
+    ["/signals", "/today", "/flow", "/flow", "/warnings"],
+    ["/coordination", "/today#asks", "/requests", "/requests", "/reports/briefs"],
     [
-      "/delivery/workstream/ws-payments",
-      "/delivery/project/project-checkout",
-      "/delivery/project/project-checkout",
-      "/delivery/project/project-checkout",
-      "(shown)",
+      "/coordination?brief=exec",
+      "/reports",
+      "/reports/briefs?brief=exec",
+      "/reports/briefs?brief=exec",
+      "/reports/briefs?brief=exec",
     ],
+    ["/chat", "/check-in", "/check-in", "/check-in", "/check-in"],
     [
-      "/delivery/workstream/ws-datalake",
-      "/delivery",
-      "/delivery",
-      "/today?project=project-insights",
-      "(shown)",
+      "/today?pod=pod-payments",
+      "/pods/pod-payments",
+      "/pods/pod-payments",
+      "/pods/pod-payments",
+      "/projects/project-checkout",
     ],
-    ["/delivery", "(shown)", "(shown)", "(shown)", "(shown)"],
-    ["/signals?view=risks", "/today", "/signals?view=flow", "/signals?view=flow", "(shown)"],
-    ["/signals", "/today", "(shown)", "(shown)", "(shown)"],
-    ["/coordination", "/today#asks", "(shown)", "(shown)", "(shown)"],
-    ["/admin", "/today", "/today", "/today", "/today"],
-    ["/chat", "/today", "/today", "/today", "/today"],
   ];
   for (const [link, dev, sm, po, exec] of rows) {
     assert.deepEqual(
@@ -275,130 +415,119 @@ test("the redirect table of PROPOSAL §7.2, row by row", () => {
   }
 });
 
-test("until the person's tree is read, a Delivery link is left to the page", () => {
-  const before = (role: AppRole, path: string) =>
-    redirectFor({ pathname: path, search: "" }, access(role), capabilitiesFor([role]), directory);
-  for (const role of ["dev", "sm", "po"] as const) {
-    assert.equal(before(role, "/delivery/pod/pod-data"), null, role);
-    assert.equal(before(role, "/delivery/project/project-insights"), null, role);
+test("a page the role is not offered opens the closest one it has", () => {
+  const rows: [string, string, string, string, string][] = [
+    // link, developer, scrum master, product owner, executive
+    ["/requests", "/today#asks", "(shown)", "(shown)", "/today"],
+    ["/portfolio", "/today", "/projects", "(shown)", "(shown)"],
+    ["/warnings", "/today", "/projects#warnings", "/projects#warnings", "(shown)"],
+    ["/scope", "/today", "(shown)", "(shown)", "(shown)"],
+    ["/flow", "/today", "(shown)", "(shown)", "(shown)"],
+    ["/ora", "/today", "(shown)", "(shown)", "(shown)"],
+    ["/people", "/pods", "(shown)", "(shown)", "/today"],
+    ["/admin", "/today", "/today", "/today", "/today"],
+    ["/pods", "(shown)", "(shown)", "(shown)", "/today"],
+    ["/reports/briefs", "/reports", "(shown)", "(shown)", "(shown)"],
+    ["/projects", "(shown)", "(shown)", "(shown)", "(shown)"],
+    ["/check-in", "(shown)", "(shown)", "(shown)", "(shown)"],
+  ];
+  for (const [link, dev, sm, po, exec] of rows) {
+    assert.deepEqual(
+      [to("dev", link), to("sm", link), to("po", link), to("exec", link)],
+      [dev, sm, po, exec],
+      link,
+    );
   }
-});
-
-test("the day report's link opens its own page for every role, so none is redirected", () => {
-  const roles: AppRole[] = ["dev", "sm", "po", "mgr", "exec", "admin"];
-  for (const link of [
-    "/reports/project-checkout/daily?report=rep-1",
-    "/reports/project-checkout/daily?report=rep-1&asOf=2026-10-02",
-    "/reports/project-checkout/daily",
-  ]) {
-    for (const role of roles) assert.equal(to(role, link), "(shown)", `${role} ${link}`);
-  }
-});
-
-test("a day report sent with the old link (the project's Delivery page) reaches a page the role has", () => {
-  // Those reports linked `<console>/delivery/project/<id>`. A project of the person's
-  // opens in their Delivery; another is sent to the report or the project they may read.
-  const roles: AppRole[] = ["dev", "sm", "po", "mgr", "exec", "admin"];
-  assert.deepEqual(
-    roles.map((role) => to(role, "/delivery/project/project-checkout")),
-    ["(shown)", "(shown)", "(shown)", "(shown)", "(shown)", "(shown)"],
-  );
-  const other = "/delivery/project/project-insights";
-  assert.deepEqual(
-    roles.map((role) => to(role, other)),
-    [
-      "/reports/project-insights/daily",
-      "/reports/project-insights/overall",
-      "/today?project=project-insights",
-      "(shown)",
-      "(shown)",
-      "(shown)",
-    ],
-  );
-  assert.equal(go("dev", other)?.missing, null, "the report stands in for it: no toast");
-  assert.equal(go("sm", other)?.missing, null);
-  assert.equal(
-    to("dev", "/delivery/project/project%2Finsights?asOf=2026-10-02"),
-    "/reports/project%2Finsights/daily?asOf=2026-10-02",
-    "an id that was encoded in the link stays encoded, and the viewing day goes along",
-  );
-});
-
-test("a manager is shown every page but Admin; an admin every page", () => {
-  for (const link of [
-    "/delivery/pod/pod-payments",
-    "/delivery/program/program-digital",
-    "/signals?view=risks",
-    "/coordination",
-  ]) {
+  for (const link of ["/requests", "/portfolio", "/warnings", "/people", "/pods/pod-data"]) {
     assert.equal(to("mgr", link), "(shown)", link);
     assert.equal(to("admin", link), "(shown)", link);
   }
   assert.equal(to("mgr", "/admin"), "/today");
   assert.equal(to("admin", "/admin"), "(shown)");
-  assert.equal(to("dev", "/chat", true), "(shown)");
+});
+
+test("until the person's tree is read, a project or pod link is left to the page", () => {
+  const before = (role: AppRole, path: string) =>
+    redirectFor(where(path), access(role), capabilitiesFor([role]), directory);
+  for (const role of ["dev", "sm", "po"] as const) {
+    assert.equal(before(role, "/pods/pod-data"), null, role);
+    assert.equal(before(role, "/projects/project-insights"), null, role);
+  }
+  // An old address still moves at once: the role's rule applies on the next pass.
+  assert.equal(before("dev", "/delivery/pod/pod-data")?.to, "/pods/pod-data");
 });
 
 test("only a link that lands on plain Today names the page it asked for", () => {
-  assert.equal(go("dev", "/signals")?.missing, "signals");
+  assert.equal(go("dev", "/flow")?.missing, "flow");
+  assert.equal(go("dev", "/signals")?.missing, "flow");
   assert.equal(go("sm", "/admin")?.missing, "admin");
-  assert.equal(go("dev", "/coordination")?.missing, null, "Your asks stands in for it");
-  // Every role has Delivery: a Delivery link never lands on Today with a note.
+  assert.equal(go("exec", "/requests")?.missing, "requests");
+  assert.equal(go("exec", "/pods")?.missing, "pods");
+  // Something of the role's own stands in for these: no toast.
+  assert.equal(go("dev", "/requests")?.missing, null, "Your asks on Today");
+  assert.equal(go("dev", "/people")?.missing, null, "their pod's page has its people");
+  assert.equal(go("sm", "/warnings")?.missing, null, "their project's warnings");
+  assert.equal(go("sm", "/portfolio")?.missing, null);
+  assert.equal(go("exec", "/pods/pod-payments")?.missing, null, "its project stands in");
   for (const role of ["dev", "sm", "po"] as const) {
-    for (const link of [
-      "/delivery/program/program-digital",
-      "/delivery/pod/pod-data",
-      "/delivery/pod/pod-lonely",
-    ]) {
+    for (const link of ["/delivery/program/program-digital", "/delivery/pod/pod-data"]) {
       assert.equal(go(role, link)?.missing, null, `${role} ${link}`);
     }
   }
-  assert.equal(go("sm", "/signals?view=risks")?.missing, null);
-  assert.equal(
-    go("exec", "/delivery/pod/pod-payments")?.missing,
-    null,
-    "its project stands in for it",
-  );
-});
-
-test("a pod or workstream no project holds goes to the closest page that is left", () => {
-  assert.equal(to("po", "/delivery/pod/pod-lonely"), "/delivery");
-  assert.equal(to("po", "/delivery/workstream/ws-lonely"), "/delivery");
-  assert.equal(to("sm", "/delivery/pod/pod-lonely"), "/today?pod=pod-lonely");
-  assert.equal(to("exec", "/delivery/pod/pod-lonely"), "/delivery");
-  assert.equal(to("po", "/delivery"), "(shown)");
-  assert.equal(to("mgr", "/delivery"), "(shown)");
-});
-
-test("Signals views that were dropped open the role's own view; drift joined the risks", () => {
-  assert.equal(to("mgr", "/signals?view=drift"), "/signals?view=risks");
-  assert.equal(to("sm", "/signals?view=drift"), "/signals?view=flow");
-  assert.equal(to("mgr", "/signals?view=everything"), "/signals");
-  assert.equal(to("po", "/signals?view=feed&days=90"), "/signals?days=90");
-  assert.equal(to("po", "/signals?view=flow&scope=pod:pod-payments"), "(shown)");
 });
 
 test("the viewing day goes along with every redirect, before the hash", () => {
   assert.equal(to("dev", "/coordination?asOf=2026-10-02"), "/today?asOf=2026-10-02#asks");
-  assert.equal(
-    to("sm", "/delivery/pod/pod-data?asOf=2026-10-02"),
-    "/today?pod=pod-data&asOf=2026-10-02",
-  );
+  assert.equal(to("sm", "/today?pod=pod-data&asOf=2026-10-02"), "/pods/pod-data?asOf=2026-10-02");
   assert.equal(
     to("dev", "/delivery/pod/pod-storefront?asOf=2026-10-02"),
-    "/delivery/project/project-checkout?asOf=2026-10-02",
+    "/projects/project-checkout?asOf=2026-10-02",
   );
   assert.equal(
     to("sm", "/signals?view=risks&asOf=2026-10-02"),
-    "/signals?view=flow&asOf=2026-10-02",
+    "/projects?asOf=2026-10-02#warnings",
   );
   assert.equal(to("dev", "/admin?tab=gates&asOf=2026-10-02"), "/today?asOf=2026-10-02");
+  assert.equal(
+    to("mgr", "/delivery/workstream/ws-payments?asOf=2026-10-02"),
+    "/projects/project-checkout?asOf=2026-10-02#work",
+  );
+});
+
+test("legacy addresses alone: current ones are not moved, ids stay encoded", () => {
+  const legacy = (link: string, role: AppRole = "mgr") =>
+    legacyPath(where(link), access(role), directory);
+  for (const current of ["/today", "/projects/p-1", "/reports/p-1/daily", "/reports/briefs"]) {
+    assert.equal(legacy(current), null, current);
+  }
+  assert.equal(legacy("/today?asOf=2026-10-02"), null);
+  assert.equal(legacy("/delivery/project/project%2Finsights"), "/projects/project%2Finsights");
+  assert.equal(legacy("/today?project=a%20b"), "/projects/a%20b");
+});
+
+test("what the guard reads before it places a link", () => {
+  const needs = (role: AppRole, link: string) => guardNeeds(where(link), access(role));
+  assert.deepEqual(needs("dev", "/projects/p-1"), { tree: true, pods: false, workstreams: false });
+  assert.deepEqual(needs("dev", "/pods/d-1"), { tree: true, pods: true, workstreams: false });
+  assert.deepEqual(needs("mgr", "/pods/d-1"), { tree: false, pods: false, workstreams: false });
+  assert.deepEqual(needs("exec", "/pods/d-1"), { tree: false, pods: true, workstreams: false });
+  assert.deepEqual(needs("exec", "/delivery/workstream/w-1"), {
+    tree: false,
+    pods: false,
+    workstreams: true,
+  });
+  assert.deepEqual(needs("po", "/reports/p-1/overall"), {
+    tree: true,
+    pods: false,
+    workstreams: false,
+  });
+  assert.deepEqual(needs("sm", "/today"), { tree: false, pods: false, workstreams: false });
 });
 
 test("the toast says what was opened instead, and which other role of theirs has the page", () => {
   assert.equal(
-    redirectToast("signals", "Developer"),
-    "Opened Today: Signals isn't part of the developer view.",
+    redirectToast("flow", "Developer"),
+    "Opened Today: Review flow isn't part of the developer view.",
   );
   assert.equal(
     redirectToast("admin", "Scrum Master"),
@@ -407,35 +536,35 @@ test("the toast says what was opened instead, and which other role of theirs has
   assert.equal(roleOfferingPage("admin", ["mgr", "admin"], "mgr", false, rolePriority), "admin");
   assert.equal(roleOfferingPage("admin", ["mgr"], "mgr", false, rolePriority), null);
   assert.equal(
-    roleOfferingPage("signals", ["dev", "mgr"], "dev", false, rolePriority),
+    roleOfferingPage("flow", ["dev", "mgr"], "dev", false, rolePriority),
     "mgr",
     "the most senior role that has it",
   );
-  assert.equal(roleOfferingPage("chat", ["dev", "sm"], "dev", false, rolePriority), null);
+  assert.equal(roleOfferingPage("warnings", ["dev", "sm"], "dev", false, rolePriority), null);
 });
 
-test("palette rows go to Delivery's panel of each kind the role's Delivery lists", () => {
+test("palette rows open each thing on its own page, where the role has it", () => {
   const targets = (role: AppRole) => {
-    const t = paletteTargets(access(role));
+    const t = paletteTargets(access(role), directory.workstreamProjects);
     return {
       program: t.program?.("p1") ?? null,
       project: t.project?.("p2") ?? null,
-      workstream: t.workstream?.("w1") ?? null,
+      workstream: t.workstream?.("ws-payments") ?? null,
       pod: t.pod?.("d1") ?? null,
       person: t.person?.("d1") ?? null,
     };
   };
   assert.deepEqual(targets("mgr"), {
-    program: "/delivery/program/p1",
-    project: "/delivery/project/p2",
-    workstream: "/delivery/workstream/w1",
-    pod: "/delivery/pod/d1",
-    person: "/delivery/pod/d1",
+    program: "/portfolio?program=p1",
+    project: "/projects/p2",
+    workstream: "/projects/project-checkout#work",
+    pod: "/pods/d1",
+    person: "/pods/d1",
   });
   assert.deepEqual(targets("exec"), {
-    program: "/delivery/program/p1",
-    project: "/delivery/project/p2",
-    workstream: "/delivery/workstream/w1",
+    program: "/portfolio?program=p1",
+    project: "/projects/p2",
+    workstream: "/projects/project-checkout#work",
     pod: null,
     person: null,
   });
@@ -445,14 +574,19 @@ test("palette rows go to Delivery's panel of each kind the role's Delivery lists
       targets(role),
       {
         program: null,
-        project: "/delivery/project/p2",
+        project: "/projects/p2",
         workstream: null,
-        pod: "/delivery/pod/d1",
-        person: "/delivery/pod/d1",
+        pod: "/pods/d1",
+        person: "/pods/d1",
       },
       role,
     );
   }
+  // A workstream no project holds keeps its old address, which the router places.
+  assert.equal(
+    paletteTargets(access("mgr")).workstream?.("ws-lonely"),
+    "/delivery/workstream/ws-lonely",
+  );
 });
 
 test("the assistant floats on every tab for the aggregate readers, never for a developer", () => {

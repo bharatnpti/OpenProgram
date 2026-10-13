@@ -4,6 +4,7 @@
 // (`access`) and gives a colour only where they read it; this only arranges it.
 // Type imports, and runtime imports by their .ts path, so `node --test` runs it.
 import type { DeliveryTreeNodeResponse, DeliveryTreeResponse, Rag } from "../../api/schema";
+import { projectPath } from "../../app/links.ts";
 import { ragSeverity } from "../../lib/status.ts";
 
 export type OwnNode = {
@@ -79,20 +80,6 @@ export function ownGroups(tree: DeliveryTreeResponse): OwnGroup[] {
   return loose.length > 0 ? [...shown, { program: null, projects: loose }] : shown;
 }
 
-/**
- * Where `/delivery` opens: the first project whose whole panel the person
- * reads; else (a developer, whose project is a name) their own pod; else the
- * first project. Null when nothing is listed.
- */
-export function ownLanding(tree: DeliveryTreeResponse): string | null {
-  const projects = ownProjects(tree);
-  const full = projects.find((project) => project.full);
-  if (full) return `/delivery/project/${encodeURIComponent(full.id)}`;
-  const pod = projects.flatMap((project) => project.pods).find((p) => p.own && p.opens);
-  if (pod) return `/delivery/pod/${encodeURIComponent(pod.id)}`;
-  return projects[0] ? `/delivery/project/${encodeURIComponent(projects[0].id)}` : null;
-}
-
 /** What a redirect needs of the person's part: which projects are listed, and each pod. */
 export type OwnLinks = {
   projects: string[];
@@ -134,6 +121,6 @@ export function trailOf(
   const program = programOf(project);
   return [
     ...(program ? [{ label: program.name, to: null }] : []),
-    { label: project.name, to: `/delivery/project/${encodeURIComponent(project.id)}` },
+    { label: project.name, to: projectPath(project.id) },
   ];
 }

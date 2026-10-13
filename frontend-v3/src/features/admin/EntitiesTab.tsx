@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { apiClient } from "../../api/client";
 import type { ConfigNodeResponse } from "../../api/schema";
 import { usePods, useProjects } from "../../app/directory";
+import { nodePath } from "../../app/links";
 import { PanelState } from "../../components/PanelState";
 import { Panel } from "../../components/ui/Bits";
 import { Pill } from "../../components/ui/Pill";
@@ -351,7 +352,7 @@ function EntityPanel({
                   ) : (
                     <>
                       <Link
-                        to={`/delivery/${kind}/${node.id}`}
+                        to={nodePath(kind, node.id)}
                         className="text-[14px] font-bold text-ink no-underline hover:underline"
                       >
                         {node.name}

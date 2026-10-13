@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
 import { ApiError } from "../api/client";
 import { useRole } from "../app/role";
@@ -16,7 +16,6 @@ import { RequirementsSection } from "../features/overall/RequirementsSection";
 import { RisksSection } from "../features/overall/RisksSection";
 import { overallSections } from "../features/overall/sections";
 import { TimelineSection } from "../features/overall/TimelineSection";
-import { ReportsHeader } from "../features/reports/ReportsHeader";
 
 /**
  * The project's state since it started, read today, for the whole project or
@@ -39,8 +38,7 @@ import { ReportsHeader } from "../features/reports/ReportsHeader";
  *   risks and questions;
  * - a developer: an answer line on the gates, the gates and the questions.
  */
-export function OverallPage() {
-  const { projectId = "" } = useParams();
+export function OverallBody({ projectId }: { projectId: string }) {
   const [search, setSearch] = useSearchParams();
   const { asOf, label } = useViewingDate();
   const { overall } = useRole().access;
@@ -65,7 +63,6 @@ export function OverallPage() {
 
   return (
     <>
-      <ReportsHeader projectId={projectId} />
       <div className="op-viz">
         <ReleaseScope
           projectId={projectId}

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
 import type { DirectoryItemResponse, PersonaTreeNodeDto } from "../../api/schema";
+import { nodePath, projectPath } from "../../app/links";
 import { useRole } from "../../app/role";
 import { PanelState } from "../../components/PanelState";
 import { Panel, RagBadge, RagDot } from "../../components/ui/Bits";
@@ -84,7 +85,7 @@ export function ProgramPanel({ program }: { program: DirectoryItemResponse }) {
                       <div className="flex flex-wrap items-center gap-2">
                         <RagDot rag={project.rag} />
                         <Link
-                          to={`/delivery/project/${project.id}`}
+                          to={projectPath(project.id)}
                           className="text-[15px] font-extrabold text-ink no-underline hover:underline"
                         >
                           {project.name}
@@ -100,7 +101,9 @@ export function ProgramPanel({ program }: { program: DirectoryItemResponse }) {
                           {under.map((n) => (
                             <Link
                               key={n.id}
-                              to={`/delivery/${n.kind}/${n.id}`}
+                              to={nodePath(n.kind === "workstream" ? "workstream" : "pod", n.id, [
+                                project.id,
+                              ])}
                               className="inline-flex items-center gap-1.5 rounded-full border border-grey-border px-2.5 py-0.5 text-[12px] font-bold text-ink no-underline hover:bg-grey-fill"
                             >
                               <RagDot rag={n.rag} className="h-2 w-2" />

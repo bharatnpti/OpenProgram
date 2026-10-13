@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import type { DirectoryItemResponse, Rag, RollupFactorDto } from "../../api/schema";
 import { Panel, RagBadge, RagDot, Row } from "../../components/ui/Bits";
+import { dailyPath, nodePath, projectPath } from "../../app/links";
 import type { ReadState } from "../../lib/readState";
 import { cn } from "../../lib/utils";
 import { reasonsNote, reasonRows, sourcesLine } from "./factors";
@@ -138,23 +139,27 @@ export type OwnPanel = {
   trail?: ReactNode;
 };
 
-/** The project's two reports, which every role has. */
-export function ReportLinks({ projectId }: { projectId: string }) {
-  const id = encodeURIComponent(projectId);
+/**
+ * The project's day report, which every role has, and, off the Project page,
+ * the project's own page (`page`).
+ */
+export function ReportLinks({ projectId, page = true }: { projectId: string; page?: boolean }) {
   return (
     <>
       <Link
-        to={`/reports/${id}/daily`}
+        to={dailyPath(projectId)}
         className="inline-flex h-9 items-center rounded-full bg-ink px-4 text-[13px] font-bold text-white no-underline"
       >
         Daily report
       </Link>
-      <Link
-        to={`/reports/${id}/overall`}
-        className="inline-flex h-9 items-center rounded-full border border-ink px-4 text-[13px] font-bold text-ink no-underline"
-      >
-        Overall
-      </Link>
+      {page ? (
+        <Link
+          to={projectPath(projectId)}
+          className="inline-flex h-9 items-center rounded-full border border-ink px-4 text-[13px] font-bold text-ink no-underline"
+        >
+          Project page
+        </Link>
+      ) : null}
     </>
   );
 }
@@ -192,7 +197,7 @@ export function Related({
   items,
 }: {
   label: string;
-  kind: string;
+  kind: "program" | "project" | "workstream" | "pod";
   items: (LinkedNode | undefined)[];
 }) {
   const known = items.filter((x): x is LinkedNode => Boolean(x));
@@ -205,7 +210,7 @@ export function Related({
       {known.map((item) => (
         <Link
           key={item.id}
-          to={`/delivery/${kind}/${item.id}`}
+          to={nodePath(kind, item.id)}
           className="inline-flex items-center gap-2 rounded-full border border-grey-border px-3 py-1 text-[13px] font-bold text-ink no-underline hover:bg-grey-fill"
         >
           {item.noStatus ? null : <RagDot rag={item.rag} />}
