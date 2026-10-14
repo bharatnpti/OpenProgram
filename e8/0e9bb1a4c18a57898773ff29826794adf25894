@@ -1,0 +1,21 @@
+backend/tests/unit/test_delivery_loop_cli.py
+  s_c2fca91494c4a6::t_da611dffa4cfac 1-46
+backend/infra/delivery_loop_cli.py
+  s_c2fca91494c4a6::t_d4a0c02df0de41 1-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e80e9bb1a4c18a57898773ff29826794adf25894",
+  "prompts": {},
+  "sessions": {
+    "s_c2fca91494c4a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cfbcb2ee-3fad-4c25-a40c-44e94f462848",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
