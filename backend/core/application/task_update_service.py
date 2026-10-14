@@ -356,6 +356,8 @@ class TaskUpdateService:
         self._rollups = rollups
         self._tracker_name = tracker_name
         self._clock = clock or (lambda: datetime.now(tz=UTC))
+        # The one day an update is for; the registry passes the tenant's today, the
+        # day the route's as_of defaults to, so the two always agree.
         self._today = today or date.today
 
     async def update(

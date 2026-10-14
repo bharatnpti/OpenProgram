@@ -619,6 +619,10 @@ class ServiceRegistry:
         except GraphNotFound:
             return []
 
+    def tenant_today(self) -> date:
+        """Today in the tenant's timezone: the day that dates and reads graph links."""
+        return self._tenant_today()
+
     def _tenant_today(self) -> date:
         zone = resolve_timezone(None, self.settings.tenant_default_timezone)
         return datetime.now(tz=zone).date()
@@ -1437,6 +1441,7 @@ class ServiceRegistry:
             provider_overrides=(
                 self._connected_providers if self._adapter_connections() is not None else None
             ),
+            today=self._tenant_today,
         )
 
     async def _connected_providers(self, tenant_id: str) -> dict[SyncSource, str]:
@@ -1523,6 +1528,7 @@ class ServiceRegistry:
             write_back=self.write_back_service(),
             rollups=self.person_rollups(),
             tracker_name=self.provider_names().tracker,
+            today=self._tenant_today,
         )
 
     def person_rollups(self) -> PersonRollups:

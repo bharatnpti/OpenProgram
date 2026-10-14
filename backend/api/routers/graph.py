@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 
-from api.dependencies import get_current_principal, get_graph_query_service
+from api.dependencies import as_of_or_tenant_today, get_current_principal, get_graph_query_service
 from api.dtos import GraphTreeDto
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.graph_queries import GraphQueryService
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/graph", tags=["graph"])
 @router.get("/programs/{program_id}/tree", response_model=GraphTreeDto)
 async def program_tree(
     program_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     graph_service: Annotated[GraphQueryService, Depends(get_graph_query_service)],
 ) -> GraphTreeDto:

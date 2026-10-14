@@ -75,7 +75,7 @@ def superseded_runtime_sync_result(payload: RuntimeSyncInput) -> RuntimeSyncWork
 
 async def _resolve_plan(registry: ServiceRegistry, payload: RuntimeSyncInput) -> RuntimeSyncPlan:
     connector = _connector_filter(payload.connector)
-    resolver = RuntimeSyncTargetResolver(registry.graph_repository())
+    resolver = RuntimeSyncTargetResolver(registry.graph_repository(), today=registry.tenant_today)
     targets = await resolver.resolve(payload.tenant_id)
     return RuntimeSyncPlan(
         connector=connector,

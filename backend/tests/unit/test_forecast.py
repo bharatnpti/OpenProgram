@@ -629,6 +629,25 @@ def test_api_a_scrum_master_sets_only_their_own_pods_date(settings: Settings) ->
     assert manager.status_code == 200
 
 
+def test_api_a_pod_linked_through_config_works_on_the_project_on_the_tenants_day(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The tenant's day differs from the machine's, as it does for part of every day
+    # when the tenant's timezone is not the server's.
+    tenant_day = date.today() - timedelta(days=3)
+    monkeypatch.setattr(ServiceRegistry, "_tenant_today", lambda _self: tenant_day)
+    client, _registry = _client(settings)
+    with client:
+        _seed(client)
+        response = client.put(
+            "/projects/checkout/pods/pod-pay/delivery-date",
+            json={"target_date": (tenant_day + timedelta(days=30)).isoformat()},
+            headers=_as("mgr", "dev-eli"),
+        )
+
+    assert response.status_code == 200, response.text
+
+
 def test_api_the_forecast_history_is_read_with_the_projects_progress(settings: Settings) -> None:
     client, _registry = _client(settings)
     with client:

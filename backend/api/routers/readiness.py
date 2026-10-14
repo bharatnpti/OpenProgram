@@ -14,7 +14,6 @@ tenant always comes from the principal.
 from __future__ import annotations
 
 from collections.abc import Awaitable
-from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -428,7 +427,7 @@ async def _pod_viewer(principal: Principal, forecasts: ForecastService, pod_id: 
     if principal.has_role(Role.ADMIN) or principal.has_role(Role.MGR):
         return Viewer(subject=principal.subject, roles=principal.roles, may_act=may_act)
     if principal.has_role(Role.SM) and await forecasts.runs_pod(
-        principal.tenant_id, pod_id, principal.subject, date.today()
+        principal.tenant_id, pod_id, principal.subject, forecasts.today()
     ):
         return Viewer(
             subject=principal.subject,

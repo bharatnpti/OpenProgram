@@ -14,6 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from api.dependencies import (
+    as_of_or_tenant_today,
     get_current_principal,
     get_delivery_service,
     get_forecast_service,
@@ -47,7 +48,7 @@ async def project_requirements(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DeliveryService, Depends(get_delivery_service)],
     forecasts: Annotated[ForecastService, Depends(get_forecast_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     days: Annotated[
         int | None,
         Query(

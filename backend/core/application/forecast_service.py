@@ -173,6 +173,10 @@ class ForecastService:
         self._today = today or (lambda: clock().date())
         self._new_id = new_id
 
+    def today(self) -> date:
+        """The day this service reads delivery on, for a route that checks the same links."""
+        return self._today()
+
     # ---- settings --------------------------------------------------------
 
     async def forecast_settings(self, tenant_id: str) -> ForecastSettingsView:

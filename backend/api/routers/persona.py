@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import (
+    as_of_or_tenant_today,
     get_cross_person_request_service,
     get_current_principal,
     get_delivery_scope_service,
@@ -80,7 +81,7 @@ _TREND_KINDS = frozenset(
 
 @router.get("/me/focus", response_model=FocusResponse)
 async def my_focus(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     write_back_service: Annotated[WriteBackService, Depends(get_write_back_service)],
@@ -98,7 +99,7 @@ async def my_focus(
 @router.get("/pods/{pod_id}/blockers", response_model=PodBlockersResponse)
 async def pod_blockers(
     pod_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
@@ -114,7 +115,7 @@ async def pod_blockers(
 @router.get("/pods/{pod_id}/checkins", response_model=PodCheckinsResponse)
 async def pod_checkins(
     pod_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
@@ -132,7 +133,7 @@ async def pod_checkins(
 @router.get("/pods/{pod_id}/rollup", response_model=PodRollupResponse)
 async def pod_rollup(
     pod_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
@@ -151,7 +152,7 @@ async def pod_rollup(
 @router.get("/pods/{pod_id}/tasks", response_model=PodTasksResponse)
 async def pod_tasks(
     pod_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
@@ -170,7 +171,7 @@ async def pod_tasks(
 @router.get("/projects/{project_id}/progress", response_model=ProjectProgressResponse)
 async def project_progress(
     project_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
@@ -187,7 +188,7 @@ async def project_progress(
 @router.get("/workstreams/{workstream_id}/progress", response_model=WorkstreamProgressResponse)
 async def workstream_progress(
     workstream_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
 ) -> WorkstreamProgressResponse:
@@ -202,7 +203,7 @@ async def workstream_progress(
 @router.get("/programs/{program_id}/tree", response_model=ProgramTreeResponse)
 async def program_tree(
     program_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
 ) -> ProgramTreeResponse:
@@ -213,7 +214,7 @@ async def program_tree(
 
 @router.get("/me/delivery-tree", response_model=DeliveryTreeResponse)
 async def my_delivery_tree(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
 ) -> DeliveryTreeResponse:
@@ -232,7 +233,7 @@ async def my_delivery_tree(
 
 @router.get("/portfolio/heatmap", response_model=PortfolioHeatmapResponse)
 async def portfolio_heatmap(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     names: Annotated[ProviderNames, Depends(get_provider_names)],
@@ -247,7 +248,7 @@ async def portfolio_heatmap(
 
 @router.get("/portfolio/attention", response_model=PortfolioAttentionResponse)
 async def portfolio_attention(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     risk_service: Annotated[RiskService, Depends(get_risk_service)],
@@ -271,6 +272,7 @@ async def portfolio_attention(
         as_of,
         program_root_id,
         risk_service,
+        # The reader's today, not the tenant's: it only words a reason ("today" or not).
         today=datetime.now(tz=zone).date(),
         zone=zone,
         names=names,
@@ -294,7 +296,7 @@ async def node_trend(
     entity_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     window_days: Annotated[int, Query(ge=1, le=365)] = 30,
 ) -> NodeTrendResponse:
     _ensure_aggregate(principal)
@@ -312,7 +314,7 @@ async def node_trend(
 @router.get("/workstreams/{workstream_id}/flow", response_model=WorkstreamFlowResponse)
 async def workstream_flow(
     workstream_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[FlowMetricsService, Depends(get_flow_metrics_service)],
 ) -> WorkstreamFlowResponse:
@@ -323,7 +325,7 @@ async def workstream_flow(
 
 @router.get("/portfolio/flow", response_model=PortfolioFlowResponse)
 async def portfolio_flow(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[FlowMetricsService, Depends(get_flow_metrics_service)],
 ) -> PortfolioFlowResponse:
@@ -334,7 +336,7 @@ async def portfolio_flow(
 
 @router.get("/portfolio/pr-flow", response_model=PullRequestFlowResponse)
 async def portfolio_pull_request_flow(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[PullRequestFlowService, Depends(get_pull_request_flow_service)],
     days: Annotated[int, Query(ge=1, le=180)] = 30,
@@ -499,7 +501,7 @@ async def update_cross_person_request_status(
 @router.get("/projects/{project_id}/risks", response_model=ProjectRisksResponse)
 async def project_risks(
     project_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[RiskService, Depends(get_risk_service)],
     person_names: Annotated[PersonNames, Depends(get_person_names)],
@@ -520,7 +522,7 @@ async def project_risks(
 
 @router.get("/portfolio/risks", response_model=PortfolioRisksResponse)
 async def portfolio_risks(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[RiskService, Depends(get_risk_service)],
     person_names: Annotated[PersonNames, Depends(get_person_names)],

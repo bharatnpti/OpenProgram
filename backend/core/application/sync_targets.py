@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
@@ -29,8 +30,13 @@ class RuntimeSyncTargets:
 
 
 class RuntimeSyncTargetResolver:
-    def __init__(self, graph_repository: GraphRepository) -> None:
+    def __init__(
+        self, graph_repository: GraphRepository, *, today: Callable[[], date] = date.today
+    ) -> None:
         self._graph_repository = graph_repository
+        # The day a resolve with no as_of reads the project-pod links on; the
+        # registry passes the tenant's today, the day those links are dated on.
+        self._today = today
 
     async def resolve(
         self,
@@ -38,7 +44,7 @@ class RuntimeSyncTargetResolver:
         *,
         as_of: date | None = None,
     ) -> RuntimeSyncTargets:
-        effective_date = as_of or date.today()
+        effective_date = as_of or self._today()
         projects = await self._graph_repository.list_nodes(tenant_id, NodeKind.PROJECT)
         pods = await self._graph_repository.list_nodes(tenant_id, NodeKind.POD)
         edges = [

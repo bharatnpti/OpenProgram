@@ -1423,6 +1423,7 @@ class AskService:
         delivery_scope_service: DeliveryScopeService,
         model: str,
         tool_agent: ToolCallingAgent | None = None,
+        today: Callable[[], date] = date.today,
     ) -> None:
         self._llm_provider = llm_provider
         self._graph_repository = graph_repository
@@ -1434,6 +1435,13 @@ class AskService:
         self._delivery_scope_service = delivery_scope_service
         self._model = model
         self._tool_agent = tool_agent or ToolCallingAgent(llm_provider=llm_provider)
+        # The day a question with no as_of is asked for; the API passes the
+        # tenant's today, the day the graph links Ask reads are dated on.
+        self._today = today
+
+    def today(self) -> date:
+        """The day a question with no ``as_of`` is answered for."""
+        return self._today()
 
     async def ask(
         self,
@@ -1444,7 +1452,7 @@ class AskService:
         as_of: date | None = None,
         conversation: AskConversation | None = None,
     ) -> AskResponseView:
-        asked_for = as_of or date.today()
+        asked_for = as_of or self._today()
         context = await context_for(
             conversation,
             llm=self._llm_provider,
