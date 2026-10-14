@@ -1,0 +1,41 @@
+frontend-v3/src/pages/AgentWorkPage.tsx
+  s_c2fca91494c4a6::t_d8db1430334450 1-2,4-265,267-271,273-279
+  s_c2fca91494c4a6::t_2352dc706aa810 3,266,272
+frontend-v3/src/api/client.ts
+  s_c2fca91494c4a6::t_176f7fd83a85ba 86,561-562
+frontend-v3/src/app/access.test.ts
+  s_c2fca91494c4a6::t_8979e370e9cda8 499-510
+frontend-v3/src/app/titles.test.ts
+  s_c2fca91494c4a6::t_8979e370e9cda8 50-53
+frontend-v3/src/App.tsx
+  s_c2fca91494c4a6::t_2352dc706aa810 16,30,72
+frontend-v3/src/features/delivery/agentWorkWords.ts
+  s_c2fca91494c4a6::t_f290266ff05fdb 1-219
+frontend-v3/src/pages/DeliveryPage.tsx
+  s_c2fca91494c4a6::t_5d37e02b764ade 80-94,149-154,287-292
+  s_c2fca91494c4a6::t_2352dc706aa810 3,7,63-79,183,338
+frontend-v3/src/features/delivery/agentWorkWords.test.ts
+  s_c2fca91494c4a6::t_fcfbd8a766367a 1-186
+frontend-v3/src/app/titles.ts
+  s_c2fca91494c4a6::t_176f7fd83a85ba 35-37
+frontend-v3/src/app/access.ts
+  s_c2fca91494c4a6::t_176f7fd83a85ba 61-64,104-109,187,314-315
+frontend-v3/src/api/schema.ts
+  s_c2fca91494c4a6::t_176f7fd83a85ba 329-338
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "baf81c222860edebcf2f6319d986ce0a7dd1fa69",
+  "prompts": {},
+  "sessions": {
+    "s_c2fca91494c4a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cfbcb2ee-3fad-4c25-a40c-44e94f462848",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
