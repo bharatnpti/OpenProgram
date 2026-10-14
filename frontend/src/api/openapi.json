@@ -11510,7 +11510,7 @@
       "get": {
         "tags": ["personas"],
         "summary": "Project Progress",
-        "description": "The project's colour, its tasks, and the factors behind the colour.\n\nAn executive reads it with nobody in it (D87): no person's own status among\nthe factors, a blocker as \"Open blocker.\" on its work item, and every name\nsaid as a role or a team.",
+        "description": "The project's colour, its tasks, and the factors behind the colour.\n\nAn executive reads it with nobody in it: no person's own status among\nthe factors, a blocker as \"Open blocker.\" on its work item, and every name\nsaid as a role or a team.",
         "operationId": "project_progress_projects__project_id__progress_get",
         "parameters": [
           {
@@ -11661,7 +11661,7 @@
       "get": {
         "tags": ["personas"],
         "summary": "Program Tree",
-        "description": "The tree under a node with each node's status.\n\nA reader who counts people only (an executive) reads it with nobody in it\n(D103): no person's node, each pod, project and program with how many people\nit holds (none under five, D99, D104), and its factors worded as on the heat map.",
+        "description": "The tree under a node with each node's status.\n\nA reader who counts people only (an executive) reads it with nobody in it:\nno person's node, each pod, project and program with how many people\nit holds (none under five), and its factors worded as on the heat map.",
         "operationId": "program_tree_programs__program_id__tree_get",
         "parameters": [
           {
@@ -11804,7 +11804,7 @@
       "get": {
         "tags": ["personas"],
         "summary": "Portfolio Heatmap",
-        "description": "The day's heat, each cell with why it has its colour.\n\nAn executive reads it with nobody in it (D87): no person's cell but their\nown, and reasons that count people and name work items, never a name or a\nblocker's own words. Decided here by role, never by the console hiding it.",
+        "description": "The day's heat, each cell with why it has its colour.\n\nAn executive reads it with nobody in it: no person's cell but their\nown, and reasons that count people and name work items, never a name or a\nblocker's own words. Decided here by role, never by the console hiding it.",
         "operationId": "portfolio_heatmap_portfolio_heatmap_get",
         "parameters": [
           {
@@ -11887,7 +11887,7 @@
       "get": {
         "tags": ["personas"],
         "summary": "Portfolio Attention",
-        "description": "Exec Today's headline, its next drivers and the top signals for one day.\n\nThe heat map's read (the same colours and reasons) with the portfolio's\nrisk and drift findings, so it needs both: manager, exec and admin hold them.\nAn executive's names nobody, as their heat map does (D87).",
+        "description": "Exec Today's headline, its next drivers and the top signals for one day.\n\nThe heat map's read (the same colours and reasons) with the portfolio's\nrisk and drift findings, so it needs both: manager, exec and admin hold them.\nAn executive's names nobody, as their heat map does.",
         "operationId": "portfolio_attention_portfolio_attention_get",
         "parameters": [
           {
@@ -12415,7 +12415,7 @@
       "get": {
         "tags": ["personas"],
         "summary": "Narrative Briefs",
-        "description": "The latest briefs, newest first.\n\nAn executive reads every brief with each person said as their role or team,\nand no person among its sources (D87): a pod's brief names its people to the\npeople who run pods, never to an executive. A brief written before the\nexecutive brief stopped naming people reads the same way. Nor do they read\nthe brief of a pod or project of fewer than five people (D99, D104): its\ntext counts its people (\"two of three confirmed\"); its dates and verdict\nare on the project's page.",
+        "description": "The latest briefs, newest first.\n\nAn executive reads every brief with each person said as their role or team,\nand no person among its sources: a pod's brief names its people to the\npeople who run pods, never to an executive. A brief written before the\nexecutive brief stopped naming people reads the same way. Nor do they read\nthe brief of a pod or project of fewer than five people: its\ntext counts its people (\"two of three confirmed\"); its dates and verdict\nare on the project's page.",
         "operationId": "narrative_briefs_persona_briefs_get",
         "parameters": [
           {
@@ -13793,7 +13793,7 @@
       "get": {
         "tags": ["coordination"],
         "summary": "Project Checkin Coverage",
-        "description": "Counts only, no one named: every reader of the project's progress gets them.\n\nA reader who counts people only (an executive) gets none for a project of\nfewer than five people (D104): its dates and verdict are on its page.",
+        "description": "Counts only, no one named: every reader of the project's progress gets them.\n\nA reader who counts people only (an executive) gets none for a project of\nfewer than five people: its dates and verdict are on its page.",
         "operationId": "project_checkin_coverage_projects__project_id__checkin_coverage_get",
         "parameters": [
           {
@@ -23285,7 +23285,7 @@
               }
             ],
             "title": "People",
-            "description": "How many people a pod, project or program holds on the day; null for any other node, and for a group of fewer than five read by someone who counts people only (D99, D104)."
+            "description": "How many people a pod, project or program holds on the day; null for any other node, and for a group of fewer than five read by someone who counts people only."
           }
         },
         "type": "object",
@@ -24131,7 +24131,7 @@
                 "type": "null"
               }
             ],
-            "description": "The day's check-in counts for the people in the program's teams; null for a reader who counts people only, when the program has fewer than five (D104)."
+            "description": "The day's check-in counts for the people in the program's teams; null for a reader who counts people only, when the program has fewer than five."
           },
           "signals": {
             "items": {
@@ -24671,7 +24671,7 @@
           "health": {
             "type": "string",
             "title": "Health",
-            "description": "Today's health in words (D92), e.g. '1 open blocker, 2 of 8 not replied'; never a colour."
+            "description": "Today's health in words, e.g. '1 open blocker, 2 of 8 not replied'; never a colour."
           },
           "health_day": {
             "anyOf": [
@@ -25366,7 +25366,7 @@
               }
             ],
             "title": "People",
-            "description": "Everyone on the project's pods, each once; null for an executive when they are fewer than five (D104)."
+            "description": "Everyone on the project's pods, each once; null for an executive when they are fewer than five."
           },
           "coverage": {
             "anyOf": [
@@ -31330,7 +31330,7 @@
                 "type": "null"
               }
             ],
-            "description": "The day's replies over the people counted; null for an executive when they are fewer than five (D104)."
+            "description": "The day's replies over the people counted; null for an executive when they are fewer than five."
           },
           "open_warnings": {
             "type": "integer",

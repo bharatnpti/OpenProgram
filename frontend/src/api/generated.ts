@@ -2697,7 +2697,7 @@ export interface paths {
      * Project Progress
      * @description The project's colour, its tasks, and the factors behind the colour.
      *
-     *     An executive reads it with nobody in it (D87): no person's own status among
+     *     An executive reads it with nobody in it: no person's own status among
      *     the factors, a blocker as "Open blocker." on its work item, and every name
      *     said as a role or a team.
      */
@@ -2738,9 +2738,9 @@ export interface paths {
      * Program Tree
      * @description The tree under a node with each node's status.
      *
-     *     A reader who counts people only (an executive) reads it with nobody in it
-     *     (D103): no person's node, each pod, project and program with how many people
-     *     it holds (none under five, D99, D104), and its factors worded as on the heat map.
+     *     A reader who counts people only (an executive) reads it with nobody in it:
+     *     no person's node, each pod, project and program with how many people
+     *     it holds (none under five), and its factors worded as on the heat map.
      */
     get: operations["program_tree_programs__program_id__tree_get"];
     put?: never;
@@ -2788,7 +2788,7 @@ export interface paths {
      * Portfolio Heatmap
      * @description The day's heat, each cell with why it has its colour.
      *
-     *     An executive reads it with nobody in it (D87): no person's cell but their
+     *     An executive reads it with nobody in it: no person's cell but their
      *     own, and reasons that count people and name work items, never a name or a
      *     blocker's own words. Decided here by role, never by the console hiding it.
      */
@@ -2814,7 +2814,7 @@ export interface paths {
      *
      *     The heat map's read (the same colours and reasons) with the portfolio's
      *     risk and drift findings, so it needs both: manager, exec and admin hold them.
-     *     An executive's names nobody, as their heat map does (D87).
+     *     An executive's names nobody, as their heat map does.
      */
     get: operations["portfolio_attention_portfolio_attention_get"];
     put?: never;
@@ -2930,10 +2930,10 @@ export interface paths {
      * @description The latest briefs, newest first.
      *
      *     An executive reads every brief with each person said as their role or team,
-     *     and no person among its sources (D87): a pod's brief names its people to the
+     *     and no person among its sources: a pod's brief names its people to the
      *     people who run pods, never to an executive. A brief written before the
      *     executive brief stopped naming people reads the same way. Nor do they read
-     *     the brief of a pod or project of fewer than five people (D99, D104): its
+     *     the brief of a pod or project of fewer than five people: its
      *     text counts its people ("two of three confirmed"); its dates and verdict
      *     are on the project's page.
      */
@@ -3292,7 +3292,7 @@ export interface paths {
      * @description Counts only, no one named: every reader of the project's progress gets them.
      *
      *     A reader who counts people only (an executive) gets none for a project of
-     *     fewer than five people (D104): its dates and verdict are on its page.
+     *     fewer than five people: its dates and verdict are on its page.
      */
     get: operations["project_checkin_coverage_projects__project_id__checkin_coverage_get"];
     put?: never;
@@ -6953,7 +6953,7 @@ export interface components {
       factors: components["schemas"]["RollupFactorDto"][];
       /**
        * People
-       * @description How many people a pod, project or program holds on the day; null for any other node, and for a group of fewer than five read by someone who counts people only (D99, D104).
+       * @description How many people a pod, project or program holds on the day; null for any other node, and for a group of fewer than five read by someone who counts people only.
        */
       people?: number | null;
     };
@@ -7307,7 +7307,7 @@ export interface components {
       headline: string;
       /** Detail */
       detail: string | null;
-      /** @description The day's check-in counts for the people in the program's teams; null for a reader who counts people only, when the program has fewer than five (D104). */
+      /** @description The day's check-in counts for the people in the program's teams; null for a reader who counts people only, when the program has fewer than five. */
       checkins: components["schemas"]["AttentionCheckinsDto"] | null;
       /** Signals */
       signals: components["schemas"]["AttentionSignalDto"][];
@@ -7523,7 +7523,7 @@ export interface components {
       reason: string;
       /**
        * Health
-       * @description Today's health in words (D92), e.g. '1 open blocker, 2 of 8 not replied'; never a colour.
+       * @description Today's health in words, e.g. '1 open blocker, 2 of 8 not replied'; never a colour.
        */
       health: string;
       /**
@@ -7830,7 +7830,7 @@ export interface components {
       as_of: string;
       /**
        * People
-       * @description Everyone on the project's pods, each once; null for an executive when they are fewer than five (D104).
+       * @description Everyone on the project's pods, each once; null for an executive when they are fewer than five.
        */
       people: number | null;
       /** @description The day's check-ins, counted; null when ``people`` is. */
@@ -10133,7 +10133,7 @@ export interface components {
        * @enum {string}
        */
       scope: "portfolio" | "own";
-      /** @description The day's replies over the people counted; null for an executive when they are fewer than five (D104). */
+      /** @description The day's replies over the people counted; null for an executive when they are fewer than five. */
       replies: components["schemas"]["RepliesCountDto"] | null;
       /** Open Warnings */
       open_warnings: number;
