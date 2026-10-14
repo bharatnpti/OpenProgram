@@ -14514,9 +14514,10 @@ export interface operations {
   project_baselines_projects__project_id__baselines_get: {
     parameters: {
       query?: {
-        as_of?: string;
         /** @description One release of the project. */
         release_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -14588,7 +14589,6 @@ export interface operations {
   delivery_impact_projects__project_id__delivery_impact_get: {
     parameters: {
       query?: {
-        as_of?: string;
         period?: components["schemas"]["PeriodKind"];
         /** @description The period's first day, with period=from. */
         from?: string | null;
@@ -14597,6 +14597,8 @@ export interface operations {
         release_id?: string | null;
         /** @description One pod's part of the project. */
         pod_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -14631,9 +14633,10 @@ export interface operations {
   project_timeline_projects__project_id__timeline_get: {
     parameters: {
       query?: {
-        as_of?: string;
         /** @description One release of the project. */
         release_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -14668,7 +14671,8 @@ export interface operations {
   pod_timeline_pods__pod_id__timeline_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -17729,7 +17733,8 @@ export interface operations {
   my_conversation_me_conversation_get: {
     parameters: {
       query?: {
-        day?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        day?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -17762,7 +17767,8 @@ export interface operations {
   project_asks_projects__project_id__asks_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -17804,7 +17810,8 @@ export interface operations {
   my_today_counts_me_today_counts_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -17910,7 +17917,6 @@ export interface operations {
   portfolio_delivery_portfolio_delivery_get: {
     parameters: {
       query?: {
-        as_of?: string;
         /** @description Name, code, Jira key or programme. */
         q?: string;
         /** @description Keep these verdicts: late, at_risk, no_date, on_track, ... */
@@ -17919,6 +17925,8 @@ export interface operations {
         sort?: components["schemas"]["PortfolioSort"];
         offset?: number;
         limit?: number;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -17951,10 +17959,11 @@ export interface operations {
   portfolio_scope_portfolio_scope_get: {
     parameters: {
       query?: {
-        as_of?: string;
         q?: string;
         program_id?: string | null;
         project_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -17987,9 +17996,10 @@ export interface operations {
   portfolio_warnings_portfolio_warnings_get: {
     parameters: {
       query?: {
-        as_of?: string;
         q?: string;
         project_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -18022,7 +18032,8 @@ export interface operations {
   cross_person_request_counts_cross_person_requests_counts_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -18055,8 +18066,9 @@ export interface operations {
   resolved_cross_person_requests_cross_person_requests_resolved_get: {
     parameters: {
       query?: {
-        as_of?: string;
         days?: number;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -18089,7 +18101,8 @@ export interface operations {
   cross_person_request_trail_cross_person_requests__request_id__trail_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -18124,7 +18137,8 @@ export interface operations {
   project_checkin_coverage_projects__project_id__checkin_coverage_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -18227,7 +18241,8 @@ export interface operations {
   pod_profiles_pods__pod_id__profiles_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -18262,7 +18277,8 @@ export interface operations {
   my_profiles_me_profiles_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
