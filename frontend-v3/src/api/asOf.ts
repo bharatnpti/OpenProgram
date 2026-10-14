@@ -101,11 +101,11 @@ export function withViewingAsOf(
 
 /**
  * The day the backend reads as today, or null until it has said. A dated read
- * sent without `as_of` answers for the server's `date.today()` and echoes that
- * day, so the console learns it from the answers it gets anyway. Counting by
- * it keeps the console and the API on one calendar: a UTC browser and an IST
- * server otherwise disagree from 00:00 to 05:30, and the day before cannot be
- * picked.
+ * sent without `as_of` answers for the tenant's today (in the tenant's time
+ * zone, `as_of_or_tenant_today`) and echoes that day, so the console learns it
+ * from the answers it gets anyway. Counting by it keeps the console and the API
+ * on one calendar: a browser in another zone otherwise disagrees with the
+ * tenant for part of every day, and the day before cannot be picked.
  */
 let serverToday: string | null = null;
 const serverTodayListeners = new Set<() => void>();

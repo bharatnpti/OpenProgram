@@ -15,7 +15,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from api.dependencies import get_current_principal, get_delivery_impact_service
+from api.dependencies import (
+    as_of_or_tenant_today,
+    get_current_principal,
+    get_delivery_impact_service,
+)
 from api.impact_dtos import DeliveryImpactResponse
 from api.people_projection import PeopleWordsDep, for_reader
 from core.application.impact_service import DeliveryImpactService, ImpactPeriod, PeriodKind
@@ -33,7 +37,7 @@ async def delivery_impact(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DeliveryImpactService, Depends(get_delivery_impact_service)],
     words: PeopleWordsDep,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     period: Annotated[PeriodKind, Query()] = PeriodKind.SINCE_BASELINE,
     from_day: Annotated[
         date | None,

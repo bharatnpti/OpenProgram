@@ -152,6 +152,7 @@ class JiraChangesService:
         identity_link_repository: IdentityLinkRepository | None = None,
         tracker_name: str = "Jira",
         clock: Callable[[], datetime] | None = None,
+        today: Callable[[], date] | None = None,
     ) -> None:
         self._write_back = write_back
         self._status = status_repository
@@ -162,11 +163,15 @@ class JiraChangesService:
         self._finisher = finisher
         self._links = identity_link_repository
         self._tracker = tracker_name
+        # The clock times an answer and bounds the check-ins read; ``today`` is the day
+        # the list and a suggestion's answer are for. The API passes the tenant's
+        # today, the day /me/focus and the drift read are for in the console.
         self._clock = clock or (lambda: datetime.now(tz=UTC))
+        self._today = today or (lambda: self._clock().date())
 
     async def changes(self, tenant_id: str, developer_id: str) -> JiraChangesView:
         """Every change waiting for this person's yes today: proposals, suggestions, due dates."""
-        today = self._clock().date()
+        today = self._today()
         proposals = await self._proposals(tenant_id, developer_id, today)
         proposed_keys = {item.issue_key for item in proposals}
         suggestions = [
@@ -380,7 +385,7 @@ class JiraChangesService:
         issue_key: str,
         decision: ConsentDecision,
     ) -> JiraChangeAnswerView:
-        today = self._clock().date()
+        today = self._today()
         offered = {
             item.issue_key for item in await self._suggestions(tenant_id, developer_id, today)
         }

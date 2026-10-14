@@ -15,9 +15,11 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from api.dependencies import (
+    as_of_or_tenant_today,
+    day_or_tenant_today,
     get_current_principal,
     get_delivery_scope_service,
     get_registry,
@@ -53,6 +55,7 @@ def get_today_service(
         delivery_scope=scope,
         risk_service=risks,
         retention_days=settings.conversation_retention_days,
+        today=registry.tenant_today,
     )
 
 
@@ -63,7 +66,7 @@ Service = Annotated[TodayService, Depends(get_today_service)]
 async def my_conversation(
     principal: Caller,
     service: Service,
-    day: Annotated[date, Query(default_factory=date.today)],
+    day: Annotated[date, Depends(day_or_tenant_today)],
 ) -> ConversationResponse:
     """The caller's own conversation of ``day``, read-only; past the window, "not kept"."""
     _ensure(principal, Capability.READ_OWN_WORK)
@@ -81,7 +84,7 @@ async def project_asks(
     project_id: str,
     principal: Caller,
     service: Service,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
 ) -> ProjectAsksResponse:
     """Who must act on the project: each ask's what, who, how long and why, by the item."""
     try:
@@ -97,7 +100,7 @@ async def project_asks(
 async def my_today_counts(
     principal: Caller,
     service: Service,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
 ) -> TodayCountsResponse:
     """Replies of the day and open warnings over the caller's part; none for a developer."""
     try:

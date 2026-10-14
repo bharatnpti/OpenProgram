@@ -240,6 +240,10 @@ class ForecastService:
         """The day this service reads delivery on, for a route that checks the same links."""
         return self._today()
 
+    def zone(self) -> tzinfo:
+        """The tenant's zone, the calendar ``today`` is on: an instant's day is its date there."""
+        return self._zone
+
     # ---- settings --------------------------------------------------------
 
     async def forecast_settings(self, tenant_id: str) -> ForecastSettingsView:

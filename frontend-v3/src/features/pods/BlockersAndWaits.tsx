@@ -7,6 +7,7 @@ import { useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { Panel, Row } from "../../components/ui/Bits";
 import { formatDay } from "../../lib/format";
+import { guessToday } from "../../lib/viewingDate";
 import { countedElsewhere, requestKindLabel } from "../../lib/words";
 import { requestsAmong } from "../coordination/raised";
 import { waitedDays } from "../coordination/requestWords";
@@ -28,7 +29,7 @@ export function BlockersAndWaits({
   waits: boolean;
 }) {
   const names = useNames();
-  const day = useShownDay() ?? new Date().toISOString().slice(0, 10);
+  const day = useShownDay() ?? guessToday();
   const blockers = useQuery({
     queryKey: ["pod", podId, "blockers"],
     queryFn: () => apiClient.podBlockers(podId),

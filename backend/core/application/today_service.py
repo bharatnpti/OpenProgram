@@ -146,6 +146,7 @@ class TodayService:
         risk_service: RiskService,
         retention_days: int = DEFAULT_RETENTION_DAYS,
         clock: Callable[[], datetime] | None = None,
+        today: Callable[[], date] | None = None,
     ) -> None:
         self._conversations = conversation_repository
         self._status = status_repository
@@ -155,12 +156,15 @@ class TodayService:
         self._risks = risk_service
         self._retention_days = retention_days
         self._clock = clock or (lambda: datetime.now(tz=UTC))
+        # The day the retention window counts back from; the API passes the
+        # tenant's today, the day an undated conversation read is for.
+        self._today = today or (lambda: self._clock().date())
 
     async def own_conversation(
         self, tenant_id: str, developer_id: str, day: date
     ) -> ConversationDayView:
         """The person's own turns of ``day``, oldest first, without touching their retention."""
-        today = self._clock().date()
+        today = self._today()
         if day < today - timedelta(days=self._retention_days):
             return ConversationDayView(day=day, kept=False, retention_days=self._retention_days)
         turns = await self._conversations.peek_turns_for_day(tenant_id, developer_id, day)

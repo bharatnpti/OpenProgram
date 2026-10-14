@@ -23,6 +23,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
+from zoneinfo import ZoneInfo
 
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.baseline_service import BaselineService
@@ -37,6 +38,7 @@ from core.domain.forecast import split_names
 from core.domain.hygiene import HygieneFinding, HygieneRule, HygieneState
 from core.domain.portfolio import AgainstPlan
 from core.domain.release_readiness import ScopeKind
+from core.domain.status import local_date
 from core.ports.delivery import RequirementsSnapshotRepository
 from core.ports.hygiene import HygieneRepository
 
@@ -116,6 +118,7 @@ class PortfolioScopeService:
         forecasts: ForecastService,
         readiness: ReleaseReadinessService,
         policy: AuthorizationPolicy | None = None,
+        zone: ZoneInfo | None = None,
     ) -> None:
         self._index = index
         self._baselines = baselines
@@ -124,6 +127,9 @@ class PortfolioScopeService:
         self._forecasts = forecasts
         self._readiness = readiness
         self._policy = policy or AuthorizationPolicy()
+        # A finding's first sighting is dated in the tenant's zone, the calendar
+        # ``as_of`` is on; the router passes ServiceRegistry.tenant_zone.
+        self._zone = zone or ZoneInfo("UTC")
 
     async def read(
         self,
@@ -171,7 +177,7 @@ class PortfolioScopeService:
         rows.sort(key=_scope_order)
         listed = sorted(
             (
-                _line(finding, rule, project, index, as_of, named=not counts_only)
+                _line(finding, rule, project, index, as_of, self._zone, named=not counts_only)
                 for project in projects
                 for finding, rule in found.get(project.id, [])
             ),
@@ -312,6 +318,7 @@ def _line(
     project: IndexedProject,
     index: PortfolioIndex,
     as_of: date,
+    zone: ZoneInfo,
     *,
     named: bool,
 ) -> FindingLine:
@@ -329,8 +336,8 @@ def _line(
         project_name=project.name,
         owner_name=index.name(finding.owner_member_id) if named else None,
         owner_team=pods[0].name if pods else None,
-        found_on=finding.first_seen_at.date(),
-        open_days=max(0, (as_of - finding.first_seen_at.date()).days),
+        found_on=(found_on := local_date(finding.first_seen_at, zone)),
+        open_days=max(0, (as_of - found_on).days),
         asks=rule.asks,
         held=finding.held,
     )

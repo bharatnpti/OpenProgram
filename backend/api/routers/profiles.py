@@ -15,7 +15,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from api.dependencies import get_current_principal, get_delivery_scope_service, get_profile_service
+from api.dependencies import (
+    as_of_or_tenant_today,
+    get_current_principal,
+    get_delivery_scope_service,
+    get_profile_service,
+)
 from api.profile_dtos import (
     AcceptProfilesRequest,
     AcceptProfilesResponse,
@@ -85,7 +90,7 @@ async def save_profile(
 @router.get("/pods/{pod_id}/profiles", response_model=PodProfilesResponse)
 async def pod_profiles(
     pod_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ProfileService, Depends(get_profile_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
@@ -106,7 +111,7 @@ async def pod_profiles(
 async def my_profiles(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ProfileService, Depends(get_profile_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
 ) -> list[MemberProfileResponse]:
     """The caller's own profile in each pod they are in, to read."""
     _ensure(principal, Capability.READ_OWN_WORK)

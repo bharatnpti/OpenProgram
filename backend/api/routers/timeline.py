@@ -15,7 +15,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from api.dependencies import get_current_principal, get_timeline_service
+from api.dependencies import as_of_or_tenant_today, get_current_principal, get_timeline_service
 from api.timeline_dtos import TimelineResponse
 from core.application.timeline_service import TimelineService
 from core.domain.auth import Principal
@@ -29,7 +29,7 @@ async def project_timeline(
     project_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[TimelineService, Depends(get_timeline_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     release_id: Annotated[str | None, Query(description="One release of the project.")] = None,
 ) -> TimelineResponse:
     """The project's (or one release's) row, its releases, then its pods worst verdict
@@ -51,7 +51,7 @@ async def pod_timeline(
     pod_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[TimelineService, Depends(get_timeline_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
 ) -> TimelineResponse:
     """The pod's row for each project it works on, with the project's committed date as a
     reference tick."""

@@ -61,6 +61,7 @@ def get_jira_changes_service(
         # Built only for an answer: the collector brings the chat and the model with it.
         finisher=registry.status_collector,
         tracker_name=registry.provider_names().tracker,
+        today=registry.tenant_today,
     )
 
 

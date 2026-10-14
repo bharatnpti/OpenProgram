@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-import { dayWords } from "../lib/viewingDate";
+import { dayWords, guessToday } from "../lib/viewingDate";
 
 export type ViewingDateValue = {
   /** The past day picked in the header, or null for today. Kept in the URL on every screen. */
@@ -77,4 +77,14 @@ export function useDayWords(): string {
 export function useShownDay(): string | null {
   const context = useContext(ViewingDateContext);
   return context ? (context.chosen ?? context.today) : null;
+}
+
+/**
+ * Today as the server counts it (the tenant's day), else the console's guess
+ * outside the provider. Never the browser's UTC date, which is another day for
+ * part of every day.
+ */
+export function useToday(): string {
+  const context = useContext(ViewingDateContext);
+  return context?.today ?? guessToday();
 }

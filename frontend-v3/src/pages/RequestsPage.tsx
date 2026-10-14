@@ -40,6 +40,7 @@ import {
 } from "../features/coordination/requestWords";
 import { formatDay } from "../lib/format";
 import { cn } from "../lib/utils";
+import { guessToday } from "../lib/viewingDate";
 import { deliveryNote, plural, requestKindLabel } from "../lib/words";
 
 /*
@@ -155,7 +156,7 @@ function Board({ defaultScope }: { defaultScope: Scope }) {
   const [scopeParam, setScope] = useParam("requests");
   const [query, setQuery] = useState("");
   const names = useNames();
-  const day = useShownDay() ?? new Date().toISOString().slice(0, 10);
+  const day = useShownDay() ?? guessToday();
   const state: RequestState = stateParam === "resolved" ? "resolved" : "open";
   const open = useQuery({
     queryKey: ["requests", "portfolio"],

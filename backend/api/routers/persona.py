@@ -20,6 +20,7 @@ from api.dependencies import (
     get_provider_names,
     get_pull_request_flow_service,
     get_risk_service,
+    get_tenant_today,
     get_write_back_service,
 )
 from api.dtos import (
@@ -289,6 +290,7 @@ async def portfolio_heatmap(
 @router.get("/portfolio/attention", response_model=PortfolioAttentionResponse)
 async def portfolio_attention(
     as_of: Annotated[date, Depends(as_of_or_tenant_today)],
+    tenant_today: Annotated[date, Depends(get_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     risk_service: Annotated[RiskService, Depends(get_risk_service)],
@@ -313,8 +315,10 @@ async def portfolio_attention(
         as_of,
         program_root_id,
         risk_service,
-        # The reader's today, not the tenant's: it only words a reason ("today" or not).
-        today=datetime.now(tz=zone).date(),
+        # The tenant's today, the calendar as_of is on: whether the day is live decides
+        # "not answered yet" against "All N confirmed", as on the heat map. The
+        # reader's zone only words the clock times.
+        today=tenant_today,
         zone=zone,
         names=names,
         counts_only=not reads_people(principal),

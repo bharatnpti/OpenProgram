@@ -21,7 +21,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from api.dependencies import get_current_principal, get_registry, get_risk_service
+from api.dependencies import (
+    as_of_or_tenant_today,
+    get_current_principal,
+    get_registry,
+    get_risk_service,
+)
 from api.portfolio_dtos import (
     PortfolioDeliveryResponse,
     PortfolioScopeResponse,
@@ -54,9 +59,12 @@ _NOT_AN_AGGREGATE_READER = "Early warnings are read by the people who read the p
 
 
 def _scope_service(registry: ServiceRegistry) -> DeliveryScopeService:
+    # Membership is read on the tenant's today, the day the config routes link on,
+    # so a scrum master who joined a pod today reads its projects.
     return DeliveryScopeService(
         graph_repository=registry.graph_repository(),
         rollup_repository=registry.rollup_repository(),
+        today=registry.tenant_today,
     )
 
 
@@ -74,6 +82,7 @@ def get_portfolio_delivery_service(registry: Registry) -> PortfolioDeliveryServi
         baselines=registry.baseline_service(),
         rollups=registry.rollup_repository(),
         statuses=registry.status_repository(),
+        zone=registry.tenant_zone(),
     )
 
 
@@ -85,6 +94,7 @@ def get_portfolio_scope_service(registry: Registry) -> PortfolioScopeService:
         hygiene=registry.hygiene_repository(),
         forecasts=registry.forecast_service(),
         readiness=registry.release_readiness_service(),
+        zone=registry.tenant_zone(),
     )
 
 
@@ -102,6 +112,7 @@ def get_portfolio_warnings_service(
         scope=_scope_service(registry),
         tracker=names.tracker,
         vcs=names.vcs,
+        zone=registry.tenant_zone(),
     )
 
 
@@ -109,7 +120,7 @@ def get_portfolio_warnings_service(
 async def portfolio_delivery(
     principal: Caller,
     service: Annotated[PortfolioDeliveryService, Depends(get_portfolio_delivery_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     q: Annotated[str, Query(max_length=120, description="Name, code, Jira key or programme.")] = "",
     verdict: Annotated[
         list[VerdictFilter] | None,
@@ -147,7 +158,7 @@ async def portfolio_delivery(
 async def portfolio_scope(
     principal: Caller,
     service: Annotated[PortfolioScopeService, Depends(get_portfolio_scope_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     q: Annotated[str, Query(max_length=120)] = "",
     program_id: Annotated[str | None, Query()] = None,
     project_id: Annotated[str | None, Query()] = None,
@@ -165,7 +176,7 @@ async def portfolio_scope(
 async def portfolio_warnings(
     principal: Caller,
     service: Annotated[PortfolioWarningsService, Depends(get_portfolio_warnings_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     q: Annotated[str, Query(max_length=120)] = "",
     project_id: Annotated[str | None, Query()] = None,
 ) -> PortfolioWarningsResponse:

@@ -80,6 +80,18 @@ def as_of_or_tenant_today(
     return as_of if as_of is not None else get_tenant_today(request)
 
 
+def day_or_tenant_today(
+    request: Request,
+    day: Annotated[
+        date | None,
+        Query(description="The day to read. Left out: today in the tenant's timezone."),
+    ] = None,
+) -> date:
+    """The ``day`` query a read asks for, else the tenant's today: as_of_or_tenant_today
+    for the reads whose day is named ``day``."""
+    return day if day is not None else get_tenant_today(request)
+
+
 DEV_USER_HEADER = "x-openprogram-dev-user"
 DEV_ROLES_HEADER = "x-openprogram-dev-roles"
 

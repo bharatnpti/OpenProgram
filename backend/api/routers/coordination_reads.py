@@ -20,6 +20,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from api.dependencies import (
+    as_of_or_tenant_today,
     get_current_principal,
     get_delivery_scope_service,
     get_person_names,
@@ -61,7 +62,7 @@ def get_request_trail_service(request: Request) -> RequestTrailService:
 async def cross_person_request_counts(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[RequestTrailService, Depends(get_request_trail_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
 ) -> RequestCountsResponse:
     try:
         view = await service.counts(principal, as_of)
@@ -74,7 +75,7 @@ async def cross_person_request_counts(
 async def resolved_cross_person_requests(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[RequestTrailService, Depends(get_request_trail_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     days: Annotated[int, Query(ge=1, le=RESOLVED_WINDOW_DAYS * 3)] = RESOLVED_WINDOW_DAYS,
 ) -> CrossPersonRequestsResponse:
     """Asks resolved in the ``days`` days up to ``as_of``, newest first; never dismissed copies."""
@@ -92,7 +93,7 @@ async def cross_person_request_trail(
     request_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[RequestTrailService, Depends(get_request_trail_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
 ) -> RequestTrailResponse:
     try:
         view = await service.trail(principal, request_id, as_of)
@@ -111,7 +112,7 @@ async def project_checkin_coverage(
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
 ) -> ProjectCheckinCoverageResponse:
     """Counts only, no one named: every reader of the project's progress gets them.
 

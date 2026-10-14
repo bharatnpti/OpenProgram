@@ -781,6 +781,7 @@ class ServiceRegistry:
             escalation=self.escalation_matrix_service(),
             gates=self.gate_service(),
             today=self._tenant_today,
+            zone=self._tenant_zone(),
         )
 
     async def _readiness_jira_health(self, tenant_id: str) -> JiraData:
@@ -819,6 +820,10 @@ class ServiceRegistry:
 
     def _tenant_today(self) -> date:
         return datetime.now(tz=self._tenant_zone()).date()
+
+    def tenant_zone(self) -> ZoneInfo:
+        """The tenant's timezone: an instant's day there is the day tenant_today names."""
+        return self._tenant_zone()
 
     def _tenant_zone(self) -> ZoneInfo:
         return resolve_timezone(None, self.settings.tenant_default_timezone)
@@ -1682,6 +1687,7 @@ class ServiceRegistry:
                 self.status_repository(),
                 rollup_refresher=self.rollup_refresher(),
                 today=self._tenant_today,
+                zone=self._tenant_zone(),
             ),
             model=self.settings.litellm_model,
             auto_notify=self.settings.cross_person_auto_notify,

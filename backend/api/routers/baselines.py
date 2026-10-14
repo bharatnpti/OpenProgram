@@ -18,7 +18,7 @@ from api.baseline_dtos import (
     PlanningBaselinesResponse,
     PlanningCompleteRequest,
 )
-from api.dependencies import get_baseline_service, get_current_principal
+from api.dependencies import as_of_or_tenant_today, get_baseline_service, get_current_principal
 from api.people_projection import PeopleWordsDep, for_reader
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.baseline_service import BaselineService
@@ -35,7 +35,7 @@ async def project_baselines(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[BaselineService, Depends(get_baseline_service)],
     words: PeopleWordsDep,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     release_id: Annotated[str | None, Query(description="One release of the project.")] = None,
 ) -> PlanningBaselinesResponse:
     """The project's (or one release's) planning baselines as they stood on ``as_of``,

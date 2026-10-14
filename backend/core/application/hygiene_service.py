@@ -22,6 +22,7 @@ from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping, 
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from core.application.baseline_service import BaselineService
 from core.application.checkin_drift import member_roles
@@ -87,6 +88,7 @@ from core.domain.release_readiness import (
     ScopeKind,
     ScopeRef,
 )
+from core.domain.status import local_date
 from core.ports.hygiene import HygieneRepository
 from core.ports.repositories import GraphRepository, TimeSeriesRepository
 
@@ -346,6 +348,7 @@ class HygieneService:
         gates: GateService | None = None,
         clock: Callable[[], datetime] = _utc_now,
         today: Callable[[], date] | None = None,
+        zone: ZoneInfo | None = None,
         new_id: Callable[[], str] = lambda: uuid4().hex,
     ) -> None:
         self._repository = repository
@@ -360,6 +363,10 @@ class HygieneService:
         self._gates = gates
         self._clock = clock
         self._today = today or (lambda: clock().date())
+        # The zone a finding's first sighting and an issue's changes are dated in, so
+        # "new today" and "open N days" count on the tenant's calendar, the one
+        # ``today`` is on; the registry passes the tenant's zone.
+        self._zone = zone or ZoneInfo("UTC")
         self._new_id = new_id
 
     # ---- configuration ---------------------------------------------------------------
@@ -843,6 +850,7 @@ class HygieneService:
                 [item for item in findings if item.rule_id == rule.rule_id],
                 today,
                 gate_labels,
+                self._zone,
             )
             for rule in sorted(rules.values(), key=_rule_order)
         )
@@ -890,7 +898,7 @@ class HygieneService:
                             gate_kind_label=gate_labels.get(rule.condition.gate_kind, ""),
                         ),
                     ),
-                    open_days=max(0, (today - item.first_seen_at.date()).days),
+                    open_days=max(0, (today - local_date(item.first_seen_at, self._zone)).days),
                     actions=finding_actions(viewer, item, rule),
                     decided_by_name=people.get(item.decision.by) if item.decision else None,
                 )
@@ -1098,7 +1106,9 @@ class HygieneService:
         return HygieneReport(
             enabled=True,
             open=len(findings),
-            new_today=sum(1 for item in findings if item.first_seen_at.date() == day),
+            new_today=sum(
+                1 for item in findings if local_date(item.first_seen_at, self._zone) == day
+            ),
             held=sum(1 for item in findings if item.held),
             asks=tuple(asks),
         )
@@ -1275,9 +1285,10 @@ class HygieneService:
             observed: list[date] = []
             for fact in facts:
                 if fact.source == ISSUE_CHANGE_FACT_SOURCE:
-                    changes.append((fact.observed_at.date(), str(fact.payload.get("field") or "")))
+                    changed_on = local_date(fact.observed_at, self._zone)
+                    changes.append((changed_on, str(fact.payload.get("field") or "")))
                 elif fact.source == ISSUE_FACT_SOURCE:
-                    observed.append(fact.observed_at.date())
+                    observed.append(local_date(fact.observed_at, self._zone))
             pass_.history[key] = (sorted(changes), sorted(observed))
         return pass_.history[key]
 
@@ -1530,14 +1541,16 @@ def _rule_row(
     findings: Sequence[HygieneFinding],
     today: date,
     gate_labels: Mapping[str, str],
+    zone: ZoneInfo,
 ) -> RuleRow:
     open_items = [item for item in findings if item.state is HygieneState.OPEN]
-    ages = [max(0, (today - item.first_seen_at.date()).days) for item in open_items]
+    seen_on = [local_date(item.first_seen_at, zone) for item in open_items]
+    ages = [max(0, (today - day).days) for day in seen_on]
     return RuleRow(
         rule=rule,
         stated=rule_words(rule, gate_kind_label=gate_labels.get(rule.condition.gate_kind, "")),
         open=len(open_items),
-        new_today=sum(1 for item in open_items if item.first_seen_at.date() == today),
+        new_today=sum(1 for day in seen_on if day == today),
         oldest_days=max(ages) if ages else None,
         held=sum(1 for item in open_items if item.held),
         decided=sum(1 for item in findings if item.state in DECIDED),

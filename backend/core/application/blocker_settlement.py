@@ -42,6 +42,7 @@ import re
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import structlog
 
@@ -67,7 +68,7 @@ from core.domain.cross_person import (
     subject_of_text,
 )
 from core.domain.graph import FactEvent
-from core.domain.status import DeveloperStatus
+from core.domain.status import DeveloperStatus, local_date
 from core.ports.repositories import StatusRepository
 from core.ports.workflows import RollupRefresher
 
@@ -113,6 +114,7 @@ class BlockerSettlement:
         rollup_refresher: RollupRefresher | None = None,
         clock: Callable[[], datetime] = _utc_now,
         today: Callable[[], date] | None = None,
+        zone: ZoneInfo | None = None,
     ) -> None:
         self._status_repository = status_repository
         # Records today's rollup again after a pass changed a blocker; None
@@ -122,6 +124,10 @@ class BlockerSettlement:
         # The day that refresh records; the registry passes the tenant's today,
         # the day the console reads rollups on.
         self._today = today or (lambda: clock().date())
+        # The zone a resolution is dated in, so resolved_on and the status it
+        # revises are the tenant's day of the resolution, not its UTC date; the
+        # registry passes the tenant's zone.
+        self._zone = zone or ZoneInfo("UTC")
 
     async def settle_for_request(
         self,
@@ -213,7 +219,8 @@ class BlockerSettlement:
     ) -> tuple[DeveloperBlocker, ...]:
         if not blockers:
             return ()
-        rows = tuple(_resolved(blocker, resolved_at.date()) for blocker in blockers)
+        resolved_on = local_date(resolved_at, self._zone)
+        rows = tuple(_resolved(blocker, resolved_on) for blocker in blockers)
         day = max(row.resolved_on or row.last_seen_on for row in rows)
         # One conditional update per row (N24): the six per-repository syncs
         # each run a merge pass, and of two passes over the same blocker only

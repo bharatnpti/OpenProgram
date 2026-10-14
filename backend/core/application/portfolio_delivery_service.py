@@ -23,7 +23,8 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from core.application.baseline_service import BaselineService
 from core.application.portfolio_index import IndexedProject, PortfolioIndex, PortfolioIndexReader
@@ -52,7 +53,7 @@ from core.domain.portfolio import (
     working_days_late,
 )
 from core.domain.rollup import FactorKind, NodeStatus, Rag
-from core.domain.status import CheckInDay
+from core.domain.status import CheckInDay, local_date
 from core.ports.delivery import RequirementsSnapshotRepository
 from core.ports.forecast import CommitmentRepository, ForecastDayRepository, ReleaseRepository
 from core.ports.repositories import RollupRepository, StatusRepository
@@ -191,6 +192,7 @@ class PortfolioDeliveryService:
         baselines: BaselineService,
         rollups: RollupRepository,
         statuses: StatusRepository,
+        zone: ZoneInfo | None = None,
     ) -> None:
         self._index = index
         self._forecast_days = forecast_days
@@ -200,6 +202,10 @@ class PortfolioDeliveryService:
         self._baselines = baselines
         self._rollups = rollups
         self._statuses = statuses
+        # A committed date's change is dated in the tenant's zone, as the timeline
+        # dates it, so both mark it on the same day; the router passes
+        # ServiceRegistry.tenant_zone.
+        self._zone = zone or ZoneInfo("UTC")
 
     async def read(
         self, principal: Principal, as_of: date, query: PortfolioQuery
@@ -208,7 +214,9 @@ class PortfolioDeliveryService:
         index = await self._index.read(principal, as_of)
         rows = await self._forecast_days.latest_per_scope(tenant_id, as_of)
         by_scope = {(row.scope.kind, row.scope.id, row.scope.project_id): row for row in rows}
-        changes = _changes_until(await self._commitments.changes_for_tenant(tenant_id), as_of)
+        changes = _changes_until(
+            await self._commitments.changes_for_tenant(tenant_id), as_of, self._zone
+        )
         searched = [project for project in index.projects if project.matches(query.search)]
         if query.program_id:
             searched = [
@@ -303,6 +311,7 @@ class PortfolioDeliveryService:
             day.changes.get(_project_key(project.id), []),
             start,
             as_of,
+            self._zone,
         )
         if plan is not None:
             plan = _with_added_days(plan, day.marks.get(project.id, []))
@@ -421,12 +430,13 @@ def _project_key(project_id: str) -> str:
     return f"{CommitmentScopeKind.PROJECT.value}:{project_id}:{project_id}"
 
 
-def _changes_until(changes: Sequence[DateChange], as_of: date) -> dict[str, list[DateChange]]:
-    """Each scope's date changes made by the end of ``as_of``, oldest first."""
-    cutoff = datetime.combine(as_of + timedelta(days=1), time(), tzinfo=UTC)
+def _changes_until(
+    changes: Sequence[DateChange], as_of: date, zone: ZoneInfo
+) -> dict[str, list[DateChange]]:
+    """Each scope's date changes made by the end of ``as_of`` in ``zone``, oldest first."""
     found: dict[str, list[DateChange]] = {}
     for change in sorted(changes, key=lambda item: item.changed_at):
-        if change.changed_at < cutoff:
+        if local_date(change.changed_at, zone) <= as_of:
             found.setdefault(change.scope.key, []).append(change)
     return found
 
@@ -436,6 +446,7 @@ def _bar_marks(
     commitments: Sequence[DateChange],
     start: date,
     as_of: date,
+    zone: ZoneInfo,
 ) -> tuple[BarMark, ...]:
     marks: list[BarMark] = []
     for change in days:
@@ -462,7 +473,7 @@ def _bar_marks(
     for index, commitment in enumerate(commitments):
         moved = index > 0 and commitment.target_date != previous
         previous = commitment.target_date
-        on = commitment.changed_at.date()
+        on = local_date(commitment.changed_at, zone)
         if moved and start <= on <= as_of:
             marks.append(
                 BarMark(

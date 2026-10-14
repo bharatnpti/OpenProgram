@@ -1,5 +1,6 @@
 import type { CrossPersonRequestResponse } from "../../api/schema";
 import { useMemberId, useNames } from "../../app/directory";
+import { useToday } from "../../app/viewingDate";
 import { RagChip } from "../../components/ui/RagChip";
 import { daysBetween } from "../../lib/format";
 import { daysLabel, deliveryNote, requestKindLabel, requestStatusLabel } from "../../lib/words";
@@ -20,7 +21,7 @@ export function RequestCard({
 }) {
   const names = useNames();
   const memberId = useMemberId();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = useToday();
   const age = daysBetween(request.created_at, today);
 
   const raisedByViewer = Boolean(memberId && request.requester_id === memberId);

@@ -115,12 +115,15 @@ async def get_people_words(
     """
     if not hides_names(principal):
         return None
-    graph = get_registry(request).graph_repository()
+    registry = get_registry(request)
+    graph = registry.graph_repository()
     day = _as_of(request.query_params.get("as_of"))
     nodes = await graph.list_nodes(principal.tenant_id, as_of=day)
     edges = await graph.list_edges(principal.tenant_id, kind=EdgeKind.CONTAINS)
     words = people_words(nodes, edges, as_of=day)
-    team = TeamGraph.from_graph(nodes, edges, day or date.today())
+    # The small groups of the day asked for, else of the tenant's today: the day the
+    # config routes link a pod on (not the server's date.today()).
+    team = TeamGraph.from_graph(nodes, edges, day or registry.tenant_today())
     return replace(words, small_groups=frozenset(small_groups(team)))
 
 

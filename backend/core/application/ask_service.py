@@ -4,7 +4,7 @@ import json
 import re
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.ask_conversation import AskContext, AskConversation, context_for
@@ -1781,7 +1781,9 @@ class ReleaseReadinessTool:
                 )
         except AuthorizationDenied as exc:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)
-        return json.dumps(_readiness_payload(board, self.as_of), ensure_ascii=False)
+        return json.dumps(
+            _readiness_payload(board, self.as_of, zone=self.forecasts.zone()), ensure_ascii=False
+        )
 
     async def _release(self, project_id: str, release_id: str) -> Release:
         """The project's release, as the route finds it: another project's is no release."""
@@ -3352,11 +3354,12 @@ async def _pods(
     return (node,)
 
 
-def _readiness_payload(board: BoardView, as_of: date) -> dict[str, object]:
+def _readiness_payload(board: BoardView, as_of: date, *, zone: tzinfo = UTC) -> dict[str, object]:
     """A readiness board for the model: every criterion's state, evidence and draft, by name.
 
     The counts are the board's own (ReadinessBoardResponse.summary); a person is
     named, never given by id; an empty board says why, so it never reads as ready.
+    ``zone`` is the tenant's: the check's day is its date there.
     """
     states = [view.shown_state for view in board.findings]
     checked = board.last_run.finished_at if board.last_run else None
@@ -3391,9 +3394,10 @@ def _readiness_payload(board: BoardView, as_of: date) -> dict[str, object]:
         ],
         "day_report_lines": list(board.important),
     }
-    if checked is not None and checked.date() > as_of:
+    checked_on = checked.astimezone(zone).date() if checked is not None else None
+    if checked_on is not None and checked_on > as_of:
         payload["history"] = (
-            f"Release readiness keeps no history: this is the check of {checked.date()}, "
+            f"Release readiness keeps no history: this is the check of {checked_on}, "
             f"which may not be how it stood on {as_of.isoformat()}."
         )
     if not board.findings:

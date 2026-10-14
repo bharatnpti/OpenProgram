@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date, tzinfo
 
 from core.application.forecast_service import ForecastService
 from core.application.hygiene_service import BoardView, HygieneService
@@ -116,14 +116,26 @@ class JiraHygieneTool:
         except GraphNotFound as exc:
             return _error(str(exc))
         return json.dumps(
-            hygiene_payload(board, self.as_of, rule_id=rule_id, every=every), ensure_ascii=False
+            hygiene_payload(
+                board, self.as_of, rule_id=rule_id, every=every, zone=self.forecasts.zone()
+            ),
+            ensure_ascii=False,
         )
 
 
 def hygiene_payload(
-    board: BoardView, as_of: date, *, rule_id: str | None = None, every: bool = False
+    board: BoardView,
+    as_of: date,
+    *,
+    rule_id: str | None = None,
+    every: bool = False,
+    zone: tzinfo = UTC,
 ) -> dict[str, object]:
-    """A hygiene board for the model: each rule's counts, then the issues, by key and title."""
+    """A hygiene board for the model: each rule's counts, then the issues, by key and title.
+
+    ``zone`` is the tenant's: the scan's day is its date there, the calendar ``as_of``
+    is on.
+    """
     rows = [row for row in board.rules if rule_id is None or row.rule.rule_id == rule_id]
     checked = board.last_run.finished_at if board.last_run else None
     payload: dict[str, object] = {
@@ -181,9 +193,10 @@ def hygiene_payload(
             if board.settings.enabled
             else "The Jira hygiene scan is off for this tenant, so nothing is checked."
         )
-    if checked is not None and checked.date() > as_of:
+    checked_on = checked.astimezone(zone).date() if checked is not None else None
+    if checked_on is not None and checked_on > as_of:
         payload["history"] = (
-            f"Jira hygiene keeps no history: this is the scan of {checked.date()}, which may "
+            f"Jira hygiene keeps no history: this is the scan of {checked_on}, which may "
             f"not be how it stood on {as_of.isoformat()}."
         )
     return payload

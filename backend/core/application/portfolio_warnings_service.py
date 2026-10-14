@@ -28,6 +28,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
+from zoneinfo import ZoneInfo
 
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
@@ -39,6 +40,7 @@ from core.domain.auth import Principal, Role
 from core.domain.graph import EdgeKind, EntityRef, NodeKind
 from core.domain.risk import DriftFinding, DriftFindingKind, RiskFinding, RiskRuleId
 from core.domain.rollup import Rag
+from core.domain.status import local_date
 from core.ports.repositories import GraphRepository
 
 #: The most of a blocker's own words an item repeats.
@@ -129,6 +131,7 @@ class PortfolioWarningsService:
         tracker: str = "the issue tracker",
         vcs: str = "Git",
         policy: AuthorizationPolicy | None = None,
+        zone: ZoneInfo | None = None,
     ) -> None:
         self._index = index
         self._risks = risks
@@ -138,6 +141,9 @@ class PortfolioWarningsService:
         self._tracker = tracker
         self._vcs = vcs
         self._policy = policy or AuthorizationPolicy()
+        # A finding's "since" is the day it was detected in the tenant's zone, the
+        # calendar ``as_of`` is on; the router passes ServiceRegistry.tenant_zone.
+        self._zone = zone or ZoneInfo("UTC")
 
     async def read(
         self,
@@ -170,7 +176,7 @@ class PortfolioWarningsService:
                 items[kind].append(self._drift_item(finding, project, reader, kind))
             for risk in risks.get(project.id, []):
                 kind = _RISK_GROUPS.get(risk.rule_id, WarningKind.NO_MOVEMENT)
-                items[kind].append(_risk_item(risk, project, reader))
+                items[kind].append(_risk_item(risk, project, reader, self._zone))
         blockers = await self._blocker_items(principal, projects, reader)
         items[WarningKind.BLOCKERS] = list(blockers.listed)
         groups = tuple(
@@ -205,7 +211,7 @@ class PortfolioWarningsService:
         self, finding: DriftFinding, project: IndexedProject, reader: _Reader, kind: WarningKind
     ) -> WarningItem:
         key = reader.label(finding.entity_ref)
-        since = finding.detected_at.date()
+        since = local_date(finding.detected_at, self._zone)
         # Worded as the item disagreeing; only its owner sees their own name (P5).
         disagree = kind is WarningKind.TOOLS_DISAGREE
         owner = reader.owner(finding.owner_id, project, finding.entity_ref, hide=disagree)
@@ -363,14 +369,16 @@ def _drift_group(kind: DriftFindingKind) -> WarningKind:
     return WarningKind.TOOLS_DISAGREE if kind in _DISAGREE else WarningKind.NO_MOVEMENT
 
 
-def _risk_item(risk: RiskFinding, project: IndexedProject, reader: _Reader) -> WarningItem:
+def _risk_item(
+    risk: RiskFinding, project: IndexedProject, reader: _Reader, zone: ZoneInfo
+) -> WarningItem:
     key = (
         risk.evidence.identifier
         if risk.entity_ref.kind is NodeKind.DEVELOPER
         else reader.label(risk.entity_ref)
     )
     owner = reader.owner(risk.owner_id, project, risk.entity_ref)
-    since = risk.detected_at.date()
+    since = local_date(risk.detected_at, zone)
     return WarningItem(
         id=f"risk:{risk.rule_id.value}:{project.id}:{risk.entity_ref.id}:{risk.evidence.identifier}",
         kind=risk.rule_id.value,
