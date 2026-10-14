@@ -1,0 +1,23 @@
+backend/tests/unit/test_delivery_loop_service.py
+  s_cdd04f19a871ff::t_39d797bee5a9fb 469
+backend/core/domain/delivery_loop.py
+  s_cdd04f19a871ff::t_39d797bee5a9fb 152-157,159,748
+backend/tests/unit/test_delivery_loop_rules.py
+  s_cdd04f19a871ff::t_39d797bee5a9fb 130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0e96c82ce53bf1d07efcb257d1ba10e6446c87d7",
+  "prompts": {},
+  "sessions": {
+    "s_cdd04f19a871ff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a552db93-c2ac-40e9-8499-79768b8d6d3c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
