@@ -2163,7 +2163,12 @@ class PortfolioFeedItemResponse(BaseModel):
     source: str
     kind: str
     summary: str
-    entity_ref: EntityRefDto
+    entity_ref: EntityRefDto | None = Field(
+        description=(
+            "What the event is about. Null for a reader who reads no person (an executive) "
+            "when it is about one: a member's id names them as much as a name does."
+        ),
+    )
     observed_at: datetime
     details: dict[str, str | int | float | bool | None]
     person_name: str | None = Field(

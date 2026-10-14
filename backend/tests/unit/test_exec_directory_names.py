@@ -145,13 +145,14 @@ def _seed(client: TestClient) -> None:
                 tenant_id=T, from_node_id="ws-pay", to_node_id="CHK-1", kind=EdgeKind.CONTAINS
             )
         )
-        # An open merge request Liam wrote, and Liam's check-in, as the review flow and
-        # the feed read them.
+        # An open merge request Liam wrote, Liam's check-in, a request Liam raised of Zoe
+        # and a work item that moved, as the review flow and the feed read them.
         now = datetime.now(tz=UTC)
-        for source, kind, payload in (
+        for source, kind, entity, payload in (
             (
                 "vcs_pull_request",
                 NodeKind.DEVELOPER,
+                "U1002",
                 {
                     "repo": "acme/checkout-api",
                     "id": "7",
@@ -166,17 +167,38 @@ def _seed(client: TestClient) -> None:
             (
                 "checkin",
                 NodeKind.DEVELOPER,
+                "U1002",
                 {"developer_name": "Liam Chen", "status_source": "confirmed", "blocker_count": 1},
+            ),
+            (
+                "cross_person_request",
+                NodeKind.DEVELOPER,
+                "U1002",
+                {
+                    "request_id": "req-1",
+                    "reporter_id": "U1002",
+                    "reporter_name": "Liam Chen",
+                    "referenced_person_id": "U1005",
+                    "referenced_person_name": "Zoe Almeida",
+                    "transition": "opened",
+                    "summary": "a review",
+                },
+            ),
+            (
+                "work_item",
+                NodeKind.TASK,
+                "CHK-1",
+                {"name": "Checkout API", "from_state": "todo", "to_state": "in_progress"},
             ),
         ):
             await graph.append_fact(
                 FactEvent(
                     tenant_id=T,
                     source=source,
-                    entity_ref=EntityRef(tenant_id=T, kind=kind, id="U1002"),
+                    entity_ref=EntityRef(tenant_id=T, kind=kind, id=entity),
                     payload=payload,
                     observed_at=now,
-                    correlation_id=f"{source}:U1002",
+                    correlation_id=f"{source}:{entity}",
                 )
             )
 
@@ -289,14 +311,93 @@ def test_the_review_flow_and_the_feed_name_nobody_to_the_executive(client: TestC
     [event] = [item for item in feed["exec"].json()["items"] if item["source"] == "checkin"]
     assert event["person_name"] == "Payments Pod"
     assert event["summary"].startswith("Check-in updated for Payments Pod: confirmed")
-    # A feed event is still about someone's entity, so its reference keeps the member id,
-    # as a risk's does; no name is left.
+    # No name and no member id, node or chat, is left in either read.
     for response in (flow["exec"], feed["exec"]):
-        assert _named(response.json()) == []
+        assert _leaks(response.json()) == []
     # A manager reads who wrote the request and whose check-in it was.
     assert flow["mgr"].json()["items"][0]["author_name"] == "Liam Chen"
     [seen] = [item for item in feed["mgr"].json()["items"] if item["source"] == "checkin"]
     assert seen["person_name"] == "Liam Chen"
+
+
+def test_a_feed_event_about_a_person_has_no_entity_for_the_executive(client: TestClient) -> None:
+    with client:
+        _seed(client)
+        exec_feed = client.get("/portfolio/feed", headers=_as("exec")).json()["items"]
+        mgr_feed = client.get("/portfolio/feed", headers=_as("mgr")).json()["items"]
+        mixed = client.get("/portfolio/feed", headers=_as("exec,mgr")).json()["items"]
+
+    by_source = {item["source"]: item for item in exec_feed}
+    # An event about a person holds no reference to them, whatever its source.
+    for source in ("checkin", "vcs_pull_request", "cross_person_request"):
+        assert by_source[source]["entity_ref"] is None, source
+    # One about a work item keeps it: the thing moved, not the person.
+    assert by_source["work_item"]["entity_ref"] == {"tenant_id": T, "kind": "task", "id": "CHK-1"}
+    # The people a request names read as their teams, by id and by name.
+    request = by_source["cross_person_request"]
+    assert (request["details"]["reporter_id"], request["details"]["reporter_name"]) == (
+        "Payments Pod",
+        "Payments Pod",
+    )
+    assert (
+        request["details"]["referenced_person_id"],
+        request["details"]["referenced_person_name"],
+    ) == ("Storefront Pod", "Storefront Pod")
+    assert request["summary"] == (
+        "Cross-person request opened: Payments Pod needs Storefront Pod for a review"
+    )
+    # A manager, and an executive who is also one, read the entity and the ids as built.
+    for items in (mgr_feed, mixed):
+        by_kind = {item["source"]: item for item in items}
+        assert by_kind["checkin"]["entity_ref"]["id"] == "U1002"
+        assert by_kind["cross_person_request"]["details"]["referenced_person_id"] == "U1005"
+        assert by_kind["cross_person_request"]["details"]["reporter_name"] == "Liam Chen"
+
+
+def _seed_pods_of(client: TestClient, sizes: dict[str, int]) -> None:
+    """A pod for each id of ``sizes``, with that many members, working on its own project."""
+    for pod, size in sizes.items():
+        assert client.post("/config/pods", json={"id": pod, "name": pod.title()}).status_code == 201
+        for number in range(size):
+            member = f"{pod}-m{number}"
+            created = client.post(
+                "/config/members",
+                json={
+                    "id": member,
+                    "name": f"Member {pod} {number}",
+                    "metadata": {"app_roles": "dev"},
+                },
+            )
+            assert created.status_code == 201, created.text
+            linked = client.post(f"/config/pods/{pod}/members/{member}", json={"role": "member"})
+            assert linked.status_code in {200, 201}, linked.text
+
+
+def _member_count(client: TestClient, roles: str, **scope: str) -> int | None:
+    response = client.get("/portfolio/pr-flow", params=scope, headers=_as(roles))
+    assert response.status_code == 200, response.text
+    return response.json()["scope"]["member_count"]
+
+
+def test_the_review_flow_counts_no_pod_of_fewer_than_five_for_the_executive(
+    client: TestClient,
+) -> None:
+    sizes = {"pod-one": 1, "pod-four": 4, "pod-five": 5, "pod-six": 6}
+    with client:
+        _seed_pods_of(client, sizes)
+        counts = {
+            role: {pod: _member_count(client, role, pod_id=pod) for pod in sizes}
+            for role in ("exec", "mgr", "exec,mgr", "exec,sm", "admin", "po", "sm")
+        }
+        # No scope, as before: the whole tenant has no count to give.
+        tenant = _member_count(client, "exec")
+
+    # The executive reads a count only of a group of five or more (D99, D104).
+    assert counts["exec"] == {"pod-one": None, "pod-four": None, "pod-five": 5, "pod-six": 6}
+    # Everyone else, an executive who holds another role too among them, reads each count.
+    for role in ("mgr", "exec,mgr", "exec,sm", "admin", "po", "sm"):
+        assert counts[role] == sizes, role
+    assert tenant is None
 
 
 def test_a_contact_saved_with_only_a_chat_id_still_reads_as_its_role() -> None:

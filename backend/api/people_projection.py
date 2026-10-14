@@ -17,7 +17,10 @@ nobody:
 - a person's own status, in their words ("owner_status_summary"), is left out;
 - a directory item (a program, project, workstream or pod) lists no member, names
   no owner, TPM or scrum master, and gives a pod's escalation contacts as the role
-  they hold ("the scrum master", "the manager"), with no member or chat id.
+  they hold ("the scrum master", "the manager"), with no member or chat id;
+- a feed event about a person has no entity reference (it would hold their member
+  id) and says who it is about as the person's stand-in, in its details too;
+- a review-flow scope of fewer than five people has no member count (D99, D104).
 
 Everyone else gets the response as it was built. The route decides by the
 principal, never the console.
@@ -35,10 +38,16 @@ from fastapi import Depends, Request
 from pydantic import BaseModel
 
 from api.dependencies import get_current_principal, get_registry
-from api.dtos import DirectoryItemResponse
+from api.dtos import DirectoryItemResponse, PortfolioFeedItemResponse, PullRequestFlowScopeDto
 from core.application.attention import TeamGraph
 from core.application.config_service import PERSON_METADATA_KEYS
-from core.application.people_words import ROLE_WORDS, PeopleWords, hides_names, people_words
+from core.application.people_words import (
+    ROLE_WORDS,
+    PeopleWords,
+    hides_names,
+    is_small,
+    people_words,
+)
 from core.application.portfolio_privacy import small_groups
 from core.domain.auth import Principal
 from core.domain.escalation import (
@@ -46,7 +55,7 @@ from core.domain.escalation import (
     ESCALATION_METADATA_KEYS,
     EscalationTarget,
 )
-from core.domain.graph import EdgeKind
+from core.domain.graph import EdgeKind, NodeKind
 
 #: Fields that hold a person's id: said as their role or team when they are a member.
 _ID_FIELDS = frozenset(
@@ -83,6 +92,11 @@ _NAME_FIELDS: dict[str, str | None] = {
 _NAME_MAPS = frozenset({"actor_names", "source_names"})
 #: A person's own status, in their words and by its source: an executive reads none (D87).
 _LEFT_OUT = frozenset({"owner_status_summary", "owner_status_source", "owner_status_as_of"})
+#: The people a feed event's details name: each id, with the field holding their name.
+_FEED_PEOPLE: dict[str, str] = {
+    "reporter_id": "reporter_name",
+    "referenced_person_id": "referenced_person_name",
+}
 #: A pod's escalation contacts as an executive reads them: the role, never the person.
 _CONTACT_WORDS: dict[EscalationTarget, str] = {
     EscalationTarget.SCRUM_MASTER: ROLE_WORDS["sm"],
@@ -127,13 +141,18 @@ def all_for_reader[M: BaseModel](models: list[M], words: PeopleWords | None) -> 
 def _model[M: BaseModel](model: M, words: PeopleWords) -> M:
     if isinstance(model, DirectoryItemResponse):
         return cast("M", _directory_item(model, words))
+    if isinstance(model, PortfolioFeedItemResponse):
+        model = cast("M", _feed_item(model, words))
     values = dict(model)
     update: dict[str, object] = {}
     for name, value in values.items():
         new = _field(name, value, values, words)
         if new is not value:
             update[name] = new
-    return model.model_copy(update=update) if update else model
+    seen = model.model_copy(update=update) if update else model
+    if isinstance(seen, PullRequestFlowScopeDto):
+        return cast("M", _flow_scope(seen))
+    return seen
 
 
 def _field(name: str, value: object, siblings: dict[str, object], words: PeopleWords) -> object:
@@ -160,6 +179,38 @@ def _field(name: str, value: object, siblings: dict[str, object], words: PeopleW
         person = siblings.get(pair) if pair else None
         return words.label(person if isinstance(person, str) else None, value)
     return _text(value, words)
+
+
+def _feed_item(item: PortfolioFeedItemResponse, words: PeopleWords) -> PortfolioFeedItemResponse:
+    """A feed event with no member id: not in its entity, nor in the people its details name.
+
+    An event about a person (a check-in, a request they opened) has that person as
+    its entity, so it has none; the reader gets who it is about from ``person_name``.
+    """
+    details = dict(item.details)
+    for id_key, name_key in _FEED_PEOPLE.items():
+        person, named = details.get(id_key), details.get(name_key)
+        said = words.label(
+            person if isinstance(person, str) else None, named if isinstance(named, str) else None
+        )
+        if isinstance(person, str):
+            details[id_key] = said
+        if isinstance(named, str):
+            details[name_key] = said
+    about_a_person = item.entity_ref is not None and item.entity_ref.kind is NodeKind.DEVELOPER
+    return item.model_copy(
+        update={"details": details, "entity_ref": None if about_a_person else item.entity_ref}
+    )
+
+
+def _flow_scope(scope: PullRequestFlowScopeDto) -> PullRequestFlowScopeDto:
+    """A review-flow scope of fewer than five people counts none of them (D99, D104).
+
+    Its requests, stages and dates stay; its people are counted in the group above.
+    """
+    if scope.member_count is not None and is_small(scope.member_count):
+        return scope.model_copy(update={"member_count": None})
+    return scope
 
 
 def _directory_item(item: DirectoryItemResponse, words: PeopleWords) -> DirectoryItemResponse:

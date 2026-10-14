@@ -268,11 +268,12 @@ export interface PortfolioFeedItemResponse {
   source: string;
   kind: string;
   summary: string;
+  /** Null for an executive when the event is about a person: a member id names them too. */
   entity_ref: {
     tenant_id: string;
     kind: string;
     id: string;
-  };
+  } | null;
   observed_at: string;
   details: Record<string, unknown>;
   /** Who entity_ref is, by name, when it is a person; never a raw chat id. */

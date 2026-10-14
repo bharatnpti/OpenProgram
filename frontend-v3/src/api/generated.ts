@@ -7338,7 +7338,8 @@ export interface components {
       kind: string;
       /** Summary */
       summary: string;
-      entity_ref: components["schemas"]["EntityRefDto"];
+      /** @description What the event is about. Null for a reader who reads no person (an executive) when it is about one: a member's id names them as much as a name does. */
+      entity_ref: components["schemas"]["EntityRefDto"] | null;
       /**
        * Observed At
        * Format: date-time

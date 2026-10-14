@@ -23820,7 +23820,15 @@
             "title": "Summary"
           },
           "entity_ref": {
-            "$ref": "#/components/schemas/EntityRefDto"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntityRefDto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the event is about. Null for a reader who reads no person (an executive) when it is about one: a member's id names them as much as a name does."
           },
           "observed_at": {
             "type": "string",

@@ -45,6 +45,15 @@ describe("feedCard", () => {
     }
   });
 
+  test("an event with no entity, as an executive reads one about a person, shows its name", () => {
+    const named = { ...checkinItem("Payments Pod"), entity_ref: null };
+    const unnamed = { ...checkinItem(null), entity_ref: null };
+
+    assert.equal(feedCard(named, 0).entityLabel, "Payments Pod");
+    assert.equal(feedCard(unnamed, 0).entityLabel, UNKNOWN_PERSON);
+    assert.ok(!feedCard(named, 0).id.includes(CHAT_ID));
+  });
+
   test("an entity that is not a person keeps its kind and id", () => {
     const issue: PortfolioFeedItemResponse = {
       ...checkinItem(null),

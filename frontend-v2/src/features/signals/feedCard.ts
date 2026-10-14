@@ -9,7 +9,8 @@ export const UNKNOWN_PERSON = "a team member";
 
 /** What a signal is about: its entity, and the name the server gives a person. */
 export type SignalSubject = {
-  entity_ref: { kind: string; id: string };
+  /** Null for an executive's read of an event about a person. */
+  entity_ref: { kind: string; id: string } | null;
   person_name?: string | null;
 };
 
@@ -24,14 +25,14 @@ export type SignalSubject = {
 export function entityLabel(subject: SignalSubject): string {
   const name = subject.person_name?.trim();
   if (name) return name;
-  if (subject.entity_ref.kind === "developer") return UNKNOWN_PERSON;
+  if (!subject.entity_ref || subject.entity_ref.kind === "developer") return UNKNOWN_PERSON;
   return `${subject.entity_ref.kind} · ${subject.entity_ref.id}`;
 }
 
 /** One portfolio feed item as a Signals card. */
 export function feedCard(item: PortfolioFeedItemResponse, index: number): SignalCardData {
   return {
-    id: `feed-${item.entity_ref.id}-${item.observed_at}-${index}`,
+    id: `feed-${item.entity_ref?.id ?? item.source}-${item.observed_at}-${index}`,
     tone: "info",
     title: item.summary,
     category: "feed",
