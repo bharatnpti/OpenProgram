@@ -244,10 +244,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -4567,10 +4576,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -4628,10 +4646,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -4689,10 +4716,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -4759,10 +4795,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -4825,10 +4870,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -4886,10 +4940,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -5487,16 +5550,6 @@
             }
           },
           {
-            "name": "as_of",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date",
-              "title": "As Of"
-            }
-          },
-          {
             "name": "days",
             "in": "query",
             "required": false,
@@ -5533,6 +5586,25 @@
               "title": "Release Id"
             },
             "description": "One release of the project."
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
+              "title": "As Of"
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -5915,10 +5987,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -5978,16 +6059,6 @@
             }
           },
           {
-            "name": "as_of",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date",
-              "title": "As Of"
-            }
-          },
-          {
             "name": "days",
             "in": "query",
             "required": false,
@@ -6016,6 +6087,25 @@
               "title": "Release Id"
             },
             "description": "One release of the project."
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
+              "title": "As Of"
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -6294,10 +6384,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -7266,16 +7365,6 @@
             }
           },
           {
-            "name": "as_of",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date",
-              "title": "As Of"
-            }
-          },
-          {
             "name": "release_id",
             "in": "query",
             "required": false,
@@ -7290,6 +7379,25 @@
               ],
               "title": "Release Id"
             }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
+              "title": "As Of"
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11007,10 +11115,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11073,10 +11190,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11139,10 +11265,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11205,10 +11340,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11271,10 +11415,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11338,10 +11491,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11404,10 +11566,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11471,10 +11642,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11529,10 +11709,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11583,16 +11772,6 @@
         "operationId": "portfolio_heatmap_portfolio_heatmap_get",
         "parameters": [
           {
-            "name": "as_of",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date",
-              "title": "As Of"
-            }
-          },
-          {
             "name": "program_root_id",
             "in": "query",
             "required": false,
@@ -11607,6 +11786,25 @@
               ],
               "title": "Program Root Id"
             }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
+              "title": "As Of"
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11657,16 +11855,6 @@
         "operationId": "portfolio_attention_portfolio_attention_get",
         "parameters": [
           {
-            "name": "as_of",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date",
-              "title": "As Of"
-            }
-          },
-          {
             "name": "program_root_id",
             "in": "query",
             "required": false,
@@ -11699,6 +11887,25 @@
               "title": "Tz"
             },
             "description": "The reader's IANA time zone, for the times a sentence names."
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
+              "title": "As Of"
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11765,16 +11972,6 @@
             }
           },
           {
-            "name": "as_of",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date",
-              "title": "As Of"
-            }
-          },
-          {
             "name": "window_days",
             "in": "query",
             "required": false,
@@ -11785,6 +11982,25 @@
               "default": 30,
               "title": "Window Days"
             }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
+              "title": "As Of"
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11847,10 +12063,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11904,10 +12129,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -11957,16 +12191,6 @@
         "description": "How long pull and merge requests spend coding, awaiting review, in review and\nawaiting merge, and what kind of work they are: merged ones in the ``days``\nbefore ``as_of`` give the stage times, open ones are counted where they stand.\n\nThe whole tenant, or one of a program, a project or a pod. The same read\npermission as ``/portfolio/flow``.",
         "operationId": "portfolio_pull_request_flow_portfolio_pr_flow_get",
         "parameters": [
-          {
-            "name": "as_of",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date",
-              "title": "As Of"
-            }
-          },
           {
             "name": "days",
             "in": "query",
@@ -12026,6 +12250,25 @@
               ],
               "title": "Pod Id"
             }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
+              "title": "As Of"
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -12492,10 +12735,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",
@@ -12549,10 +12801,19 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The day to read. Left out: today in the tenant's timezone.",
               "title": "As Of"
-            }
+            },
+            "description": "The day to read. Left out: today in the tenant's timezone."
           },
           {
             "name": "authorization",

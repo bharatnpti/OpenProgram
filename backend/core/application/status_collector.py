@@ -420,6 +420,7 @@ class StatusCollector:
         vcs_name: str = DEFAULT_VCS_NAME,
         observed_day_reader: ObservedDayReader | None = None,
         request_recorder: CheckinRequestRecorder | None = None,
+        today: Callable[[], date] | None = None,
     ) -> None:
         self._issue_tracker = issue_tracker
         # Records each reply's cross-person requests (and DMs who they ask)
@@ -464,6 +465,11 @@ class StatusCollector:
         self._checkin_max_clarifications = max(0, checkin_max_clarifications)
         self._checkin_ack_enabled = checkin_ack_enabled
         self._tenant_default_timezone = tenant_default_timezone
+        # The tenant's today, the day graph links are dated on, for the reads of
+        # the links in force now; the registry passes ServiceRegistry.tenant_today.
+        self._today = today or (
+            lambda: _local_date(datetime.now(tz=UTC), None, tenant_default_timezone)
+        )
         self._outbound_dm_max_chars = outbound_dm_max_chars
         self._recent_fact_lookback_days = recent_fact_lookback_days
         self._parser = parser or StatusParser(llm_provider, model, tool_agent=tool_agent)
@@ -1224,7 +1230,8 @@ class StatusCollector:
         """
         if self._code_work_by_pod is None or self._graph_repository is None or not keys:
             return {}
-        today = datetime.now(tz=UTC).date()
+        # The profiles and pod links in force on the tenant's today.
+        today = self._today()
         by_pod = await self._code_work_by_pod(tenant_id, developer_id, today)
         if not by_pod:
             return {}
@@ -1331,7 +1338,7 @@ class StatusCollector:
         nodes = {node.id: node for node in await self._graph_repository.list_nodes(tenant_id)}
         # The links in force now: one ended earlier is history and would map a
         # moved task to the project it left.
-        today = datetime.now(tz=UTC).date()
+        today = self._today()
         edges = [
             edge
             for edge in await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
@@ -1571,7 +1578,7 @@ class StatusCollector:
         wanted = {key for key in keys if key and key not in own_keys}
         if not wanted or self._graph_repository is None:
             return set()
-        today = checkin.checkin_date or datetime.now(tz=UTC).date()
+        today = checkin.checkin_date or self._today()
         assignees: dict[str, set[str]] = {}
         for edge in await self._graph_repository.list_edges(
             checkin.tenant_id, kind=EdgeKind.ASSIGNED_TO

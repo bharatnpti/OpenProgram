@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from api.dependencies import (
+    as_of_or_tenant_today,
     get_config_service,
     get_current_principal,
     get_directory_service,
@@ -1180,7 +1181,7 @@ async def list_config_pod_escalation_candidates(
     _ensure(principal, Capability.MANAGE_CONFIG)
     try:
         candidates = await service.list_escalation_candidates(
-            principal.tenant_id, pod_id, date.today()
+            principal.tenant_id, pod_id, service.today()
         )
     except (ConfigValidationError, GraphNotFound) as exc:
         raise _http_error(exc) from exc
@@ -1248,7 +1249,7 @@ async def update_config_checkin_fill(
 
 @router.get("/programs", response_model=list[DirectoryItemResponse])
 async def list_programs(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
     words: PeopleWordsDep,
@@ -1265,7 +1266,7 @@ async def list_programs(
 
 @router.get("/projects", response_model=list[DirectoryItemResponse])
 async def list_projects(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
     words: PeopleWordsDep,
@@ -1282,7 +1283,7 @@ async def list_projects(
 
 @router.get("/workstreams", response_model=list[DirectoryItemResponse])
 async def list_workstreams(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
     words: PeopleWordsDep,
@@ -1300,7 +1301,7 @@ async def list_workstreams(
 @router.get("/workstreams/{workstream_id}", response_model=DirectoryItemResponse)
 async def get_workstream(
     workstream_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
     words: PeopleWordsDep,
@@ -1316,7 +1317,7 @@ async def get_workstream(
 @router.get("/projects/{project_id}/workstreams", response_model=list[DirectoryItemResponse])
 async def list_project_workstreams(
     project_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
     words: PeopleWordsDep,
@@ -1331,7 +1332,7 @@ async def list_project_workstreams(
 
 @router.get("/pods", response_model=list[DirectoryItemResponse])
 async def list_pods(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
     words: PeopleWordsDep,

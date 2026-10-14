@@ -1772,7 +1772,8 @@ def test_admin_config_crud_populates_directory_and_dashboards(settings: Settings
             }
         )
     )
-    as_of = date.today().isoformat()
+    # The config API makes links on the tenant's today, so the reads ask for that day.
+    as_of = app.state.registry.tenant_today().isoformat()
     with TestClient(app) as client:
         empty_programs = client.get("/programs")
         program = client.post(

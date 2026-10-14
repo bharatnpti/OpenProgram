@@ -17,6 +17,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from api.dependencies import (
+    as_of_or_tenant_today,
     get_current_principal,
     get_delivery_scope_service,
     get_forecast_service,
@@ -57,7 +58,7 @@ async def project_delivery(
     service: Annotated[ForecastService, Depends(get_forecast_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
     words: PeopleWordsDep,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
 ) -> ProjectDeliveryResponse:
     # Every project for its readers; for a scrum master, the projects their pods work on.
     try:
@@ -77,7 +78,7 @@ async def project_forecast_history(
     project_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ForecastService, Depends(get_forecast_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     days: Annotated[int, Query(ge=1, le=MAX_FORECAST_HISTORY_DAYS)] = HISTORY_DAYS,
     release_id: Annotated[str | None, Query(description="One release of the project.")] = None,
 ) -> ForecastHistoryResponse:
@@ -146,7 +147,7 @@ async def pod_delivery(
     service: Annotated[ForecastService, Depends(get_forecast_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
     words: PeopleWordsDep,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
 ) -> PodDeliveryResponse:
     # Who sets pod dates or reads project progress, and a developer for their own pod.
     policy = AuthorizationPolicy()
@@ -315,7 +316,7 @@ async def _runs_pod(service: ForecastService, principal: Principal, pod_id: str)
     """A manager or admin sets any pod's date; a scrum master only their own pod's."""
     if principal.has_role(Role.ADMIN) or principal.has_role(Role.MGR):
         return True
-    return await service.runs_pod(principal.tenant_id, pod_id, principal.subject, date.today())
+    return await service.runs_pod(principal.tenant_id, pod_id, principal.subject, service.today())
 
 
 def _ensure(principal: Principal, capability: Capability) -> None:

@@ -25,6 +25,7 @@ from core.domain.status import (
     CheckInScheduleRun,
     DeveloperStatus,
     StatusSource,
+    resolve_timezone,
 )
 from core.domain.workflows import (
     CheckinFanoutInput,
@@ -1891,6 +1892,9 @@ class _RuntimeSyncRegistry:
 
     def graph_repository(self) -> InMemoryGraphStore:
         return self._store
+
+    def tenant_today(self) -> date:
+        return datetime.now(tz=resolve_timezone(None, self.settings.tenant_default_timezone)).date()
 
     def workflow_scheduler(self) -> _RuntimeSyncScheduler:
         return self.scheduler

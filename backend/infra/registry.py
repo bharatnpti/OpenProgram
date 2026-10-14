@@ -582,8 +582,9 @@ class ServiceRegistry:
             time_series_repository=self.time_series_repository(),
             runs_pod=self.forecast_service().runs_pod,
             # The day the config routes start a pod membership on (config_service_for),
-            # so a profile set right after adding someone finds them in the pod.
-            today=date.today,
+            # the tenant's today, so a profile set right after adding someone finds
+            # them in the pod.
+            today=self._tenant_today,
         )
 
     def delivery_impact_service(self) -> DeliveryImpactService:
@@ -805,11 +806,16 @@ class ServiceRegistry:
             status_repository=self.status_repository(),
             rollup_repository=self.rollup_repository(),
             time_series_repository=self.time_series_repository(),
+            today=self._tenant_today,
         )
         try:
             return [task.id for task in (await views.pod_tasks(tenant_id, pod_id, day)).tasks]
         except GraphNotFound:
             return []
+
+    def tenant_today(self) -> date:
+        """Today in the tenant's timezone: the day that dates and reads graph links."""
+        return self._tenant_today()
 
     def _tenant_today(self) -> date:
         return datetime.now(tz=self._tenant_zone()).date()
@@ -1623,6 +1629,7 @@ class ServiceRegistry:
             provider_overrides=(
                 self._connected_providers if self._adapter_connections() is not None else None
             ),
+            today=self._tenant_today,
         )
 
     async def _connected_providers(self, tenant_id: str) -> dict[SyncSource, str]:
@@ -1672,7 +1679,9 @@ class ServiceRegistry:
             time_series_repository=self.time_series_repository(),
             llm_provider=self.llm_provider(),
             blocker_settlement=BlockerSettlement(
-                self.status_repository(), rollup_refresher=self.rollup_refresher()
+                self.status_repository(),
+                rollup_refresher=self.rollup_refresher(),
+                today=self._tenant_today,
             ),
             model=self.settings.litellm_model,
             auto_notify=self.settings.cross_person_auto_notify,
@@ -1709,6 +1718,7 @@ class ServiceRegistry:
             write_back=self.write_back_service(),
             rollups=self.person_rollups(),
             tracker_name=self.provider_names().tracker,
+            today=self._tenant_today,
         )
 
     def person_rollups(self) -> PersonRollups:
@@ -1740,6 +1750,7 @@ class ServiceRegistry:
             graph_repository=self.graph_repository(),
             writeback_enabled_default=self.settings.jira_writeback_enabled,
             kind_switch=self.jira_writes_service().kind_on,
+            today=self._tenant_today,
         )
 
     def status_collector(self) -> StatusCollector:
@@ -1766,6 +1777,7 @@ class ServiceRegistry:
             checkin_max_clarifications=self.settings.checkin_max_clarifications,
             checkin_ack_enabled=self.settings.checkin_ack_enabled,
             tenant_default_timezone=self.settings.tenant_default_timezone,
+            today=self._tenant_today,
             outbound_dm_max_chars=self.settings.outbound_dm_max_chars,
             recent_fact_lookback_days=self.settings.recent_fact_lookback_days,
             # Every tracker but the fake one is the Jira adapter (catalog).

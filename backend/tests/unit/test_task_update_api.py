@@ -7,7 +7,6 @@ task not in the caller's tree is a 404; a broken rule is a 422 in plain words.
 from __future__ import annotations
 
 import asyncio
-from datetime import date
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -40,7 +39,7 @@ def test_the_update_route_answers_the_task_the_status_and_the_tracker(
     app = _app(settings)
     with TestClient(app) as client:
         _seeded(app)
-        today = date.today().isoformat()
+        today = app.state.registry.tenant_today().isoformat()
         response = client.post(
             "/me/tasks/CHK-4/update",
             json={
@@ -113,7 +112,7 @@ def test_the_pod_task_list_carries_the_owners_last_statement_and_eta(settings: S
     )
     with TestClient(app) as client:
         _seeded(app)
-        today = date.today().isoformat()
+        today = app.state.registry.tenant_today().isoformat()
         updated = client.post(
             "/me/tasks/CHK-4/update",
             json={"state": "in_review", "note": "MR !3 open", "eta": today},

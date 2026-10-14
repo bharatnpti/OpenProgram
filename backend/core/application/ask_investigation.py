@@ -329,7 +329,7 @@ class InvestigationService:
         Or a failure, which ends the stream too. A consumer that stops reading
         closes the engine, which stops what it still runs.
         """
-        asked_for = as_of or date.today()
+        asked_for = as_of or self._ask_service.today()
         llm = _MeteredProvider(inner=self._llm_provider)
         reader = await self._ask_service.reader(
             principal.tenant_id, asked_for, people=not hides_names(principal)

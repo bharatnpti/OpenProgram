@@ -2145,6 +2145,7 @@ class AskService:
         max_tool_iterations: int = ASK_MAX_TOOL_ITERATIONS,
         profile_service: ProfileService | None = None,
         hygiene_service: HygieneService | None = None,
+        today: Callable[[], date] = date.today,
     ) -> None:
         self._llm_provider = llm_provider
         self._graph_repository = graph_repository
@@ -2164,6 +2165,13 @@ class AskService:
             max_tool_iterations=max_tool_iterations,
             cap_notice=ASK_CAP_NOTICE,
         )
+        # The day a question with no as_of is asked for; the API passes the
+        # tenant's today, the day the graph links Ask reads are dated on.
+        self._today = today
+
+    def today(self) -> date:
+        """The day a question with no ``as_of`` is answered for."""
+        return self._today()
 
     async def ask(
         self,
@@ -2174,7 +2182,7 @@ class AskService:
         as_of: date | None = None,
         conversation: AskConversation | None = None,
     ) -> AskResponseView:
-        asked_for = as_of or date.today()
+        asked_for = as_of or self._today()
         context = await context_for(
             conversation,
             llm=self._llm_provider,

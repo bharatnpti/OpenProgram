@@ -195,6 +195,8 @@ class DeliveryScopeService:
         self._graph = graph_repository
         self._rollups = rollup_repository
         self._policy = policy or AuthorizationPolicy()
+        # The day membership is read on; the API passes the tenant's today, the
+        # day the links are dated on (ServiceRegistry.tenant_today).
         self._today = today
 
     async def scope_of(self, tenant_id: str, subject: str) -> MemberScope:

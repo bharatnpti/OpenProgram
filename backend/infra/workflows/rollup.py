@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
 from core.application.blocker_resolution import BlockerResolutionService
@@ -74,7 +75,7 @@ async def run_rollup_activity(payload: RollupInput) -> RollupWorkflowResult:
             blockers,
             drift_signals=drift_signals(registry, blockers),
         )
-        today = _as_of(payload.as_of)
+        today = _as_of(payload.as_of, registry.tenant_today)
         backfill_days = (
             payload.backfill_days
             if payload.backfill_days is not None
@@ -164,13 +165,14 @@ def _days_between(start: date, end: date) -> list[date]:
     return [start + timedelta(days=offset) for offset in range((end - start).days)]
 
 
-def _as_of(value: str | None) -> date:
+def _as_of(value: str | None, today: Callable[[], date]) -> date:
+    """The day asked for, else the tenant's today: the day the console reads rollups on."""
     if value is None:
-        return datetime.now(tz=UTC).date()
+        return today()
     try:
         return date.fromisoformat(value)
     except ValueError:
-        return datetime.now(tz=UTC).date()
+        return today()
 
 
 def _service_registry() -> ServiceRegistry:

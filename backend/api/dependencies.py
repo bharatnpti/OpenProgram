@@ -4,7 +4,7 @@ from collections.abc import Callable
 from datetime import date
 from typing import Annotated, cast
 
-from fastapi import Header, HTTPException, Request, status
+from fastapi import Header, HTTPException, Query, Request, status
 
 from config.settings import Settings
 from core.application.ask_investigation import InvestigationLimits, InvestigationService
@@ -57,6 +57,27 @@ def get_settings_from_request(request: Request) -> Settings:
 
 def get_registry(request: Request) -> ServiceRegistry:
     return cast(ServiceRegistry, request.app.state.registry)
+
+
+def get_tenant_today(request: Request) -> date:
+    """Today in the tenant's timezone, the day graph links are dated and read on.
+
+    Not the server's ``date.today()``: on a server in another timezone that is
+    a different day for part of every day, and a read on it misses the links
+    made on the tenant's day.
+    """
+    return get_registry(request).tenant_today()
+
+
+def as_of_or_tenant_today(
+    request: Request,
+    as_of: Annotated[
+        date | None,
+        Query(description="The day to read. Left out: today in the tenant's timezone."),
+    ] = None,
+) -> date:
+    """The ``as_of`` query a read asks for, else the tenant's today (get_tenant_today)."""
+    return as_of if as_of is not None else get_tenant_today(request)
 
 
 DEV_USER_HEADER = "x-openprogram-dev-user"
@@ -147,9 +168,13 @@ def get_config_service(request: Request) -> ConfigService:
 
 
 def config_service_for(
-    registry: ServiceRegistry, *, today: Callable[[], date] = date.today
+    registry: ServiceRegistry, *, today: Callable[[], date] | None = None
 ) -> ConfigService:
-    """The config service over the registry's stores; ``today`` dates the links it changes."""
+    """The config service over the registry's stores; ``today`` dates the links it changes.
+
+    It defaults to the tenant's today, the day the forecast and readiness services
+    check links on, so a link made through the API holds on the day they read.
+    """
     return ConfigService(
         graph_repository=registry.graph_repository(),
         status_repository=registry.status_repository(),
@@ -159,7 +184,7 @@ def config_service_for(
         writeback_config_repository=registry.writeback_config_repository(),
         issue_tracker=registry.issue_tracker(),
         require_issue_tracker_link=registry.settings.issue_tracker_provider != "fake",
-        today=today,
+        today=today or registry.tenant_today,
     )
 
 
@@ -273,6 +298,7 @@ def get_ask_service(request: Request) -> AskService:
         max_tool_iterations=settings.ask_max_tool_iterations,
         profile_service=registry.profile_service(),
         hygiene_service=registry.hygiene_service(),
+        today=registry.tenant_today,
     )
 
 
@@ -307,6 +333,7 @@ def get_delivery_scope_service(request: Request) -> DeliveryScopeService:
     return DeliveryScopeService(
         graph_repository=registry.graph_repository(),
         rollup_repository=registry.rollup_repository(),
+        today=registry.tenant_today,
     )
 
 
@@ -337,6 +364,7 @@ def get_persona_view_service(request: Request) -> PersonaViewService:
         delivery_settings_repository=registry.delivery_settings_repository(),
         escalation_policy=registry.settings.escalation_policy(),
         checkin_defaults=registry.settings.checkin_defaults(),
+        today=registry.tenant_today,
     )
 
 

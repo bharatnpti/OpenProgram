@@ -14,7 +14,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
-from api.dependencies import get_current_principal, get_forecast_service, get_gate_service
+from api.dependencies import (
+    as_of_or_tenant_today,
+    get_current_principal,
+    get_forecast_service,
+    get_gate_service,
+    get_tenant_today,
+)
 from api.dtos import (
     GateBoardResponse,
     GateItemCreateRequest,
@@ -108,7 +114,7 @@ async def gate_board(
     service: Annotated[GateService, Depends(get_gate_service)],
     forecasts: Annotated[ForecastService, Depends(get_forecast_service)],
     words: PeopleWordsDep,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     release_id: Annotated[str | None, Query()] = None,
 ) -> GateBoardResponse:
     _ensure_reader(principal)
@@ -127,14 +133,13 @@ async def scan_now(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[GateService, Depends(get_gate_service)],
     forecasts: Annotated[ForecastService, Depends(get_forecast_service)],
+    today: Annotated[date, Depends(get_tenant_today)],
     release_id: Annotated[str | None, Query()] = None,
     force: Annotated[bool, Query(description="Read every issue, changed or not.")] = False,
 ) -> GateScanResponse:
     _ensure(principal, Capability.EDIT_GATES)
     release = await _release(forecasts, principal, project_id, release_id)
-    summary = await service.scan_scope(
-        principal.tenant_id, project_id, date.today(), release, force=force
-    )
+    summary = await service.scan_scope(principal.tenant_id, project_id, today, release, force=force)
     return GateScanResponse(
         read=summary.read,
         unchanged=summary.unchanged,

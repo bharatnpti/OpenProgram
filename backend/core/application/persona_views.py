@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from typing import Literal, Protocol
@@ -517,6 +517,7 @@ class PersonaViewService:
         delivery_settings_repository: DeliverySettingsRepository | None = None,
         escalation_policy: EscalationPolicy | None = None,
         checkin_defaults: CheckInDefaults | None = None,
+        today: Callable[[], date] | None = None,
     ) -> None:
         """``drift_signals`` gives a rollup computed here, with nothing stored, its drift (N3).
 
@@ -524,7 +525,9 @@ class PersonaViewService:
         a focus task can say whether they are its synced assignee.
         ``escalation_policy`` is today's check-in ladder, which names a rung
         sent before rungs were recorded; ``checkin_defaults`` fill a person's
-        check-in time and zone where they set none.
+        check-in time and zone where they set none. ``today`` is the day a
+        reason calls "today" when a read names no reader's day; the API and
+        workflows pass the tenant's (ServiceRegistry.tenant_today).
         """
         self._graph_repository = graph_repository
         self._status_repository = status_repository
@@ -535,6 +538,7 @@ class PersonaViewService:
         self._delivery_settings = delivery_settings_repository
         self._escalation_policy = escalation_policy
         self._checkin_defaults = checkin_defaults or CheckInDefaults()
+        self._today = today or (lambda: datetime.now(tz=UTC).date())
         self._blocker_resolution = BlockerResolutionService(graph_repository, status_repository)
         self._rollup_service = RollupService(
             status_repository, rollup_repository, self._blocker_resolution, drift_signals
@@ -1271,9 +1275,7 @@ class PersonaViewService:
         statuses, tree = loaded
         if counts_only:
             statuses = counted_statuses(statuses)
-        day = await self._attention_day(
-            tenant_id, statuses, as_of, today or datetime.now(tz=UTC).date(), names
-        )
+        day = await self._attention_day(tenant_id, statuses, as_of, today or self._today(), names)
         if counts_only:
             day = counted_day(day)
         # An empty workstream is optional, not unreported: it gets no cell.

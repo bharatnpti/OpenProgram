@@ -195,6 +195,10 @@ class ConfigService:
         # used (a pod membership's start) and the directory reads by default.
         self._today = today
 
+    def today(self) -> date:
+        """The day this service makes and ends links on, for reads that must see them."""
+        return self._today()
+
     async def list_nodes(self, tenant_id: str, kind: NodeKind) -> list[GraphNode]:
         return await self._graph_repository.list_nodes(tenant_id, kind)
 
