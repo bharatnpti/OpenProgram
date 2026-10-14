@@ -1,0 +1,60 @@
+backend/tests/unit/test_exec_directory_names.py
+  s_5f08a60d42019a::t_3527ecd4af46d5 365-369
+  s_5f08a60d42019a::t_ea7f01cd83ed0e 347
+  s_5f08a60d42019a::t_5c7537524806c1 148-149,151,155
+  s_5f08a60d42019a::t_ebcef6fcbcb8a4 170,173-192,198,201
+  s_5f08a60d42019a::t_71d39eb9f44d96 314,316,323-346,348-364,370-400
+  s_5f08a60d42019a::t_d179d1503f6f1f 401-402
+frontend-v2/src/api/generated.ts
+  s_5f08a60d42019a::t_bd45f7721904fa 7341-7342
+frontend/src/api/generated.ts
+  s_5f08a60d42019a::t_bd45f7721904fa 7354-7355
+frontend/src/pages/PortfolioPage.tsx
+  s_5f08a60d42019a::t_d7f81b6d8ebbc4 278-281
+  s_5f08a60d42019a::t_69c1564067898d 269,271
+frontend-v3/src/api/openapi.json
+  s_5f08a60d42019a::t_bd45f7721904fa 23823-23831
+frontend-v2/src/features/signals/feedCard.ts
+  s_5f08a60d42019a::t_bf43757e1869e9 35
+  s_5f08a60d42019a::t_f2e2a1c7360708 28
+  s_5f08a60d42019a::t_848b80073800ed 12-13
+frontend-v3/src/api/schema.ts
+  s_5f08a60d42019a::t_e7a3ce70c5fb02 271,276
+frontend/src/api/openapi.json
+  s_5f08a60d42019a::t_bd45f7721904fa 23823-23831
+backend/api/dtos.py
+  s_5f08a60d42019a::t_cee60e2339ae2d 2166-2171
+frontend-v3/src/api/generated.ts
+  s_5f08a60d42019a::t_bd45f7721904fa 7341-7342
+frontend-v2/src/features/signals/feedCard.test.ts
+  s_5f08a60d42019a::t_485283a8993bfb 48-56
+backend/api/people_projection.py
+  s_5f08a60d42019a::t_ec0c60c9cf8a92 41,44-50
+  s_5f08a60d42019a::t_eaed6d9ad01927 58
+  s_5f08a60d42019a::t_a9fba0f846c1e1 95-99
+  s_5f08a60d42019a::t_0559d8a7a93a79 20-23
+  s_5f08a60d42019a::t_3d0e8bd5b195f5 144-145,152-155
+  s_5f08a60d42019a::t_df7cf0733e85db 184-215
+frontend-v2/src/api/schema.ts
+  s_5f08a60d42019a::t_7f07ac43792406 229,234
+frontend/src/api/schema.ts
+  s_5f08a60d42019a::t_a12d44c93a55c3 134,139
+frontend-v2/src/api/openapi.json
+  s_5f08a60d42019a::t_bd45f7721904fa 23823-23831
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e6da211afd5394b75e581a148ced9324cbb2347",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
