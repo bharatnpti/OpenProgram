@@ -1,0 +1,24 @@
+backend/tests/unit/test_delivery_loop_cli.py
+  s_c2fca91494c4a6::t_482746dff68352 44-49,54-55,57-60,63-69,71-87
+  s_c2fca91494c4a6::t_5239efbc724898 50-53
+  s_c2fca91494c4a6::t_69d70f9accab45 7-9,11
+  s_c2fca91494c4a6::t_0fb7b303b71672 56,61-62,70
+backend/infra/delivery_loop_cli.py
+  s_c2fca91494c4a6::t_b7dafc6f8df911 44,46,53-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6be5b75d6f27742cc89370a1efe9cb92c487d442",
+  "prompts": {},
+  "sessions": {
+    "s_c2fca91494c4a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cfbcb2ee-3fad-4c25-a40c-44e94f462848",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
