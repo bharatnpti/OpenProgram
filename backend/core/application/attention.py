@@ -215,7 +215,7 @@ class AttentionView:
     rag: Rag
     headline: str
     detail: str | None
-    #: None for a program too small for the reader to count its people (D104).
+    #: None for a program too small for the reader to count its people.
     checkins: CheckinCount | None
     signals: tuple[AttentionSignal, ...]
 
@@ -239,7 +239,7 @@ class AttentionDay:
     tracker: str = "the issue tracker"
     vcs: str = "Git"
     #: Pods, projects and programs too small for this reader to count their
-    #: people on (D99, D104), each with the line said in place of its counts
+    #: people on, each with the line said in place of its counts
     #: (where its people are counted instead). Empty for anyone who reads
     #: people (``portfolio_privacy.counted_day`` sets it).
     small_groups: Mapping[str, str] = field(default_factory=dict)
@@ -511,7 +511,7 @@ _ALONE = "No check-in counts shown"
 
 def _small_group_reasons(day: AttentionDay, status: NodeStatus) -> CellReasons:
     """A pod, project or program of fewer than five people, for a reader who counts
-    none of them on it (D99, D104).
+    none of them on it.
 
     No "2 of 3 haven't answered": its people's updates are counted in the group
     above it that is large enough, which its line names. What is on its work
@@ -754,8 +754,8 @@ def attention_view(
     """
     tiles = _tiles(day, program_id)
     rag = _worst(tile.rag for tile in tiles)
-    # A program of fewer than five people, for a reader who counts none of them
-    # (D104): no check-in counts and no driver about people, only its work.
+    # A program of fewer than five people, for a reader who counts none of them:
+    # no check-in counts and no driver about people, only its work.
     small = program_id is not None and program_id in day.small_groups
     people = () if small else _team_people(day, program_id)
     count = _checkin_count(day, people)
@@ -1178,7 +1178,7 @@ def _signals(
             continue
         link = program
         if kind in _PEOPLE_KINDS and len(same) == 1:
-            # One person's pod is pointed at only where it is large enough to count (D99).
+            # One person's pod is pointed at only where it is large enough to count.
             pods = tuple(pod for pod in same[0].pod_ids if pod not in day.small_groups)
             link = _pod_link(pods) or program
         found.append(

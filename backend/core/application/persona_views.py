@@ -433,7 +433,7 @@ class TreeNodeView:
     confidence: float | None
     factors: tuple[RollupFactor, ...]
     #: How many people a pod, project or program holds on the day; None for any
-    #: other node, and for a group a counts-only reader may not count (D103, D104).
+    #: other node, and for a group a counts-only reader may not count.
     people: int | None = None
 
 
@@ -1243,7 +1243,7 @@ class PersonaViewService:
     ) -> PortfolioHeatmapView:
         """Heat for one day, computed on the fly when nothing is stored yet.
 
-        ``counts_only`` is the reader who sees no person (an executive, D87):
+        ``counts_only`` is the reader who sees no person (an executive):
         no one's cell but ``reader_id``'s own, and reasons that count people and
         name work items, never a person or a blocker's own words
         (``portfolio_privacy``).
@@ -1308,7 +1308,7 @@ class PersonaViewService:
         from the same statuses the heat map shows, the open risk and drift
         findings (``findings``; none read without it), and how long each open
         blocker has stood. ``counts_only`` words it for a reader who sees no
-        person (D87), as the heat map does.
+        person, as the heat map does.
         """
         program_id = program_root_id or await self._first_program_id(tenant_id, as_of)
         loaded = await self._heatmap_statuses(tenant_id, as_of, program_id)
@@ -1453,7 +1453,7 @@ class PersonaViewService:
             )
             if _small_group_silent(status, day, context):
                 # Its people's updates were all it had to say: they count in the group above
-                # that is large enough, or nowhere (D99, D104).
+                # that is large enough, or nowhere.
                 cell = replace(cell, why=day.small_groups[status.entity_ref.id])
             cells.append(cell)
         return tuple(cells)
@@ -2484,7 +2484,7 @@ def _without_no_pod(status: NodeStatus) -> NodeStatus:
 
 
 def _small_group_silent(status: NodeStatus, day: AttentionDay, context: _ReasonContext) -> bool:
-    """A small pod, project or program (D99, D104), not green, whose factors without
+    """A small pod, project or program, not green, whose factors without
     its people name no driver."""
     if status.entity_ref.id not in day.small_groups or status.rag is Rag.GREEN:
         return False

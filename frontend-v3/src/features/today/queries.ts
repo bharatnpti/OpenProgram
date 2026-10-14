@@ -10,7 +10,7 @@ import { useProjectOptions } from "../project/useProjectOptions";
 /** The person's own Jira changes; one cache entry, read again after every answer. */
 export const JIRA_CHANGES_KEY = ["me", "jira-changes"] as const;
 
-/** The changes waiting for the person's yes (D89): a check-in's proposals, suggestions, due dates. */
+/** The changes waiting for the person's yes: a check-in's proposals, suggestions, due dates. */
 export function useMyJiraChanges(enabled = true) {
   return useQuery({
     queryKey: JIRA_CHANGES_KEY,
@@ -30,7 +30,7 @@ export function useTodayCounts(enabled: boolean) {
 
 const SEVERITY: Record<Rag, number> = { red: 3, amber: 2, unknown: 1, green: 0 };
 
-/** What Today leads with, per role (D96). */
+/** What Today leads with, per role. */
 export type TodaySubject =
   | { kind: "project"; projectId: string; name: string; scope: "portfolio" | "own" }
   | { kind: "pod"; pod: DirectoryItemResponse }
@@ -38,7 +38,7 @@ export type TodaySubject =
   | { kind: "none"; loading: boolean };
 
 /**
- * The first block's subject (D96): for an executive, a manager and an admin the
+ * The first block's subject: for an executive, a manager and an admin the
  * worst project of the portfolio; for a product owner the worst of their own
  * (else the worst of all); for a scrum master the worst pod they run; for a
  * developer their own check-in. Worst by today's colour, as every switcher

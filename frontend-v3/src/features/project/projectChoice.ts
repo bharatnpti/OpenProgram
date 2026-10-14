@@ -1,4 +1,4 @@
-// Which project the Project page opens, and what its switcher lists (D86): the
+// Which project the Project page opens, and what its switcher lists: the
 // projects the server lets the person open, theirs first, then the ones they
 // opened lately in this browser, then the rest by programme, worst first. The
 // URL always wins; the default applies only to a bare /projects. Pure, with

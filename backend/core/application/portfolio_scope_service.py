@@ -15,7 +15,7 @@ For every project the person reads:
   run of their own projects.
 
 A finding is never sent from here: a rule switched to ask its owner asks
-through the day report (D16), so a finding says so instead of offering a send.
+through the day report, so a finding says so instead of offering a send.
 """
 
 from __future__ import annotations

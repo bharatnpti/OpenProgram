@@ -147,7 +147,7 @@ class TodayCountsResponse(BaseModel):
     replies: RepliesCountDto | None = Field(
         description=(
             "The day's replies over the people counted; null for an executive when they "
-            "are fewer than five (D104)."
+            "are fewer than five."
         )
     )
     open_warnings: int

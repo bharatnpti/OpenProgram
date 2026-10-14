@@ -84,7 +84,7 @@ history, so a past day's ring says how findings stand now.
 
 ## Console (frontend-v3)
 
-Drawn to be read in five seconds (decision D78):
+Drawn to be read in five seconds:
 
 - **Overall › Timeline** (`features/overall/TimelineSection.tsx`), second after
   the answer line in the order `features/overall/sections.ts` keeps. The

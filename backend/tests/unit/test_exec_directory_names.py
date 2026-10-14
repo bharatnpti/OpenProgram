@@ -1,4 +1,4 @@
-"""An executive reads no person from the directory lists, the review flow or the feed (D87, D103).
+"""An executive reads no person from the directory lists, the review flow or the feed.
 
 ``GET /pods`` named each pod's escalation contacts and listed its member ids; the
 programs, projects and workstreams lists named their owner, TPM and scrum master;
@@ -392,7 +392,7 @@ def test_the_review_flow_counts_no_pod_of_fewer_than_five_for_the_executive(
         # No scope, as before: the whole tenant has no count to give.
         tenant = _member_count(client, "exec")
 
-    # The executive reads a count only of a group of five or more (D99, D104).
+    # The executive reads a count only of a group of five or more.
     assert counts["exec"] == {"pod-one": None, "pod-four": None, "pod-five": 5, "pod-six": 6}
     # Everyone else, an executive who holds another role too among them, reads each count.
     for role in ("mgr", "exec,mgr", "exec,sm", "admin", "po", "sm"):

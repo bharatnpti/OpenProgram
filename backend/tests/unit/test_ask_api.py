@@ -388,7 +388,7 @@ async def test_ask_route_labels_each_reference_and_keeps_the_ids(
 
     assert response.status_code == 200
     body = response.json()
-    # An executive reads the person as their team (D103), a manager by name.
+    # An executive reads the person as their team, a manager by name.
     assert body["answer"] == "Data Pod is amber: a team member sent a partial update."
     assert body["references"] == ["U0AA1OMAR01", "pod-data", "CHK-8", "U-missing"]
     assert body["sources"] == [

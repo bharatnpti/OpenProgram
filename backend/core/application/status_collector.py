@@ -3542,18 +3542,18 @@ class StatusCollector:
         answers: Sequence[ProposalAnswer],
         answered_at: datetime | None = None,
     ) -> ConsoleConsentFinish:
-        """Finish in the chat what a console answer to a check-in's proposal settled (D89).
+        """Finish in the chat what a console answer to a check-in's proposal settled.
 
         The person answered "Jira changes waiting for your yes" in the console
         instead of the DM (``WriteBackService.resolve_proposal``). First the DM
         gets one line, "Answered in the console: CHK-4 moved to Done in Jira.",
         so the thread does not keep asking. Then:
 
-        - a check-in held open for the answer (G1: "clarifying", its signals
+        - a check-in held open for the answer ("clarifying", its signals
           kept) is finalized once nothing is pending, exactly as the chat
           answer finalizes it, with the usual ack;
         - a finalized check-in (a later yes) has its status marked with the
-          update it applied (N48).
+          update it applied.
 
         Only the person's own check-in, and only answers that did something:
         one another answer settled first (``already_answered``) or a yes the
@@ -4756,7 +4756,7 @@ def _compose_late_update_ack_text(
     held: Sequence[OpenMergeRequestHold] = (),
     asks: Sequence[AskAck] = (),
 ) -> str:
-    """The one ack of a late update (G9), naming who it asked and tracker updates."""
+    """The one ack of a late update, naming who it asked and tracker updates."""
     text = _with_asks_note(LATE_UPDATE_ACK_TEXT, asks, max_chars)
     for note in (_applied_write_back_note(applied), *_open_merge_request_notes(held)):
         if note is not None and len(f"{text} {note}") <= max_chars:

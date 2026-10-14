@@ -1,4 +1,4 @@
-"""How an executive reads a person: by role or owning team, never by name (D87, D98).
+"""How an executive reads a person: by role or owning team, never by name.
 
 Executives read counts, work items and the team that owns them. Wherever a read
 they open names a person (the committed date's "set by", a question's "asked
@@ -13,7 +13,7 @@ by", a requirement's assignee, a brief's sentence), they get instead:
 reads people (a manager or scrum master who is also an executive keeps names).
 Decided on the server, per role, never by the console hiding it.
 
-``SMALL_GROUP`` is the small-group rule (D99, D104): an executive gets no
+``SMALL_GROUP`` is the small-group rule: an executive gets no
 people counts for a pod, a project or a program of fewer people; its people
 are counted in the smallest group above it that is large enough, else nowhere.
 Its dates, verdicts and work still show.
@@ -34,7 +34,7 @@ from core.application.person_names import UNKNOWN_PERSON
 from core.domain.auth import Principal, Role
 from core.domain.graph import EdgeKind, GraphEdge, GraphNode, JsonScalar, NodeKind
 
-#: D99, D104: an executive reads no people counts for a pod, project or program of fewer.
+#: An executive reads no people counts for a pod, project or program of fewer people.
 SMALL_GROUP = 5
 #: How a group under ``SMALL_GROUP`` reads to an executive, in place of its people
 #: counts: where its people are counted instead.
@@ -99,7 +99,7 @@ class PeopleWords:
 
     labels: Mapping[str, str] = field(default_factory=dict)
     by_name: Mapping[str, str] = field(default_factory=dict)
-    #: The pods, projects and programs under ``SMALL_GROUP`` people (D99, D104),
+    #: The pods, projects and programs under ``SMALL_GROUP`` people,
     #: whose people a reader of these words reads no counts of; set by the reader.
     small_groups: frozenset[str] = frozenset()
 

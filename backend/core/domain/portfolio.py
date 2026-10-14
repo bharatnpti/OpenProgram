@@ -1,7 +1,7 @@
 """Will we make the date? across the portfolio: one line per project, in plain words.
 
 Pure: the order projects are listed in (worst first), the filters, the one
-reason line a project's card carries, and today's health as words (D92: one
+reason line a project's card carries, and today's health as words (one
 colour per project, the date's verdict; health is said, never a second
 colour). Every reason counts work items; none names or counts a person.
 """

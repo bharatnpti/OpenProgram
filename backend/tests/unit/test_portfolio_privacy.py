@@ -1,4 +1,4 @@
-"""The portfolio's heat map and attention read name nobody to an executive (D87).
+"""The portfolio's heat map and attention read name nobody to an executive.
 
 The same day read by a manager names who has not answered and whose blockers
 are open; read by an executive it counts them, names the work items, and holds
@@ -206,10 +206,10 @@ def test_a_manager_reads_who_and_an_executive_reads_counts(settings: Settings) -
     assert _named(attention) == []
     text = json.dumps(heatmap)
     assert "waiting on" not in text and "schema" not in text.casefold()
-    # No one's cell but the reader's own, which is on the "no pod" row (N5).
+    # No one's cell but the reader's own, which is on the "no pod" row.
     people = [cell for cell in heatmap["cells"] if cell["entity_ref"]["kind"] == "developer"]
     assert [cell["entity_ref"]["id"] for cell in people] == ["dev-elle"]
-    # The reasons still say on which work; a project of two counts nobody (D104).
+    # The reasons still say on which work; a project of two counts nobody.
     project = next(cell for cell in heatmap["cells"] if cell["entity_ref"]["id"] == "project-1")
     assert any("KEY-1" in line for line in project["reasons"])
     assert not any("1 of 2" in line for line in project["reasons"]), project["reasons"]

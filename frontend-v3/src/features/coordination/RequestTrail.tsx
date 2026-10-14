@@ -6,7 +6,7 @@ import { cn } from "../../lib/utils";
 import { trailLine } from "./requestWords";
 
 /**
- * What happened to one ask, and what is due (D91), numbered oldest first: asked
+ * What happened to one ask, and what is due, numbered oldest first: asked
  * (and whether the DM went out), acknowledged (with the when its reply gave),
  * named in the day report by the escalation matrix, resolved or cleared. Only
  * what is on record or what the matrix makes due: a step that has not happened

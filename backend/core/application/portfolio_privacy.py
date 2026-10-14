@@ -1,4 +1,4 @@
-"""What the portfolio's reads say to a reader who sees counts, never a person (D87).
+"""What the portfolio's reads say to a reader who sees counts, never a person.
 
 The heat map and Exec Today's attention read are one read of the day for a
 manager and an executive alike, and their reasons name people: "3 of 4 haven't
@@ -9,7 +9,7 @@ per person, for the scrum master and the manager), so they get the same day
 worded with nobody in it:
 
 - every person's cell but the reader's own is left out (a person in no pod
-  still sees their own check-in, N5);
+  still sees their own check-in);
 - a blocker is "an open blocker" on its work item, never its owner's words;
 - a dependency is another team's, never a named person's;
 - no reason prints a person's name: each says how many, and on which work.
@@ -76,7 +76,7 @@ def counted_day(day: AttentionDay) -> AttentionDay:
     """The day with no person's name to print: reasons count people, never list them.
 
     A pod, project or program of fewer than ``SMALL_GROUP`` people gets no
-    people counted on it at all (D99, D104): its people are counted in the
+    people counted on it at all: its people are counted in the
     smallest group above it that is large enough, else in none.
     """
     graph = day.graph
@@ -90,7 +90,7 @@ def counted_day(day: AttentionDay) -> AttentionDay:
 
 def small_groups(graph: TeamGraph) -> dict[str, str]:
     """Each pod, project and program under ``SMALL_GROUP`` people, with the line said
-    in place of its counts: where its people are counted instead (D99, D104)."""
+    in place of its counts: where its people are counted instead."""
     sizes = {
         node_id: len(graph.under(node_id, NodeKind.DEVELOPER))
         for node_id, kind in graph.kinds.items()
@@ -125,8 +125,7 @@ def small_groups(graph: TeamGraph) -> dict[str, str]:
 def without_small_group_people(
     statuses: Iterable[NodeStatus], small: Collection[str]
 ) -> list[NodeStatus]:
-    """Each small group's status without its people's own updates among its factors
-    (D99, D104).
+    """Each small group's status without its people's own updates among its factors.
 
     So no line made from its factors ("1 missing update") counts its people;
     its colour stays, and the group above that is large enough still counts them.
@@ -140,11 +139,11 @@ def without_small_group_people(
 
 
 def counted_tree(view: ProgramTreeView) -> ProgramTreeView:
-    """A program's tree with nobody in it, for a reader who counts people (D103).
+    """A program's tree with nobody in it, for a reader who counts people.
 
     No person's node and no edge to one: each pod, project and program says how
-    many people it holds instead, and none at all under ``SMALL_GROUP`` (D99,
-    D104). Every factor is worded as on the heat map: a blocker is "Open
+    many people it holds instead, and none at all under ``SMALL_GROUP``.
+    Every factor is worded as on the heat map: a blocker is "Open
     blocker." on its work item, a dependency another team's, and no person's
     own status is among a team's factors.
     """
@@ -171,7 +170,7 @@ def counted_tree(view: ProgramTreeView) -> ProgramTreeView:
 
 
 def counted_progress(view: ProjectProgressView) -> ProjectProgressView:
-    """A project's progress with nobody in its factors, for an executive (D87).
+    """A project's progress with nobody in its factors, for an executive.
 
     No person's own status is among them (an executive reads no one's
     check-in: their counts are in the project's), a blocker is "Open blocker."

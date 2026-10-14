@@ -11,7 +11,7 @@ import { switcherSections, type ProjectOption } from "./projectChoice";
 export const SHOWN_OPTIONS = 100;
 
 /**
- * The Project page's title, which opens the project switcher (D86): a search
+ * The Project page's title, which opens the project switcher: a search
  * over the projects the server lets the person open, theirs first, then the
  * ones opened lately in this browser, then the rest by programme. Typing
  * filters by name, programme or Jira key; the arrow keys move, Enter opens,

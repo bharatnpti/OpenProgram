@@ -15,7 +15,7 @@ import {
 const browser = () => window.localStorage;
 
 /**
- * The projects the person may open, as the server decides it (R1): a
+ * The projects the person may open, as the server decides it: a
  * developer's and a scrum master's are their own part of the tree (no "All"
  * group), everyone who reads project progress (product owner, manager,
  * executive, admin) every project, with theirs marked. Also the programmes,

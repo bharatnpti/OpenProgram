@@ -1,4 +1,4 @@
-"""Ask's tools for an executive say each person as the Project page does (D103).
+"""Ask's tools for an executive say each person as the Project page does.
 
 A manager's Ask reads names; an executive's reads the role ("the product
 owner") or the owning team ("Payments Pod") in every tool result, with no

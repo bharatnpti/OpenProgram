@@ -79,7 +79,7 @@ async def project_requirements(
     response = RequirementsResponse.from_view(
         view, timeline_days=timeline_days, forecast_needed_days=rule.min_sample_days
     )
-    # An executive reads each requirement's assignee as their team (D87, D98).
+    # An executive reads each requirement's assignee as their team.
     return for_reader(response, words)
 
 

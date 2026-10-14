@@ -1,4 +1,4 @@
-"""Why the date moved, in words a leader reads in five seconds (decision D78).
+"""Why the date moved, in words a leader reads in five seconds.
 
 Where the date stands comes first ("Likely by 19 Mar, 3 months after the
 committed 15 Dec."), then why it moved, in at most three causes:

@@ -1,6 +1,6 @@
 """Profiles per pod membership: read, set, suggested, and handed to the readers that route by them.
 
-Who sets a profile (D8 keeps them rights-free, so this is about routing only):
+Who sets a profile (profiles are rights-free, so this is about routing only):
 
 - an admin, in every pod;
 - a scrum master, in the pods they run (``ForecastService.runs_pod``: they are

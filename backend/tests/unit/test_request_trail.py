@@ -1,4 +1,4 @@
-"""A request's trail says only what happened or is due (D91), and who reads it.
+"""A request's trail says only what happened or is due, and who reads it.
 
 The demo fixture: Foundations holds the Runtime Pod (Asha, Liam, Omar). Here
 the Runtime Pod names Zoe as its scrum master and Ira as its manager, and the

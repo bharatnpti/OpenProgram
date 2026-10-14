@@ -132,7 +132,7 @@ class NarrativeBriefService:
         body = await self._compose_body(tenant_id, kind, scope_id, as_of, title, facts)
         sources = facts.sources
         if kind is BriefKind.EXEC:
-            # Executives read roles, teams and counts, never a person (D87): the
+            # Executives read roles, teams and counts, never a person: the
             # brief is grounded on the named facts, then says each person as
             # their role or team, and lists no person among its sources.
             words = await self._people_words(tenant_id, self._day(as_of))
@@ -207,7 +207,7 @@ class NarrativeBriefService:
                 scope_ref=_scope_ref(kind, scope_id),
                 checkins_today=await self._checkins_today(tenant_id, team_ids, day),
                 headline=await self._headline(tenant_id, kind, as_of),
-                # An executive counts no one in a portfolio of fewer than five (D104).
+                # An executive counts no one in a portfolio of fewer than five.
                 people_counted=kind is not BriefKind.EXEC or not is_small(len(team_ids)),
             )
         )
@@ -269,7 +269,7 @@ class NarrativeBriefService:
             )
             # The status it states is the heat map as an executive reads it: the
             # teams' cells, no person's, and no people counted on a group of
-            # fewer than five (D87, D99, D104).
+            # fewer than five.
             counted = await self._persona_view_service.portfolio_heatmap(
                 tenant_id, as_of, today=as_of, counts_only=True
             )
@@ -346,7 +346,7 @@ class NarrativeBriefService:
     async def _headline(self, tenant_id: str, kind: BriefKind, as_of: datetime) -> str | None:
         """The exec brief's day as Exec Today's hero says it: the same cause, the same
         counts, read as an executive reads them (no people counted on a program of
-        fewer than five, D104)."""
+        fewer than five)."""
         if kind is not BriefKind.EXEC:
             return None
         day = self._day(as_of)

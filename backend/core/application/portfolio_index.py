@@ -1,7 +1,7 @@
 """The projects a person reads across the portfolio, and the tree around them, read once.
 
 The bulk reads behind Will we make the date?, Scope control and Early warnings
-(D90) start here: one read of the day's nodes and ``contains`` edges gives
+ start here: one read of the day's nodes and ``contains`` edges gives
 every readable project with its programmes and pods, each pod's requirement
 keys, each person's pods and every issue by its key. Nothing per project is
 read here: what a read needs per project it reads itself, for the projects it

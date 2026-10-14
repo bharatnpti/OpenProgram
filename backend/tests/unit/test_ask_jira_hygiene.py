@@ -57,7 +57,7 @@ def _tool(client: TestClient, role: Role, subject: str = "someone") -> JiraHygie
     principal = Principal(tenant_id=TENANT, subject=subject, roles=frozenset({role}))
     tools = _service(client).tools_for(principal, date.today())
     tool = next((tool for tool in tools if tool.name == "jira_hygiene"), None)
-    # An executive's tools say each person as their role or team (D103).
+    # An executive's tools say each person as their role or team.
     inner = tool.inner if isinstance(tool, NamelessTool) else tool
     assert inner is None or isinstance(inner, JiraHygieneTool)
     return tool  # type: ignore[return-value]

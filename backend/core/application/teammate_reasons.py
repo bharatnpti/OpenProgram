@@ -1,4 +1,4 @@
-"""Why a pod has its colour, as a developer in it reads it (D102).
+"""Why a pod has its colour, as a developer in it reads it.
 
 A developer opens their own pod's reasons ("Why this colour") but reads no
 teammate's check-in: the reasons speak in counts and work items. A teammate's

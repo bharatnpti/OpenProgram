@@ -142,7 +142,7 @@ def test_every_role_can_read_its_own_work() -> None:
 def test_every_role_but_the_executive_reads_the_day_reports() -> None:
     """A day report is what its readers are sent, so its team may read it.
 
-    Not an executive on their own (D103): the report is an action list that
+    Not an executive on their own: the report is an action list that
     names each owner, and an executive reads no person's name in the console;
     an executive who also holds another role reads it as that role. Sending
     and setting up stay with the scrum master, manager and admin.

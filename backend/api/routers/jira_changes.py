@@ -1,4 +1,4 @@
-"""Today › "Jira changes waiting for your yes": the person's own list, and their answer (D89).
+"""Today › "Jira changes waiting for your yes": the person's own list, and their answer.
 
 Under ``/me`` only, keyed on the caller: nobody lists or answers anyone
 else's changes, an admin included. A proposal's answer goes through

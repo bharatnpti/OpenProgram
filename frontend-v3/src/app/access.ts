@@ -1,4 +1,4 @@
-// What each role is offered, in one place: the sidebar's pages (D85), the
+// What each role is offered, in one place: the sidebar's pages, the
 // sections inside them, where the ⌘K palette takes a row, where an address from
 // before the sidebar goes now, and where a link to a page the role is not
 // offered goes instead. A page or section the role is not offered is not drawn
@@ -54,7 +54,7 @@ export function capabilitiesFor(lens: readonly AppRole[]): Capabilities {
 }
 
 /**
- * The sidebar's pages (D85), in its order: Daily (Today, Check-in, Requests),
+ * The sidebar's pages, in its order: Daily (Today, Check-in, Requests),
  * Delivery (the Portfolio, Projects, Pods, Early warnings, Scope control),
  * Insight (Reports, Review flow, Ask Ora) and Setup (People & roles, Admin).
  */
@@ -86,13 +86,13 @@ export type Scope = "pods" | "projects" | "all";
 export type DeliveryScope = "all" | "own";
 
 export type Access = {
-  /** The sidebar's pages the role is offered (perspective-roles §1, D85). */
+  /** The sidebar's pages the role is offered. */
   pages: Record<Page, boolean>;
   /** Check-in: the built-in chat's thread beside the form, on a local tenant only. */
   checkin: { chat: boolean };
   /**
    * Reports: `daily` is each project's day report, for every role but an
-   * executive on their own (D103: it is an action list that names each owner;
+   * executive on their own (it is an action list that names each owner;
    * they read the Project page, and Reports opens on the briefs for them).
    */
   reports: { daily: boolean };
@@ -203,7 +203,7 @@ export function accessOf({ lens, chatEnabled }: Lens): Access {
       flow: can.canReadAggregate,
       ora: can.canReadAggregate,
       // The pods' people and profiles, for whoever reads a pod's people. Not an
-      // executive (D87: no names) and not a developer (their pod's page has them).
+      // executive (no names) and not a developer (their pod's page has them).
       people: has("admin", "mgr", "po", "sm"),
       admin: can.canManageConfig,
     },
@@ -398,7 +398,7 @@ function carried(
 }
 
 /**
- * An address from before the sidebar (D85), where it lives now, with its query
+ * An address from before the sidebar, where it lives now, with its query
  * and hash kept, since links in messages already sent carry them (a day
  * report's, a readiness line's, the impact row's `/reports/<p>/overall?row=…#timeline`).
  * Null for an address that is current. The role's own rules then apply to the
@@ -526,7 +526,7 @@ function roleRedirect(
       return null;
     case "reports":
       if (!access.reports.daily) {
-        // No day report for an executive (D103): a project's opens its Project page,
+        // No day report for an executive: a project's opens its Project page,
         // as a sent report's link did when it was Overall; Reports opens on the briefs.
         if (id === "briefs") return null;
         return go(id ? projectPath(id) : "/reports/briefs");

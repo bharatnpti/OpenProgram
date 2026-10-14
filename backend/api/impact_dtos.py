@@ -1,6 +1,6 @@
 """Why the date moved, as the API reads it: one scope's forecast move over a period, taken apart.
 
-The shapes follow the timeline's (DESIGN §5.4) where they overlap: markers are
+The shapes follow the timeline's where they overlap: markers are
 ``{day, kind, count, items: [{key, title, stage}], change_label}``, and the row
 is ``<scope_kind>:<scope_id>``. Items are work items; ``added_by`` is a name on
 one item's row, left out for readers who may not see it.
@@ -226,7 +226,7 @@ class MarkerResponse(BaseModel):
     change_label: bool | None
     #: Working days this event moved the date, on the measure read: scope events only
     #: (scope added, a bug counted as a requirement, scope removed, reopened), the day's
-    #: step split among its markers by item count (D88). None for the other kinds (D12)
+    #: step split among its markers by item count. None for the other kinds
     #: and for a day whose move is not known.
     working_days: float | None
     p50_days: float | None

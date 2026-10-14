@@ -58,7 +58,7 @@ ACTIVE_WORK_ITEM_STATES = {"proposed", "in_progress", "in_review", "blocked"}
 RISK_FACT_SOURCE = "risk"
 DRIFT_FACT_SOURCE = "drift"
 #: When each drift finding was first seen and when it cleared, one fact per change:
-#: written by the scheduled drift scan, so a finding's age is real (D90's warnings).
+#: written by the scheduled drift scan, so a finding's age on Early warnings is real.
 DRIFT_SEEN_FACT_SOURCE = "drift_seen"
 _RISK_FACT_SCAN_LIMIT = 5000
 # Stated-status confidences presented as "green"/positive; a hard-signal

@@ -1,7 +1,7 @@
-// The sidebar (D85): four groups, each page named by the question it answers.
+// The sidebar: four groups, each page named by the question it answers.
 // Built only from the access map, never from the data, so it is the same length
 // and order for everyone with the same role, and never grows with the number of
-// projects (D86). Type imports, and runtime imports by their .ts path, so
+// projects. Type imports, and runtime imports by their .ts path, so
 // `node --test` runs it as written.
 import { ASK_LABEL } from "../features/assistant/persona.ts";
 import type { Access, Page } from "./access";
@@ -97,7 +97,7 @@ export function shownGroups(access: Pick<Access, "pages" | "reports">): NavGroup
   })).filter((group) => group.items.length > 0);
 }
 
-/** An item as this role reads it: Reports without day reports is the briefs (D103). */
+/** An item as this role reads it: Reports without day reports is the briefs. */
 function shown(item: NavItem, access: Pick<Access, "reports">): NavItem {
   if (item.page !== "reports" || access.reports.daily) return item;
   return { ...item, to: "/reports/briefs", hint: "Briefs written from the day's facts" };

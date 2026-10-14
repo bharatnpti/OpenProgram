@@ -247,7 +247,7 @@ async def test_scope_events_carry_their_days_and_the_evidence_none() -> None:
     assert (labelled.working_days, labelled.p85_days) == (4.0, 4.0)
     assert unlabelled.working_days == 3.0
     assert all(marker.taken_apart and marker.reconstructed for marker in (labelled, unlabelled))
-    # Blockers, late requirements and the committed date are evidence: no days (D12).
+    # Blockers, late requirements and the committed date are evidence: no days.
     evidence = {"late", "blocker_opened", "blocker_closed", "committed_date_changed"}
     others = [marker for (_day, kind), marker in markers.items() if kind in evidence]
     assert {marker.kind for marker in others} == evidence

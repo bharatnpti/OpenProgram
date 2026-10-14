@@ -1,4 +1,4 @@
-// Pure words for Today's cards (console IA lane T, D96): the replies of the day,
+// Pure words for Today's cards: the replies of the day,
 // open warnings, the Jira changes waiting for the person's yes and who must act.
 // Type imports and extensioned imports only, so `node --test` runs it.
 import type {

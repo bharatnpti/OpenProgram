@@ -12,7 +12,7 @@ import { planningWords } from "../features/scope/scopeWords";
 
 /**
  * Scope control (`/scope`): what joined each project after planning, and whether
- * Jira is tidy, in one read across projects (`GET /portfolio/scope`, D90). A
+ * Jira is tidy, in one read across projects (`GET /portfolio/scope`). A
  * project picked (`?project=`) opens its own planning baseline and Jira hygiene
  * below, where they are acted on, as each reader's project board allows.
  */

@@ -1,4 +1,4 @@
-"""A request's trail: what happened to an ask between two people, and what is due (D91).
+"""A request's trail: what happened to an ask between two people, and what is due.
 
 The steps are only what is on record, or what the escalation matrix makes due:
 
@@ -15,7 +15,7 @@ The steps are only what is on record, or what the escalation matrix makes due:
 There are no reminder steps: nothing reminds the person asked yet, apart from
 retrying a DM that did not go out. Readers are the asker, the person asked and
 the roles that read the requests board; an executive who is neither reads the
-trail with no one named (D87), and the board itself as counts only.
+trail with no one named, and the board itself as counts only.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ from core.ports.repositories import (
     TimeSeriesRepository,
 )
 
-#: Said to an executive who asks for the list of requests (D87).
+#: Said to an executive who asks for the list of requests.
 REQUEST_COUNTS_ONLY = (
     "An executive reads the requests as counts: every ask names who is waiting on whom."
 )

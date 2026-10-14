@@ -20,7 +20,7 @@ import type { WorkPod } from "./workPods";
  * tracked (Jira project, repositories), its people (never for an executive,
  * who sees no names), its pods as links to their pages, workstreams only when
  * in use, the progress and tasks, and every reason behind today's health,
- * folded. The dates and the colour are said above, once (D92). `namesOnly` is a
+ * folded. The dates and the colour are said above, once. `namesOnly` is a
  * developer's form: the pods by name, their own one open, nothing else.
  */
 export function ProjectWork({
@@ -38,7 +38,7 @@ export function ProjectWork({
   namesOnly?: boolean;
 }) {
   const { access } = useRole();
-  // An executive reads every project but no pod: the one role with names kept out (D87).
+  // An executive reads every project but no pod: the one role with names kept out.
   const executive = access.pages.portfolio && !access.pages.pods;
   const progress = useQuery({
     queryKey: ["project", project?.id ?? "", "progress"],

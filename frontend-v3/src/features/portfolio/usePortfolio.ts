@@ -7,7 +7,7 @@ import type { PortfolioDeliveryResponse, VerdictFilter } from "../../api/schema"
 export const PAGE = 50;
 
 /**
- * Will we make the date?, a page at a time: one bulk read per page (D90), from
+ * Will we make the date?, a page at a time: one bulk read per page, from
  * the kept forecast rows. The viewing day travels with every read (api/asOf.ts).
  */
 export function usePortfolio(filters: {

@@ -1,4 +1,4 @@
-"""The timeline per project and pod, as the API reads it (DESIGN §5.4).
+"""The timeline per project and pod, as the API reads it.
 
 One row per scope: its span from planning to the committed date, the committed
 date's earlier values, progress, the 50% to 85% band, the team's date, and the
@@ -100,7 +100,7 @@ class TimelineMarkerItemResponse(BaseModel):
     group: ScopeGroup | None
     #: Scope added: whether the item carries the change label.
     change_label: bool | None
-    #: Who brought it in (D14); left out for executives and developers.
+    #: Who brought it in; left out for executives and developers.
     added_by: str | None
     #: A blocker: what it waits on.
     waits_on: str | None
@@ -123,7 +123,7 @@ class TimelineMarkerResponse(BaseModel):
     change_label: bool | None
     #: Working days this event moved the date, on the 85% date: scope events only (scope
     #: added, a bug counted as a requirement, scope removed, reopened), the day's step
-    #: split among its markers by item count (D88). None for the other kinds (D12) and
+    #: split among its markers by item count. None for the other kinds and
     #: for a day whose move is not known.
     working_days: float | None
     p50_days: float | None

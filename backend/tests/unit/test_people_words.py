@@ -1,4 +1,4 @@
-"""Who reads people by name, and how an executive reads them instead (D87, D98, D99)."""
+"""Who reads people by name, and how an executive reads them instead."""
 
 from __future__ import annotations
 

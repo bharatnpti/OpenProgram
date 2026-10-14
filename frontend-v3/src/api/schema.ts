@@ -404,7 +404,7 @@ export type ProfileReviewResponse = components["schemas"]["ProfileReviewResponse
 export type AcceptProfilesRequest = components["schemas"]["AcceptProfilesRequest"];
 export type AcceptProfilesResponse = components["schemas"]["AcceptProfilesResponse"];
 
-// Today and Check-in (console IA lane T): Jira changes waiting for the person's yes,
+// Today and Check-in: Jira changes waiting for the person's yes,
 // their own conversation, who must act on a project, and the day's counts.
 export type JiraChangesResponse = components["schemas"]["JiraChangesResponse"];
 export type JiraChangeDto = components["schemas"]["JiraChangeDto"];
@@ -418,7 +418,7 @@ export type ProjectAskDto = components["schemas"]["ProjectAskDto"];
 export type TodayCountsResponse = components["schemas"]["TodayCountsResponse"];
 export type RepliesCountDto = components["schemas"]["RepliesCountDto"];
 
-// The portfolio's bulk reads (D90): Will we make the date?, Scope control, Early warnings.
+// The portfolio's bulk reads: Will we make the date?, Scope control, Early warnings.
 export type PortfolioDeliveryResponse = components["schemas"]["PortfolioDeliveryResponse"];
 export type PortfolioProjectDto = components["schemas"]["PortfolioProjectDto"];
 export type PortfolioPodDto = components["schemas"]["PortfolioPodDto"];
@@ -438,7 +438,7 @@ export type WarningGroupDto = components["schemas"]["WarningGroupDto"];
 export type WarningItemDto = components["schemas"]["WarningItemDto"];
 export type WarningKind = components["schemas"]["WarningKind"];
 
-// Requests and pods (lane R): a request's trail, the board as counts, a pod's ladder.
+// Requests and pods: a request's trail, the board as counts, a pod's ladder.
 export type RequestTrailResponse = components["schemas"]["RequestTrailResponse"];
 export type RequestTrailStepDto = components["schemas"]["RequestTrailStepDto"];
 export type RequestCountsResponse = components["schemas"]["RequestCountsResponse"];

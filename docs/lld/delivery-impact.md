@@ -74,7 +74,7 @@ share) and the window's change. Keys, titles, types, numbers and dates only.
   re-estimated, throughput, rounding, not attributed. The read hands out the
   three causes below, each with working days on the measure, both dates'
   values, a subline and up to 10 items (each with its group).
-- What a leader reads (`impact_words`, D78): where the likely date stands
+- What a leader reads (`impact_words`): where the likely date stands
   against the committed date (`likely_words`: "Likely by 19 Mar, 3 months after
   the committed 15 Dec"), then at most three causes (`causes`): scope added
   (added, reopened, re-estimated larger), scope removed (and re-estimated
@@ -86,7 +86,7 @@ share) and the window's change. Keys, titles, types, numbers and dates only.
   latest ETA or due date at both ends, each move with its cause), evidence
   (open requirements past their due date, ETA or baseline due date; undated
   keys), the timeline's markers per day and kind, and the link to the row.
-- "Added by" (D14): the author of the change that brought the item in (issue
+- "Added by": the author of the change that brought the item in (issue
   type; for a release also its fix version or label), else its creator when it
   was created then, else its reporter. Names only, on the item's own row.
 

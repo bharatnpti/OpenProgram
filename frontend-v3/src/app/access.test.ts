@@ -26,7 +26,7 @@ const pages = (role: AppRole) =>
     .filter(([, on]) => on)
     .map(([page]) => page);
 
-test("each role is offered the sidebar's pages of perspective-roles §1, in the sidebar's order", () => {
+test("each role is offered the sidebar's pages, in the sidebar's order", () => {
   assert.deepEqual(pages("dev"), ["today", "checkin", "projects", "pods", "reports"]);
   assert.deepEqual(pages("sm"), [
     "today",
@@ -67,7 +67,7 @@ test("each role is offered the sidebar's pages of perspective-roles §1, in the 
     "ora",
     "people",
   ]);
-  // No names for an executive (D87): no Requests board, no Pods, no People.
+  // No names for an executive: no Requests board, no Pods, no People.
   assert.deepEqual(pages("exec"), [
     "today",
     "checkin",
@@ -105,7 +105,7 @@ test("the sidebar's groups hold only offered pages, and a group with none is lef
     ["Insight", ["Reports", "Review flow", "Ask Ora"]],
     ["Setup", ["People & roles", "Admin"]],
   ]);
-  // The nav is built from the access map alone: it never grows with the projects (D86).
+  // The nav is built from the access map alone: it never grows with the projects.
   for (const role of ["dev", "sm", "po", "mgr", "exec", "admin"] as const) {
     assert.ok(shownGroups(access(role)).flatMap((group) => group.items).length <= 13, role);
   }
@@ -347,7 +347,7 @@ test("the day report's link opens its own page for every role but the executive"
   }
 });
 
-test("an executive has no Daily view (D103): a report's link opens its project, Reports the briefs", () => {
+test("an executive has no Daily view: a report's link opens its project, Reports the briefs", () => {
   assert.equal(access("exec").reports.daily, false);
   for (const role of ["dev", "sm", "po", "mgr", "admin"] as const) {
     assert.equal(access(role).reports.daily, true, role);

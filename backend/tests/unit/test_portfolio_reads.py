@@ -1,4 +1,4 @@
-"""The portfolio's bulk reads: Will we make the date?, Scope control and Early warnings (D90).
+"""The portfolio's bulk reads: Will we make the date?, Scope control and Early warnings.
 
 One request each, from what is kept, for every project the reader reads; each
 role reads what its project board would show it, and an executive no person.

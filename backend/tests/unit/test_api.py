@@ -1033,7 +1033,7 @@ def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
     assert tree.json()["root_id"] == "program-platform"
     assert heatmap.status_code == 200
     # An exec's heat tile opens the project it names: progress is aggregate, and
-    # its factors are the ones the program tree gives, with nobody in them (D87):
+    # its factors are the ones the program tree gives, with nobody in them:
     # no person's own status, and a blocker without its owner's words.
     assert project.status_code == 200
     assert project.json()["total_tasks"] == 4
@@ -1932,7 +1932,7 @@ def test_directory_names_workstream_people_for_every_role_that_opens_delivery(
     """The member list is admin-only, so the directory carries the names.
 
     Delivery shows a workstream's owner, TPM and SM to every role that opens it
-    but an executive, who reads no person (D87): theirs lists none, and names
+    but an executive, who reads no person: theirs lists none, and names
     no owner, TPM or scrum master in its metadata either.
     """
     app = create_app(settings=settings.model_copy(update={"demo_mode": True}))

@@ -7,7 +7,7 @@ numbers it says:
 
 - what kind of scope was added: a change request (the baseline's change label,
   tenant data), an addition without the label, a bug, or moved in from another
-  release or project, with who brought it in (D14: the changelog author of the
+  release or project, with who brought it in (the changelog author of the
   change that brought it into scope, else its creator or reporter);
 - the two other dates: each move of the committed date with who, when and why,
   and the team's own latest date, before and after, with its cause;
@@ -19,8 +19,8 @@ numbers it says:
   without the change label), bugs, scope removed, reopened, closing late, the
   committed date's moves, and blockers opened and closed for the readers of the
   pod's blockers. The scope events carry the working days their day's step
-  moved the date, split among that day's markers by item count (D88); the
-  others are evidence and carry none (D12).
+  moved the date, split among that day's markers by item count; the
+  others are evidence and carry none.
 
 Who reads it is the delivery forecast's own rule, decided once here for the
 route and for Ora alike (``access``). A developer reads none of it. A scrum
@@ -138,7 +138,7 @@ class ImpactDetail(StrEnum):
 @dataclass(frozen=True, kw_only=True)
 class ImpactAccess:
     detail: ImpactDetail
-    #: Whether "added by" is named on an added item (D14: never for executives).
+    #: Whether "added by" is named on an added item (never for executives).
     added_by: bool
     #: Whether blockers opened and closed are marked: the pod blocker read's readers only.
     blockers: bool = False
@@ -242,7 +242,7 @@ class LateView:
 
 @dataclass(frozen=True, kw_only=True)
 class EvidenceView:
-    """What explains pace without a share of its own (D12)."""
+    """What explains pace without a share of its own."""
 
     late: tuple[LateView, ...] = ()
     more_late: int = 0
@@ -293,8 +293,8 @@ class MarkerView:
     #: Scope events only (scope added, a bug counted as a requirement, scope removed,
     #: reopened): the working days the event moved the date, on the measure read (the
     #: timeline reads the 85% date). Its share of its day's step, split among that day's
-    #: markers of the step by item count, every item counted before the list is cut
-    #: (D88). Blockers, late requirements and the committed date get none (D12).
+    #: markers of the step by item count, every item counted before the list is cut.
+    #: Blockers, late requirements and the committed date get none.
     working_days: float | None = None
     p50_days: float | None = None
     p85_days: float | None = None
@@ -789,7 +789,7 @@ class DeliveryImpactService:
         created: date | None,
         entering: frozenset[str],
     ) -> str | None:
-        """Who brought the item into scope (D14): the author of the change that did,
+        """Who brought the item into scope: the author of the change that did,
         else its creator when it was created then, else its reporter. A member id."""
         since, day = item.since, item.day
         if day is not None:
@@ -870,7 +870,7 @@ class DeliveryImpactService:
         requirement passing its date while open, the committed date's moves, and,
         for the pod blocker read's readers only, blockers opened and closed on the
         scope's requirements. The scope events carry the working days they moved
-        the date on ``measure`` (D88); the others carry none.
+        the date on ``measure``; the others carry none.
         """
         grouped: dict[_MarkerKey, list[MarkerItemView]] = {}
 
@@ -1338,7 +1338,7 @@ def _attribution_markers(
     add: _Add,
 ) -> dict[_MarkerKey, _Moved]:
     """The kept breakdowns' events, day by day: scope added (a bug apart), removed and
-    reopened, with what each moved the date by (D88).
+    reopened, with what each moved the date by.
 
     Each day's own kept row is read, never the period's ledger, so an item added,
     removed and added again is marked on each day with that day's share. A day's
@@ -1346,7 +1346,7 @@ def _attribution_markers(
     up to the step: scope added among the bugs counted as requirements and the
     additions with and without the change label, scope removed and reopened each
     among their own. Time passed, throughput, rounding and re-estimates are never
-    handed to an event (D12). A day is counted as summed() counts it: one whose
+    handed to an event. A day is counted as summed() counts it: one whose
     breakdown is missing, does not follow on from the row before, was not taken
     apart, or came before the period's first likely date is not known.
     """

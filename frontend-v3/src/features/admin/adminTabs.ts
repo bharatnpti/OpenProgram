@@ -1,4 +1,4 @@
-// Admin's tabs, grouped in five (perspective-ux §3.11). The `?tab=` keys stay as
+// Admin's tabs, grouped in five. The `?tab=` keys stay as
 // they were, so every link into Admin holds. No imports, so `node --test` runs it.
 
 export const ADMIN_GROUPS = [

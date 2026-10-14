@@ -1,4 +1,4 @@
-// Where each thing opens in the console, in one place (D85, D86): one Project
+// Where each thing opens in the console, in one place: one Project
 // page and one Pod page, each at its stable id, the Portfolio for a program.
 // Every link the console draws comes from here, so no screen emits an old
 // route. No imports, so `node --test` runs it as written.

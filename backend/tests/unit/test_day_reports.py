@@ -1369,7 +1369,7 @@ def test_every_role_reads_the_reports_todays_report_and_past_sends(
 def test_an_executive_reads_no_day_report_and_one_with_another_role_does(
     settings: Settings,
 ) -> None:
-    """D103: the report names each owner, and an executive reads no person's name.
+    """The report names each owner, and an executive reads no person's name.
 
     They read the project's own page instead. Whom the report is sent to, and
     what it says, stay as they were: an executive among its destinations still

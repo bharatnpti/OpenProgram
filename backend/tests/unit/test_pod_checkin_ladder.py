@@ -1,4 +1,4 @@
-"""The day's silence ladder on a pod's check-ins, and who reads it (D87, lane R).
+"""The day's silence ladder on a pod's check-ins, and who reads it.
 
 The demo fixture: the Runtime Pod holds Asha, Liam and Omar; the Data Pod
 Zoe, Ira and Kai. On 15 Jun Asha replied at 09:07 and Liam was asked at 09:00

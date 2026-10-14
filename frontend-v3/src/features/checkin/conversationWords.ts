@@ -1,4 +1,4 @@
-// Pure words for the person's own conversation on Check-in (D95). Type imports
+// Pure words for the person's own conversation on Check-in. Type imports
 // and extensioned imports only, so `node --test` runs it.
 import type { ConversationResponse, ConversationTurnDto } from "../../api/schema";
 import { formatDay } from "../../lib/format.ts";

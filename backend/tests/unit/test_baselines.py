@@ -473,7 +473,7 @@ def test_api_the_person_acting_is_named_on_the_baseline(settings: Settings) -> N
     assert marked.status_code == 201, marked.text
     assert (marked.json()["set_by"], marked.json()["set_by_name"]) == ("U1003", "Mina Patel")
     assert read.json()["active"]["set_by_name"] == "Mina Patel"
-    # An executive reads the role that marked it, never the person (D87, D98).
+    # An executive reads the role that marked it, never the person.
     active = exec_read.json()["active"]
     assert (active["set_by"], active["set_by_name"]) == ("the product owner", "the product owner")
 

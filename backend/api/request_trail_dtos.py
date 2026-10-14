@@ -1,4 +1,4 @@
-"""A request's trail and the requests board as counts (lane R, D91).
+"""A request's trail and the requests board as counts.
 
 The trail says only what happened or is due. A step worked out from the
 escalation matrix says so (``computed``), and whether a day report carried it

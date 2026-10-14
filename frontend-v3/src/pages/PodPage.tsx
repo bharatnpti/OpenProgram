@@ -48,11 +48,11 @@ import { readState } from "../lib/readState";
 import { ragSeverity } from "../lib/status";
 
 /*
- * One pod, at `/pods/:podId` (D86): the Delivery pod panel and the scrum
+ * One pod, at `/pods/:podId`: the Delivery pod panel and the scrum
  * master's morning on one page. Top to bottom: the pod (its switcher, colour
  * and reason, scrum master, members and the day's counts); its dates and its
  * timeline row; today's status of its tasks; who needs a nudge (the roles that
- * read pod check-ins only, D87); blockers and waits; why it has its colour;
+ * read pod check-ins only); blockers and waits; why it has its colour;
  * its people. A reader of its dates only gets the first two. A bare `/pods`
  * opens the worst of the person's own pods, else the one opened last, else the
  * worst pod; the URL always wins.
@@ -295,7 +295,7 @@ function PodView({
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-3">{switcher}</div>
         {full && !read?.error ? (
           <p className="mt-1 text-[15px] text-grey-body">
-            {/* Today's health in words, never a second colour beside the dates (D92). */}
+            {/* Today's health in words, never a second colour beside the dates. */}
             {read?.isLoading
               ? "Loading…"
               : `Today: ${

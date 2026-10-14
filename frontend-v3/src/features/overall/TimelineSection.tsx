@@ -20,7 +20,7 @@ import { type Row } from "./timeline";
 import { VizCard } from "./viz";
 
 /**
- * Overall's Timeline (DESIGN §5, simplified by D78): one row each for the
+ * Overall's Timeline: one row each for the
  * project (or the release picked above), its releases and its pods, from
  * planning to the committed date, with what is done, the likely finish and a
  * dot on each day something changed; then why the picked row's date moved, with

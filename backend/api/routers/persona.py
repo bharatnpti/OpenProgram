@@ -128,8 +128,8 @@ async def pod_checkins(
     person_names: Annotated[PersonNames, Depends(get_person_names)],
 ) -> PodCheckinsResponse:
     await _ensure_pod_detail(scope, principal, pod_id)
-    # The day's ladder and each person's check-in time only for their readers
-    # (D87); a developer on their own pod gets the counts and their own row.
+    # The day's ladder and each person's check-in time only for their readers;
+    # a developer on their own pod gets the counts and their own row.
     reads = await pod_checkin_reads(scope, principal, pod_id)
     try:
         view = await persona_service.pod_checkins(principal.tenant_id, pod_id, as_of, reads)
@@ -157,7 +157,7 @@ async def pod_rollup(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if not reads_people(principal):
         # A developer on their own pod reads counts and work items, never a
-        # teammate's check-in (D102); their own reasons stay theirs.
+        # teammate's check-in; their own reasons stay theirs.
         view = teammates_counted(view, principal.subject)
     return PodRollupResponse.from_view(view)
 
@@ -192,7 +192,7 @@ async def project_progress(
 ) -> ProjectProgressResponse:
     """The project's colour, its tasks, and the factors behind the colour.
 
-    An executive reads it with nobody in it (D87): no person's own status among
+    An executive reads it with nobody in it: no person's own status among
     the factors, a blocker as "Open blocker." on its work item, and every name
     said as a role or a team.
     """
@@ -231,9 +231,9 @@ async def program_tree(
 ) -> ProgramTreeResponse:
     """The tree under a node with each node's status.
 
-    A reader who counts people only (an executive) reads it with nobody in it
-    (D103): no person's node, each pod, project and program with how many people
-    it holds (none under five, D99, D104), and its factors worded as on the heat map.
+    A reader who counts people only (an executive) reads it with nobody in it:
+    no person's node, each pod, project and program with how many people
+    it holds (none under five), and its factors worded as on the heat map.
     """
     _ensure(principal, Capability.READ_PROGRAM_ROLLUP)
     view = await persona_service.program_tree(principal.tenant_id, program_id, as_of)
@@ -271,7 +271,7 @@ async def portfolio_heatmap(
 ) -> PortfolioHeatmapResponse:
     """The day's heat, each cell with why it has its colour.
 
-    An executive reads it with nobody in it (D87): no person's cell but their
+    An executive reads it with nobody in it: no person's cell but their
     own, and reasons that count people and name work items, never a name or a
     blocker's own words. Decided here by role, never by the console hiding it.
     """
@@ -305,7 +305,7 @@ async def portfolio_attention(
 
     The heat map's read (the same colours and reasons) with the portfolio's
     risk and drift findings, so it needs both: manager, exec and admin hold them.
-    An executive's names nobody, as their heat map does (D87).
+    An executive's names nobody, as their heat map does.
     """
     _ensure(principal, Capability.READ_PORTFOLIO_HEATMAP)
     _ensure_aggregate(principal)
@@ -438,10 +438,10 @@ async def narrative_briefs(
     """The latest briefs, newest first.
 
     An executive reads every brief with each person said as their role or team,
-    and no person among its sources (D87): a pod's brief names its people to the
+    and no person among its sources: a pod's brief names its people to the
     people who run pods, never to an executive. A brief written before the
     executive brief stopped naming people reads the same way. Nor do they read
-    the brief of a pod or project of fewer than five people (D99, D104): its
+    the brief of a pod or project of fewer than five people: its
     text counts its people ("two of three confirmed"); its dates and verdict
     are on the project's page.
     """
@@ -499,7 +499,7 @@ async def portfolio_cross_person_requests(
 ) -> CrossPersonRequestsResponse:
     _ensure_aggregate(principal)
     if not reads_request_names(principal):
-        # Every ask names two people and its note often a third (D87): an
+        # Every ask names two people and its note often a third: an
         # executive reads the waits as counts (GET /cross-person-requests/counts).
         raise HTTPException(status_code=403, detail=REQUEST_COUNTS_ONLY)
     requests = await service.list_portfolio(principal.tenant_id, status)
@@ -594,7 +594,7 @@ async def project_risks(
         risks=await _risk_responses(principal.tenant_id, findings, person_names),
         drift=await _drift_responses(principal.tenant_id, drift, person_names),
     )
-    # An executive reads each owner as their role or team, and no one's own status (D87).
+    # An executive reads each owner as their role or team, and no one's own status.
     return for_reader(response, words)
 
 

@@ -11,8 +11,8 @@ import { formatDate } from "../lib/format";
 import { plural, spaced } from "../lib/words";
 
 /*
- * What was the Coordination tab, in two parts the sidebar now places apart
- * (D85): the requests board, which lives on Requests (/requests,
+ * What was the Coordination tab, in two parts the sidebar now places apart:
+ * the requests board, which lives on Requests (/requests,
  * pages/RequestsPage.tsx) and only there, and the briefs here (Reports ›
  * Briefs, /reports/briefs, pages/BriefsPage.tsx).
  */

@@ -375,7 +375,7 @@ async def _primary_key(executor: PsycopgAsyncExecutor) -> list[str]:
 async def test_the_project_key_migration_goes_down_and_up_again(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """0044 down: a pod's day under two projects is dropped (D80), a release's day under two
+    """0044 down: a pod's day under two projects is dropped, a release's day under two
     keeps the row computed last, every other row stays; 0044 up again: the same key as before."""
     monkeypatch.setenv("OPENPROGRAM_DATABASE_URL", DATABASE_URL)
     get_settings.cache_clear()

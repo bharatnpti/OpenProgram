@@ -44,11 +44,11 @@ import { guessToday } from "../lib/viewingDate";
 import { deliveryNote, plural, requestKindLabel } from "../lib/words";
 
 /*
- * Requests (`/requests`): who is waiting on whom (D85, D91). The board is the
+ * Requests (`/requests`): who is waiting on whom. The board is the
  * Coordination tab's, as a table: Waiting · On · What · Since · Status, the
  * longest wait first, each row opening its trail. Open, or resolved in the
  * last 30 days; the viewer's own pods or projects, or everything. An executive
- * reads the waits as counts only, never who asked whom (D87). What waits on
+ * reads the waits as counts only, never who asked whom. What waits on
  * the viewer, and what they raised, stays on their Today (Your asks).
  */
 

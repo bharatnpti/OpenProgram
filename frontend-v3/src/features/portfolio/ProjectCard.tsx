@@ -16,7 +16,7 @@ import {
 
 /**
  * One project on Will we make the date?: its name and release, the verdict as
- * the one pill, the reason with today's health in words (D92), the three dates
+ * the one pill, the reason with today's health in words, the three dates
  * side by side, the bar, done per pod, and the way to the project's page.
  */
 export function ProjectCard({

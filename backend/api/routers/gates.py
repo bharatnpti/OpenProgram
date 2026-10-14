@@ -123,7 +123,7 @@ async def gate_board(
         view = await service.board(principal.tenant_id, project_id, as_of, release)
     except GraphNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    # An executive reads who asked and who was asked as a role or a team (D87, D98).
+    # An executive reads who asked and who was asked as a role or a team.
     return for_reader(GateBoardResponse.from_view(view), words)
 
 

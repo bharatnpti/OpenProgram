@@ -20,7 +20,7 @@ import { useViewingDate } from "./viewingDate";
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
 /**
- * The console's frame (D85): the header (logo, Jump to… ⌘K, the viewing day,
+ * The console's frame: the header (logo, Jump to… ⌘K, the viewing day,
  * acting-as on a local tenant, the avatar), the grouped sidebar on a wide
  * screen and behind the menu button on a narrower one, and the page.
  */
@@ -167,7 +167,7 @@ export function Layout() {
  * The sidebar's groups, each item named by the question it answers, only what
  * the role is offered (app/nav.ts). The project or pod open on the page shows
  * as one small line under its item, for orientation; the nav itself never
- * lists projects (D86).
+ * lists projects.
  */
 function SideNav() {
   const { access } = useRole();

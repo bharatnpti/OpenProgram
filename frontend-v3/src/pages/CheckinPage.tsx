@@ -11,7 +11,7 @@ import { CheckinCard } from "../features/today/CheckinCard";
 import { TaskList } from "../features/today/TaskList";
 
 /**
- * Check-in (`/check-in`, D95): where the person's own work stands. On the left
+ * Check-in (`/check-in`): where the person's own work stands. On the left
  * their own conversation with Ora for the day, read-only and styled like the
  * chat; on the right the console's way to say the same, the check-in to
  * confirm or correct and each task to update, which counts as the day's reply.

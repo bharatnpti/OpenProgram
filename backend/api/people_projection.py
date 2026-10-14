@@ -1,4 +1,4 @@
-"""What a response says about people to a reader who sees no names (D87, D98).
+"""What a response says about people to a reader who sees no names.
 
 The Project page, Today and the Portfolio read the same DTOs for every role.
 For an executive (``people_words.hides_names``) each of those routes passes its
@@ -20,7 +20,7 @@ nobody:
   they hold ("the scrum master", "the manager"), with no member or chat id;
 - a feed event about a person has no entity reference (it would hold their member
   id) and says who it is about as the person's stand-in, in its details too;
-- a review-flow scope of fewer than five people has no member count (D99, D104).
+- a review-flow scope of fewer than five people has no member count.
 
 Everyone else gets the response as it was built. The route decides by the
 principal, never the console.
@@ -90,7 +90,7 @@ _NAME_FIELDS: dict[str, str | None] = {
 }
 #: Maps of node ids to names: a person's entry is said as their role or team.
 _NAME_MAPS = frozenset({"actor_names", "source_names"})
-#: A person's own status, in their words and by its source: an executive reads none (D87).
+#: A person's own status, in their words and by its source: an executive reads none.
 _LEFT_OUT = frozenset({"owner_status_summary", "owner_status_source", "owner_status_as_of"})
 #: The people a feed event's details name: each id, with the field holding their name.
 _FEED_PEOPLE: dict[str, str] = {
@@ -207,7 +207,7 @@ def _feed_item(item: PortfolioFeedItemResponse, words: PeopleWords) -> Portfolio
 
 
 def _flow_scope(scope: PullRequestFlowScopeDto) -> PullRequestFlowScopeDto:
-    """A review-flow scope of fewer than five people counts none of them (D99, D104).
+    """A review-flow scope of fewer than five people counts none of them.
 
     Its requests, stages and dates stay; its people are counted in the group above.
     """
@@ -221,7 +221,7 @@ def _directory_item(item: DirectoryItemResponse, words: PeopleWords) -> Director
 
     The members it holds and the people its metadata names (owner, TPM, scrum
     master) are left out, not stood in for: counting them is the small-group
-    rule's (D104) and the directory has no count. A pod's escalation contacts
+    rule's and the directory has no count. A pod's escalation contacts
     stay as the role ("the scrum master"), so it still says it has them.
     """
     return item.model_copy(

@@ -1,6 +1,6 @@
-"""What Ask's tools hand the model for an executive: roles and teams, never a person (D103).
+"""What Ask's tools hand the model for an executive: roles and teams, never a person.
 
-An executive reads no person's name in the console (D87): the Project page says
+An executive reads no person's name in the console: the Project page says
 each person as their role ("the product owner") or owning team ("Payments
 Pod"). Ask's tools read the same data the pages do, so for an executive every
 tool result is passed through the same words before the model sees it, and an
@@ -52,7 +52,7 @@ class AskPeopleWords:
 
 @dataclass(frozen=True, kw_only=True)
 class NamelessTool:
-    """A tool whose every result says each person as their role or team (D103)."""
+    """A tool whose every result says each person as their role or team."""
 
     inner: AgentTool
     words: AskPeopleWords = field(repr=False)

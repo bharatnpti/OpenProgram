@@ -511,7 +511,7 @@ def test_stale_summary_takes_the_fill_lead() -> None:
     )
 
 
-# --- the fill's own schedule (D72): the send's switches never decide it --------
+# --- the fill's own schedule: the send's switches never decide it --------
 
 
 def _settings(**overrides: object) -> Settings:

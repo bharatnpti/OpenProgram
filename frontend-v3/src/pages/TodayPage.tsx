@@ -21,7 +21,7 @@ import { WhoMustAct } from "../features/today/WhoMustAct";
 import { YourAsks } from "../features/today/YourAsks";
 
 /**
- * Today (D96): the landing page for every role, with what needs them now and
+ * Today: the landing page for every role, with what needs them now and
  * nothing that lives in full elsewhere. It leads with one answer: the worst
  * project for an executive, a manager and an admin; the worst of their own for
  * a product owner; the worst pod they run for a scrum master; their own
@@ -68,7 +68,7 @@ export function TodayPage() {
             <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-3">
               <CheckinAction />
               {counts.data?.replies === null ? null : (
-                // No replies over fewer than five people for an executive (D104).
+                // No replies over fewer than five people for an executive.
                 <RepliesCard
                   counts={counts.data}
                   isLoading={counts.isLoading}

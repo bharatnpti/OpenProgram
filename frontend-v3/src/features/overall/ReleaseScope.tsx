@@ -132,7 +132,7 @@ function RemoveRelease({
   const reports = useQuery({
     queryKey: ["day-reports", "project", projectId],
     queryFn: () => apiClient.dayReports(projectId),
-    // Which reports cover the release, for whoever reads day reports (not an executive, D103).
+    // Which reports cover the release, for whoever reads day reports (not an executive).
     enabled: daily,
   });
   const covering = (reports.data ?? []).filter(

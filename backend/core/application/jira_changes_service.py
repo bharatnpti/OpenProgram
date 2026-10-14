@@ -1,4 +1,4 @@
-"""A person's Jira changes waiting for their yes, answered from the console (D89).
+"""A person's Jira changes waiting for their yes, answered from the console.
 
 Three kinds of item, each the person's own and nobody else's:
 

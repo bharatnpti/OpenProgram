@@ -1,4 +1,4 @@
-// Pure wording and choices for the Pod page (D86, D87). Type imports only, and
+// Pure wording and choices for the Pod page. Type imports only, and
 // runtime imports by their .ts path, so `node --test` runs it as written.
 import type {
   CheckinDeveloperDto,
@@ -124,7 +124,7 @@ export function scrumMasterOf(
 }
 
 /**
- * The pods as the switcher lists them (D86): the person's own first, the rest
+ * The pods as the switcher lists them: the person's own first, the rest
  * under their first project, worst first; the project switcher's own sections
  * and search, with a pod's projects standing where a project's programmes do.
  */

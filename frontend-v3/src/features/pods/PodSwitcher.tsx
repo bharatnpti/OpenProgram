@@ -12,7 +12,7 @@ import { switcherSections, type ProjectOption } from "../project/projectChoice";
 const SHOWN_OPTIONS = 100;
 
 /**
- * The Pod page's title, which opens the pod switcher (D86): a search over the
+ * The Pod page's title, which opens the pod switcher: a search over the
  * pods the person may open, theirs first, then the ones opened lately in this
  * browser, then the rest under their project, worst first. Typing filters by
  * pod or project name; the arrow keys move, Enter opens, Escape closes. A pick

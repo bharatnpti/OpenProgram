@@ -1543,7 +1543,7 @@ class PersonaTreeNodeDto(BaseModel):
         description=(
             "How many people a pod, project or program holds on the day; null for any "
             "other node, and for a group of fewer than five read by someone who counts "
-            "people only (D99, D104)."
+            "people only."
         ),
     )
 
@@ -1746,7 +1746,7 @@ class PortfolioAttentionResponse(BaseModel):
     checkins: AttentionCheckinsDto | None = Field(
         description=(
             "The day's check-in counts for the people in the program's teams; null for a "
-            "reader who counts people only, when the program has fewer than five (D104)."
+            "reader who counts people only, when the program has fewer than five."
         )
     )
     signals: list[AttentionSignalDto]

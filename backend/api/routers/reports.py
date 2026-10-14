@@ -3,7 +3,7 @@
 Every role but an executive on their own reads the reports
 (read_day_reports): which there are, today's report built live (a preview:
 nothing is sent or stored), and past sends with how each destination fared
-and who sent it. An executive reads the project's own page instead (D103):
+and who sent it. An executive reads the project's own page instead:
 the report is an action list naming each owner. A reader who may not set a report
 up sees where it goes as counts and people's names, never the addresses or ids.
 

@@ -1,4 +1,4 @@
-// Mock handlers for the console IA lane T (Today and Check-in): the Jira changes
+// Mock handlers for Today and Check-in: the Jira changes
 // waiting for a person's yes and their answer (GET /me/jira-changes, POST
 // /me/jira-changes/{id}/answer), the person's own conversation (GET
 // /me/conversation), who must act on a project (GET /projects/{id}/asks) and

@@ -1,4 +1,4 @@
-"""An executive reads no person's name on the Project page, Today and the briefs (D87, D98).
+"""An executive reads no person's name on the Project page, Today and the briefs.
 
 Each role reads the same routes; a manager, a product owner, a scrum master and
 an admin keep the names, and an executive reads the role ("set by the product
@@ -113,7 +113,7 @@ def _seed(client: TestClient) -> None:
             )
         )
         # The portfolio's brief, and a pod's: Payments Pod is two people, so an
-        # executive gets no brief of it (D99), only the portfolio's.
+        # executive gets no brief of it, only the portfolio's.
         for kind, scope, at in (
             (BriefKind.DAILY_POD, "pod-pay", datetime(2026, 10, 7, 7, 0, tzinfo=UTC)),
             (BriefKind.EXEC, "", datetime(2026, 10, 7, 8, 0, tzinfo=UTC)),
@@ -195,7 +195,7 @@ def test_the_executive_reads_the_role_or_the_team_and_no_name(client: TestClient
 
     delivery = reads["/projects/checkout/delivery"].json()["project"]
     change = delivery["commitment"]["changes"][-1]
-    # The committed date's "set by" is the role (D98), and so is its id.
+    # The committed date's "set by" is the role, and so is its id.
     assert (change["changed_by"], change["changed_by_name"]) == (
         "the product owner",
         "the product owner",
@@ -218,7 +218,7 @@ def test_the_executive_reads_the_role_or_the_team_and_no_name(client: TestClient
     assert [change["by"] for change in impact["committed_changes"]] == ["the product owner"]
 
     # A brief reads with roles and teams, and lists no person among its sources. A pod
-    # of fewer than five people has no brief for an executive (D99, D104).
+    # of fewer than five people has no brief for an executive.
     briefs = reads["/persona/briefs"].json()["briefs"]
     assert [item["kind"] for item in briefs] == ["exec"]
     brief = briefs[0]
@@ -271,7 +271,7 @@ def test_a_requirement_and_a_risk_name_nobody_to_an_executive() -> None:
     assert seen_requirement.title == "Checkout API for the product owner"
     assert (seen_risk.owner_id, seen_risk.person_name) == ("Payments Pod", "Payments Pod")
     assert seen_risk.reason == "Payments Pod's merge request has waited 6 days for review."
-    # A person's own status is not an executive's to read (D87).
+    # A person's own status is not an executive's to read.
     assert (seen_risk.owner_status_summary, seen_risk.owner_status_as_of) == (None, None)
     # The entity is a work reference, kept; anyone who reads names gets it as built.
     assert seen_risk.entity_ref.id == "U1002"

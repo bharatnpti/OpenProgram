@@ -1,6 +1,6 @@
 """Ask reads release readiness as the readiness board shows it, to whoever the board answers.
 
-In QA round V2 a product owner asked what was still missing before a project
+In a QA run a product owner asked what was still missing before a project
 could go to production. Ask had no readiness tool, so it explained the
 project's colour and never named the blocking criterion the board showed
 missing. The release_readiness tool hands over that board, through the same
@@ -156,7 +156,7 @@ def _tool(client: TestClient, role: Role, subject: str = "someone") -> ReleaseRe
     principal = Principal(tenant_id=TENANT, subject=subject, roles=frozenset({role}))
     tools = service.tools_for(principal, date.today())
     tool = next(tool for tool in tools if tool.name == "release_readiness")
-    # An executive's tools say each person as their role or team (D103).
+    # An executive's tools say each person as their role or team.
     inner = tool.inner if isinstance(tool, NamelessTool) else tool
     assert isinstance(inner, ReleaseReadinessTool)
     assert isinstance(tool, NamelessTool) is (role is Role.EXEC)

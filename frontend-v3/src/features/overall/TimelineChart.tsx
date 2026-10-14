@@ -41,7 +41,7 @@ import {
 import { Legend, Swatch } from "./viz";
 
 /*
- * The timeline's drawing, to be read in five seconds (decision D78): per row a
+ * The timeline's drawing, to be read in five seconds: per row a
  * grey track from planning to the committed date with a dark fill for what is
  * done, the likely finish as one segment in its verdict's colour (past the
  * committed date, with its dates, when it is late), the committed date as a
@@ -105,7 +105,7 @@ export function TimelineChart({
   changes?: boolean;
 }) {
   const [asTable, setAsTable] = useState(false);
-  // The project's releases come folded under its row (DESIGN §5.2), open when one is picked.
+  // The project's releases come folded under its row, open when one is picked.
   const [unfolded, setUnfolded] = useState(() => selected?.startsWith("release:") ?? false);
   const { rows: drawnRows, releases } = foldReleases(data.rows, unfolded);
   const drawnData = drawnRows === data.rows ? data : { ...data, rows: drawnRows };

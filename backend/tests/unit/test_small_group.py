@@ -1,9 +1,9 @@
-"""The small-group rule (D99, D104): an executive gets no people counts on a group under five.
+"""The small-group rule: an executive gets no people counts on a group under five.
 
 A pod of two is effectively two people, so "1 of 2 haven't answered" on its tile
 names someone to a reader who reads no one's check-in. For an executive, such a
 pod's people roll into its project's line; its colour, its work and the dates
-still show. A project or program under five is the same (D104): its people are
+still show. A project or program under five is the same: its people are
 counted in the program's line, or nowhere. A group of five or more keeps its
 counts, and a manager keeps all of them.
 """
@@ -41,7 +41,7 @@ T = "demo"
 DAY = date(2026, 6, 15)
 SMALL = ("dev-a1", "dev-a2")
 BIG = ("dev-b1", "dev-b2", "dev-b3", "dev-b4", "dev-b5")
-#: Project 2 is one pod of three: a small project in a program of ten (D104).
+#: Project 2 is one pod of three: a small project in a program of ten.
 TINY = ("dev-c1", "dev-c2", "dev-c3")
 
 
@@ -183,7 +183,7 @@ def test_an_executive_reads_no_people_counts_on_a_pod_under_five(settings: Setti
 
 
 def test_an_executive_reads_no_people_counts_on_a_project_under_five(settings: Settings) -> None:
-    """D104: a project of three, and its pod, are counted with the program."""
+    """A project of three, and its pod, are counted with the program."""
     store = InMemoryGraphStore()
     _seed(store)
 
@@ -209,7 +209,7 @@ def test_an_executive_reads_no_people_counts_on_a_project_under_five(settings: S
 
 
 def test_a_program_under_five_counts_nobody_for_an_executive(settings: Settings) -> None:
-    """D104: no group above a program of two, so its line says no counts are shown."""
+    """No group above a program of two, so its line says no counts are shown."""
     store = InMemoryGraphStore()
 
     async def seed() -> None:
@@ -259,7 +259,7 @@ def test_a_program_under_five_counts_nobody_for_an_executive(settings: Settings)
 
 
 def test_an_executives_program_tree_counts_people_and_names_nobody(settings: Settings) -> None:
-    """D103: developer nodes become counts on their groups; none under five (D99, D104)."""
+    """Developer nodes become counts on their groups; none under five."""
     store = InMemoryGraphStore()
     _seed(store)
     path = f"/programs/program-1/tree?as_of={DAY.isoformat()}"

@@ -7,7 +7,7 @@ The forecast_days key is (tenant, scope kind, scope id, project, day) since migr
 the breakdown from that project's own computation, and every reader asks for the row
 under the project it reads. Before 0044 the key had no project: the shared pod offered
 one key twice (Postgres refused the whole statement, CardinalityViolation), and then,
-by D80, kept no row at all, so it had no history.
+once that was avoided, kept no row at all, so it had no history.
 
 The world: Checkout and Audit, and Payments Pod working on both. Its part of Checkout
 is CHK-2 and CHK-3 open, and a CHK-5x finished every third working day; its part of

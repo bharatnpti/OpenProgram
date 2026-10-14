@@ -1,4 +1,4 @@
-// The Project page's one scope line (perspective-ux §3.3, step 4): the planning
+// The Project page's one scope line: the planning
 // baseline and Jira hygiene in a sentence, their full sections on Scope control.
 // "8 at planning (5 Oct) · +2 added since, 1 without the CR label · 1 removed ·
 // 3 open hygiene findings". Counts of work items only: nothing names a person.

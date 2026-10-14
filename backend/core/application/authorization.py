@@ -127,7 +127,7 @@ class AuthorizationPolicy:
                     # gives an executive. Pod check-ins and blockers are
                     # per-person, so they stay with the scrum master and manager.
                     Capability.READ_PROJECT_PROGRESS,
-                    # No READ_DAY_REPORTS (D103): the day report is an action
+                    # No READ_DAY_REPORTS: the day report is an action
                     # list that names each owner, and an executive reads no
                     # person's name in the console. They read the project's own
                     # page instead. Whom a report is sent to stays its set-up's.

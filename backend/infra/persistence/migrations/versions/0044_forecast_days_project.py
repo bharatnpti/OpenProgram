@@ -2,7 +2,7 @@
 
 A pod's forecast is its part of one project's work (that project's keys, date and
 seed). With the key (tenant_id, scope_kind, scope_id, day) a pod on two projects
-could keep one row a day only, so it kept none on those days (D80) and had no
+could keep one row a day only, so it kept none on those days and had no
 history. The key is now (tenant_id, scope_kind, scope_id, project_id, day).
 
 forecast_days has carried project_id since 0042, NOT NULL on every row: the
@@ -17,7 +17,7 @@ is what the repository's ON CONFLICT (column list) upsert infers. The index by
 (tenant_id, project_id, day) stays.
 
 The downgrade restores the old key. A pod with rows under more than one project on
-a day loses that day's rows, as the old code keeps no row for such a pod (D80); any
+a day loses that day's rows, as the old code keeps no row for such a pod; any
 other scope with rows under two projects on a day (a release moved to another
 project) keeps the one computed last. Nothing else changes.
 """
@@ -44,7 +44,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # A pod on more than one project that day: the old key cannot hold its rows (D80).
+    # A pod on more than one project that day: the old key cannot hold its rows.
     op.execute(
         """
         DELETE FROM forecast_days AS stale

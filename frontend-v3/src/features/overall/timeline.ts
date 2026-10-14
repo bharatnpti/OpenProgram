@@ -1,5 +1,5 @@
-// The timeline per project and pod, drawn to be read in five seconds (decision
-// D78): one row per scope with a grey track from planning to its committed date,
+// The timeline per project and pod, drawn to be read in five seconds:
+// one row per scope with a grey track from planning to its committed date,
 // a dark fill for what is done, the likely finish as one segment in its verdict's
 // colour, the committed date as a tick, and one dot on each day something
 // changed, red when it pushed the date. Pure geometry, words and keyboard moves;
@@ -552,7 +552,7 @@ export function moveFocus(focus: Focus, key: string, glyphCounts: number[]): Foc
 // ---- the rows drawn ---------------------------------------------------------------------
 
 /**
- * The project's releases sit folded under its row (DESIGN §5.2): the rows to
+ * The project's releases sit folded under its row: the rows to
  * draw, and how many releases the fold holds. A release that heads the read
  * (``?release=``) is its first row and is never folded.
  */

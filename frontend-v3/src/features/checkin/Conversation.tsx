@@ -9,7 +9,7 @@ import { VizCard } from "../overall/viz";
 import { emptyConversationWords, orderedTurns, turnAuthor } from "./conversationWords";
 
 /**
- * The person's own conversation with Ora on one day (D95), read-only and
+ * The person's own conversation with Ora on one day, read-only and
  * styled like the chat: Ora's messages on the left, theirs on the right. It is
  * only ever their own (`GET /me/conversation` takes no person id, so an admin
  * sees theirs here too), and the read never refreshes how long the messages

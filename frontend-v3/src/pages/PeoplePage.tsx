@@ -12,7 +12,7 @@ import { PodPeoplePanel } from "../features/profiles/PodPeople";
  * admin every pod; a scrum master and a product owner the pods of their own
  * part whose panel is theirs). Profiles change where the server says `can_edit`
  * (an admin, the scrum master who runs the pod). One pod at a time
- * (`?pod=`). Time zones and check-in times stay in Admin › Directory (D87).
+ * (`?pod=`). Time zones and check-in times stay in Admin › Directory.
  */
 export function PeoplePage() {
   const { access } = useRole();

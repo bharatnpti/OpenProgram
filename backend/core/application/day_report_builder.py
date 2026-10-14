@@ -341,7 +341,7 @@ class DayReportBuilder:
         previous: RequirementsSnapshot | None,
         day: date,
     ) -> ImpactLine | None:
-        """Why the 85% date moved since the previous snapshot, as one line (lane E)."""
+        """Why the 85% date moved since the previous snapshot, as one line."""
         if self._impact is None or previous is None:
             return None
         scope = CommitmentScope(

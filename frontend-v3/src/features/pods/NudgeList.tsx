@@ -10,7 +10,7 @@ import { CoverageNoData } from "../today/CoverageNoData";
 import { ladderLine, nudgeState, scheduleWords } from "./podWords";
 
 /**
- * Who needs a nudge (D87): for the roles that already read a pod's check-ins (a
+ * Who needs a nudge: for the roles that already read a pod's check-ins (a
  * scrum master for their own pods, a manager, an admin), each person's day as
  * the ladder saw it: replied and when, filled from Jira, or no reply yet, and
  * the rungs that went out (the reminder to them, their scrum master told, their

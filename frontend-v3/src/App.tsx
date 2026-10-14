@@ -28,13 +28,13 @@ const PeoplePage = page(() => import("./pages/PeoplePage"), "PeoplePage");
 const AdminPage = page(() => import("./pages/AdminPage"), "AdminPage");
 
 /*
- * The sidebar's pages (app/nav.ts, D85):
+ * The sidebar's pages (app/nav.ts):
  *
- *   /today                          what needs me today, per role (D96)
+ *   /today                          what needs me today, per role
  *   /check-in                       my own check-in and tasks; the built-in chat on a local tenant
  *   /requests                       who is waiting on whom
  *   /portfolio                      will we make the date? (?program= picks one)
- *   /projects[/:projectId]          one project (D86); bare opens the worst of mine
+ *   /projects[/:projectId]          one project; bare opens the worst of mine
  *   /pods[/:podId]                  one pod; bare opens my own
  *   /warnings                       early warnings across projects
  *   /scope                          scope control (?project= picks one)

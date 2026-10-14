@@ -11,7 +11,7 @@ import { formatDay } from "../lib/format";
 /**
  * Early warnings (`/warnings`): what Jira and Git say, whatever anyone reports,
  * grouped by kind with a count each, in one read across the projects the person
- * reads (`GET /portfolio/warnings`, D90). Every warning has an owner; findings
+ * reads (`GET /portfolio/warnings`). Every warning has an owner; findings
  * attach to work items and nobody is ranked. `?project=` narrows it to one.
  */
 export function RisksPage() {

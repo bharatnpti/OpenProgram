@@ -1,5 +1,5 @@
-// Mock handlers for lane P: the portfolio's bulk reads (GET /portfolio/delivery,
-// /portfolio/scope, /portfolio/warnings, D90). NOT real data: shapes follow
+// Mock handlers for the portfolio's bulk reads (GET /portfolio/delivery,
+// /portfolio/scope, /portfolio/warnings). NOT real data: shapes follow
 // src/api/generated.ts, names follow the seeded demo tenant's mock roster. Who may
 // read what follows the backend: the dates for the project readers (product owner,
 // manager, executive, admin) and a scrum master's own; scope the same, an

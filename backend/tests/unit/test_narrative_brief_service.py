@@ -464,8 +464,8 @@ async def test_exec_brief_context_counts_status_cells_and_states_tickets_and_blo
 
     context = llm.requests[-1].messages[0].content
     # Only pods, projects and the program carry a status of their own, as an
-    # executive's heat map shows them: no person's cell (D87). The program holds
-    # three people, so nobody is counted at all (D104).
+    # executive's heat map shows them: no person's cell. The program holds
+    # three people, so nobody is counted at all.
     assert "Status of 2 pods, 1 project and the program: 4 green." in context
     # The day's headline, from the builder Exec Today's hero uses, without a clock.
     assert "The day's headline, as Exec Today shows it: Green: no open blockers." in context
@@ -489,7 +489,7 @@ async def test_exec_brief_context_counts_status_cells_and_states_tickets_and_blo
         "merge request 7 in web 'SHOP-2 Upgrade HTTP client' opened by Ben Okafor, merged "
         "(who merged it is not recorded)"
     ) in context
-    # A person's own check-in, ETA included, is not counted in a portfolio of three (D104).
+    # A person's own check-in, ETA included, is not counted in a portfolio of three.
     assert "ETA changes reported" not in context
     # The superseded copy of Cy's ask is bookkeeping, not an event.
     assert "superseded" not in context and "Review of the refund flow" not in context
@@ -505,7 +505,7 @@ async def test_exec_brief_context_counts_status_cells_and_states_tickets_and_blo
         "SHOP-1 (Checkout form) is done in the tracker.",
         "SHOP-2 (Upgrade HTTP client) is merged in merge request 7 in web, ticket still open "
         "(In Progress in the tracker).",
-        # The facts name people; the executive brief says each as their team (D87).
+        # The facts name people; the executive brief says each as their team.
         "Web Pod's check-in reported 1 blocker (waiting on Payments Pod for SHOP-2), cleared. "
         "No blocker is open now.",
         "One team member has an ETA adjustment of +1 day.",

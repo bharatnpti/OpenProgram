@@ -96,8 +96,8 @@ const item = (key, title, stage, extra = {}) => ({
   ...extra,
 });
 /**
- * One marker. A scope event carries the working days it moved the 85% date
- * (D88): 2.5 a requirement added, 1 for the removal, as the impact read's bars
+ * One marker. A scope event carries the working days it moved the 85% date:
+ * 2.5 a requirement added, 1 for the removal, as the impact read's bars
  * count them; the evidence (late, blockers) carries none.
  */
 const DAYS = { scope_added: [2.5, 1.5], scope_removed: [-1, -0.6] };

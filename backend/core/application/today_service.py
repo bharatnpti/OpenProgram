@@ -1,12 +1,12 @@
 """The person's own reads behind Today and Check-in: their conversation, who must act, counts.
 
 - ``own_conversation``: the person's own chat turns of one day, read without
-  refreshing their retention (D87, D95). Nobody reads another person's turns
+  refreshing their retention. Nobody reads another person's turns
   here, admins included: the reader is always the caller.
 - ``project_asks``: a project's "who must act", the day report's asks
   (``DayReportBuilder.asks``) as one flat list ordered by the item, never by
   person. An executive gets the owning team instead of anyone's name, and no
-  wording that names a person (D87, R5).
+  wording that names a person.
 - ``today_counts``: the replies of the day ("8 of 14 replied, 3 filled from
   Jira") and the open warnings, over the part of the portfolio the caller
   reads. A developer reads no aggregate.
@@ -119,7 +119,7 @@ class RepliesCount:
 class TodayCountsView:
     as_of: date
     scope: CountsScope
-    #: None for an executive whose part holds fewer than five people (D104).
+    #: None for an executive whose part holds fewer than five people.
     replies: RepliesCount | None
     open_warnings: int
     project_ids: tuple[str, ...]
@@ -206,7 +206,7 @@ class TodayService:
         project; a scrum master their own pods' people and those pods'
         projects; a product owner their own projects and the people in them.
         A developer reads no aggregate. An executive reads no replies over fewer
-        than five people (D104): those would count someone.
+        than five people: those would count someone.
         """
         tenant_id = principal.tenant_id
         portfolio = reads_portfolio(principal)

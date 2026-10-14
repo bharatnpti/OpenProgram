@@ -1,5 +1,5 @@
-// "Why the date moved", under the timeline for the row picked on it (decision
-// D78): the server's one sentence (where the date stands, then why), and at most
+// "Why the date moved", under the timeline for the row picked on it:
+// the server's one sentence (where the date stands, then why), and at most
 // three causes -- scope added, scope removed, team speed -- as bars from zero, red
 // to the right for what pushed the date later, green to the left for what pulled
 // it in, read from GET /projects/{id}/delivery/impact. The server words them;

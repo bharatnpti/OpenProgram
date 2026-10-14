@@ -94,7 +94,7 @@ async def project_readiness(
         view = await service.project_board(principal.tenant_id, project_id, viewer, release=release)
     except GraphNotFound as exc:
         raise _error(exc) from exc
-    # An executive reads who decided or dismissed as their role (D87, D98).
+    # An executive reads who decided or dismissed as their role.
     return for_reader(ReadinessBoardResponse.from_view(view), words)
 
 

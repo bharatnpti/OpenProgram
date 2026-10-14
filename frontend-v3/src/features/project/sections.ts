@@ -1,4 +1,4 @@
-// The Project page's sections, in one place (perspective-ux §3.3): Overall's
+// The Project page's sections, in one place: Overall's
 // sections and Delivery's project panel merged, date first, then scope, quality,
 // questions and warnings, and the work last. The page draws the sections it has,
 // in this order; a section a role cannot use is not drawn. A new section joins

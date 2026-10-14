@@ -74,7 +74,7 @@ function Headline({
  * three cells with Change date for those who may. It replaces the strip's red
  * cause box, its list of reasons, which restated the cells, and the Completion
  * card. For a release picked above, the release's. `chip` off where the page's
- * header carries the verdict's pill, so the colour is said once (D92).
+ * header carries the verdict's pill, so the colour is said once.
  */
 export function ProjectAnswer({
   projectId,

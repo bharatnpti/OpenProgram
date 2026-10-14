@@ -20,7 +20,7 @@ import {
 
 /**
  * "Why the date moved", for the row picked on the timeline, to be read in five
- * seconds (decision D78): the server's one sentence (where the likely date
+ * seconds: the server's one sentence (where the likely date
  * stands, then why), at most three causes as bars from zero (red to the right
  * for what pushed it later, green to the left for what pulled it in, the days
  * at the end, each opening its requirements), then the committed date, the

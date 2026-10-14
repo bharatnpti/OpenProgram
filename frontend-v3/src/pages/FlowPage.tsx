@@ -12,7 +12,7 @@ import { PanelState, SectionHeader } from "../components/PanelState";
 import { PrFlowSection } from "../features/signals/PrFlowSection";
 
 /**
- * Review flow (`/flow`, D94): where work waits in review, from Git, whatever
+ * Review flow (`/flow`): where work waits in review, from Git, whatever
  * anyone reports. What was Signals › Flow, a page of its own under Insight:
  * stage times, the worst jam, work by type and where the time goes. It opens on
  * the viewer's own part: a scrum master's first pod, a product owner's first

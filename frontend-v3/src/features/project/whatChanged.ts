@@ -1,10 +1,10 @@
-// "What changed" on the Project page (D88): the picked row's events over the
+// "What changed" on the Project page: the picked row's events over the
 // period Why the date moved reads, dated, oldest first. Only a scope event
 // (requirements added, a bug counted as one, removed, reopened) carries a chip:
 // the working days its day's step moved the date, from that day's kept
 // breakdown, split by item count when several share a day (the server's
 // `working_days`). A blocker or a requirement past its date is evidence and has
-// no chip (D12); a committed date's move is said once, under Why the date moved.
+// no chip; a committed date's move is said once, under Why the date moved.
 // Team speed is one line for the period, never per event. The footer checks
 // that the chips and team speed make the waterfall's total, and says what does
 // not: re-estimates, days that kept no breakdown, reconstructed days.

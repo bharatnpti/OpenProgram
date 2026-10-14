@@ -397,7 +397,7 @@ export const apiClient = {
     requestJson<ProjectRisksResponse>(withQuery(`/projects/${projectId}/risks`, { as_of: asOf })),
   portfolioRisks: (asOf?: string) =>
     requestJson<PortfolioRisksResponse>(withQuery("/portfolio/risks", { as_of: asOf })),
-  /** Will we make the date?, from the kept forecast rows: one page, worst first (D90). */
+  /** Will we make the date?, from the kept forecast rows: one page, worst first. */
   portfolioDelivery: (query: {
     q?: string;
     verdicts?: readonly VerdictFilter[];
@@ -442,12 +442,12 @@ export const apiClient = {
       method: "POST",
       body: input,
     }),
-  /** What happened to one ask, and what is due (D91); dated by the viewing day. */
+  /** What happened to one ask, and what is due; dated by the viewing day. */
   crossPersonRequestTrail: (requestId: string) =>
     requestJson<RequestTrailResponse>(
       `/cross-person-requests/${encodeURIComponent(requestId)}/trail`,
     ),
-  /** The requests board as counts: an executive's whole view of it (D87). */
+  /** The requests board as counts: an executive's whole view of it. */
   crossPersonRequestCounts: () =>
     requestJson<RequestCountsResponse>("/cross-person-requests/counts"),
   /** The asks resolved in the days up to the viewing day, newest first. */

@@ -2,10 +2,10 @@
 
 - ``GET /me/conversation?day=``: the caller's own chat turns of one day, read
   without refreshing their retention. No person id is taken: nobody, an admin
-  included, reads anyone else's conversation here (D87, R6).
+  included, reads anyone else's conversation here.
 - ``GET /projects/{id}/asks?as_of=``: the project's "who must act", the day
   report's asks as one flat list, for a reader of the project's progress. An
-  executive gets the owning team instead of names (D87).
+  executive gets the owning team instead of names.
 - ``GET /me/today-counts?as_of=``: replies of the day and open warnings over the
   caller's part. A developer reads no aggregate (403).
 """

@@ -77,8 +77,8 @@ async def test_no_updates_today_gets_one_ack_and_closes_unknown() -> None:
     await _open_checkin(store)
     chat = FakeChatProvider()
     # No model reading at all: the rules read "no updates today" as carrying no
-    # status (V2 B16b), and a model call (the close-out reading the replies
-    # again, as in R3) would fail the test.
+    # status, and a model call (the close-out reading the replies
+    # again) would fail the test.
     llm = SequenceLlmProvider(texts=[])
     collector = _collector(store, chat, llm)
 

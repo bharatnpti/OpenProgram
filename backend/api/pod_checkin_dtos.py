@@ -1,4 +1,4 @@
-"""The silence ladder on a pod's check-ins, and a project's check-in counts (lane R).
+"""The silence ladder on a pod's check-ins, and a project's check-in counts.
 
 A pod's check-ins carry, for the roles that read the ladder (a scrum master
 for their own pods, a manager, an admin), when each person was asked and
@@ -81,7 +81,7 @@ class ProjectCheckinCoverageResponse(BaseModel):
     people: int | None = Field(
         description=(
             "Everyone on the project's pods, each once; null for an executive when they "
-            "are fewer than five (D104)."
+            "are fewer than five."
         )
     )
     coverage: ProjectCheckinCoverageDto | None = Field(

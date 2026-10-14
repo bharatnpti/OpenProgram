@@ -1,7 +1,7 @@
 // Will we make the date? (`/portfolio`): the words and the geometry of a project's
-// card, pure, from the bulk read (`GET /portfolio/delivery`, D90). The reason line
+// card, pure, from the bulk read (`GET /portfolio/delivery`). The reason line
 // and today's health are the server's words; this only arranges them. One colour
-// per project, the date's verdict (D92). Type imports, and runtime imports by
+// per project, the date's verdict. Type imports, and runtime imports by
 // their .ts path, so `node --test` runs it as written.
 import type {
   PortfolioMarkDto,
@@ -85,7 +85,7 @@ export function podDateWords(pod: Pick<PortfolioPodDto, "total" | "verdict">): s
 }
 
 /**
- * Today's health in words, after the reason (D92): "Today: 1 open blocker, 2 of 8
+ * Today's health in words, after the reason: "Today: 1 open blocker, 2 of 8
  * not replied". When the rollup it is read from was kept on an earlier day than
  * the one shown, that day is said instead of "today".
  */

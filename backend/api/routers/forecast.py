@@ -69,7 +69,7 @@ async def project_delivery(
         view = await service.project_delivery(principal.tenant_id, project_id, as_of)
     except GraphNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    # An executive reads who set a date as their role (D87, D98).
+    # An executive reads who set a date as their role.
     return for_reader(ProjectDeliveryResponse.from_view(view), words)
 
 

@@ -17,7 +17,7 @@ import { ragSeverity } from "../lib/status";
  * Every project with its day report one click away, and its Project page (the
  * state since it started, which was Overall). The dates are said once, on Will
  * we make the date? (the Portfolio), never again here: one live forecast read per
- * card was what that page's bulk read replaced (D90). A developer sees the
+ * card was what that page's bulk read replaced. A developer sees the
  * projects of their own pods (every project when they are in none). Whoever may
  * set reports up can start one here.
  */

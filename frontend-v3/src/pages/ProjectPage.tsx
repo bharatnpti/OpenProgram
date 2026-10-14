@@ -35,7 +35,7 @@ import { useProjectOptions } from "../features/project/useProjectOptions";
 import { WhatChanged } from "../features/project/WhatChanged.tsx";
 
 /**
- * One project, at `/projects/:projectId` (D86): one page for every project, the
+ * One project, at `/projects/:projectId`: one page for every project, the
  * URL its address, never a nav entry per project. A bare `/projects` opens the
  * worst of the person's own (else the last opened, else the worst), keeping
  * the link's query and hash. The URL always wins.
@@ -76,7 +76,7 @@ export function ProjectPage() {
 }
 
 /**
- * The page, top to bottom (perspective-ux §3.3, features/project/sections.ts):
+ * The page, top to bottom (features/project/sections.ts):
  * the header with the switcher and the date verdict; the answer; the timeline,
  * What changed for the row picked on it and why its date moved; scope in one
  * line; requirements by stage; the gates and release readiness; questions;
@@ -84,7 +84,7 @@ export function ProjectPage() {
  * and the timeline say the dates, so nothing below repeats them. Each section is
  * its own read, so one refused or slow read never blanks the others.
  *
- * Each role gets the sections it reads (app/access.ts, perspective-roles §1):
+ * Each role gets the sections it reads (app/access.ts):
  * - the project's readers (product owner, manager, executive, admin): all of
  *   it; an executive reads no names (no owner line, no "who resolves", no
  *   people, no reasons behind today's health) and Jira hygiene as counts;
@@ -119,7 +119,7 @@ function ProjectView({
   const forecast = access.overall.forecast;
   const scrumMaster = !forecast && access.overall.timeline;
   const developer = !forecast && !access.overall.timeline;
-  // An executive reads every project but no pod: the one role names are kept from (D87).
+  // An executive reads every project but no pod: the one role names are kept from.
   const executive = access.pages.portfolio && !access.pages.pods;
   const readable = canReadProjectProgress || Boolean(treeProject?.full);
 
@@ -144,7 +144,7 @@ function ProjectView({
   const scope = releaseId
     ? delivery.query.data?.releases.find((item) => item.scope_id === releaseId)
     : delivery.query.data?.project;
-  // Today's health, said in words (D92): the same read as the Work section's progress.
+  // Today's health, said in words: the same read as the Work section's progress.
   const progress = useQuery({
     queryKey: ["project", projectId, "progress"],
     queryFn: () => apiClient.projectProgress(projectId),

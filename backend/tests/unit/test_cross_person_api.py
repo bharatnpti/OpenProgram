@@ -41,7 +41,7 @@ def test_portfolio_cross_person_requests_visible_to_aggregate_roles(settings: Se
 
 
 def test_an_executive_reads_the_board_as_counts_never_who_asked_whom(settings: Settings) -> None:
-    """D87: every ask names two people, and its note often a third."""
+    """Every ask names two people, and its note often a third."""
     store = InMemoryGraphStore()
     asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.OPEN))
     app = _app_for_role(settings, "exec", "exec-user", store)

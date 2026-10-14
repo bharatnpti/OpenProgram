@@ -128,7 +128,7 @@ It is additive and has no data step.
   - indexes by scope and by project.
 - `forecast_days`: PK (tenant, scope kind, scope, project, day) since
   `0044_forecast_days_project` (before it, (tenant, scope kind, scope, day),
-  so a pod on two projects kept no row on those days, D80), with an index by
+  so a pod on two projects kept no row on those days), with an index by
   project and day.
 
 `0044_forecast_days_project` only changes the key: `project_id` has been on

@@ -1,9 +1,9 @@
 """The portfolio's bulk reads: Will we make the date?, Scope control and Early warnings.
 
-Kept beside api/dtos.py so the three reads' shapes read as one piece (D90). Each
+Kept beside api/dtos.py so the three reads' shapes read as one piece. Each
 is one request for every project the reader reads, from kept rows, never a live
 forecast per project. Who sees what is decided on the server: an executive's
-bodies name no person (D87), and a group read only as a count comes with no items.
+bodies name no person, and a group read only as a count comes with no items.
 """
 
 from __future__ import annotations
@@ -171,8 +171,7 @@ class PortfolioProjectDto(_Frozen):
     reason: str = Field(description="Why it has its verdict, in one line that counts work items.")
     health: str = Field(
         description=(
-            "Today's health in words (D92), e.g. '1 open blocker, 2 of 8 not replied'; "
-            "never a colour."
+            "Today's health in words, e.g. '1 open blocker, 2 of 8 not replied'; never a colour."
         )
     )
     health_day: date | None = Field(description="The day the rollup it is read from was kept.")

@@ -764,7 +764,7 @@ def test_team_profiles_is_offered_to_whoever_may_ask_but_an_executive_or_a_devel
 
     assert "team_profiles" in tools(Role.SM)
     assert "team_profiles" in tools(Role.MGR)
-    # Who is who, by name, in which pod: an executive has no People & roles (D87, D103).
+    # Who is who, by name, in which pod: an executive has no People & roles.
     assert "team_profiles" not in tools(Role.EXEC)
     assert tools(Role.DEV) == set()
 

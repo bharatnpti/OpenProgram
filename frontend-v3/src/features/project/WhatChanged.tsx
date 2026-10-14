@@ -12,7 +12,7 @@ const SHOWN = 8;
 
 /**
  * What changed for the row picked on the timeline, over the period Why the
- * date moved reads (D88): one dated line per event, oldest first, a chip of
+ * date moved reads: one dated line per event, oldest first, a chip of
  * working days on each scope event and none on evidence, and the check that
  * the chips and team speed make the waterfall's total. The committed date's
  * moves are said under Why the date moved, once.

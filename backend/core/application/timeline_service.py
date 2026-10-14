@@ -34,7 +34,7 @@ band; no progress, scope or markers), or no row at all (``name``):
   other pods' dates only; a developer reads no other pod;
 - blocker markers need the pod blocker read (scrum master, manager, admin, and a
   developer on their own pod); "added by" is named for product owners, managers,
-  admins and scrum masters, never for executives or developers (D14).
+  admins and scrum masters, never for executives or developers.
 
 A developer reads no project's timeline: their own pod's row is on its pod panel.
 """
@@ -100,7 +100,7 @@ class RowAccess:
     level: NodeAccess
     #: Blockers opened and closed: the pod blocker read's readers only.
     blockers: bool = False
-    #: Who brought an added item in (D14).
+    #: Who brought an added item in.
     added_by: bool = False
     #: The Jira hygiene ring on an addition without the change label: hygiene's issue
     #: readers only (never an executive, who reads counts, or a developer).
@@ -304,7 +304,7 @@ class TimelineService:
     # ---- who sees what ------------------------------------------------------------
 
     def _scope_access(self, principal: Principal, *, project_row: bool, runs: bool) -> RowAccess:
-        """A whole row's flags: the blocker read, "added by" (D14) and the date route."""
+        """A whole row's flags: the blocker read, "added by" and the date route."""
         names = any(principal.has_role(role) for role in (Role.PO, Role.MGR, Role.ADMIN, Role.SM))
         blockers = self._policy.can(principal, Capability.READ_POD_BLOCKERS) or (
             runs and principal.has_role(Role.DEV)
@@ -332,7 +332,7 @@ class TimelineService:
             runs and (principal.has_role(Role.SM) or principal.has_role(Role.DEV))
         ):
             whole = self._scope_access(principal, project_row=False, runs=runs)
-            # A developer's own pod: whole, but never who added an item (D14).
+            # A developer's own pod: whole, but never who added an item.
             if not reads_project(self._policy, principal, own=False) and not principal.has_role(
                 Role.SM
             ):
@@ -534,7 +534,7 @@ class TimelineService:
                 day
                 for row in rows
                 # Only what the picture draws: the committed date and the likely finish,
-                # so the axis ends a little after the latest of them (decision D78).
+                # so the axis ends a little after the latest of them.
                 for day in (row.committed, row.p85)
             ],
             as_of,

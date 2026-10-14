@@ -171,7 +171,7 @@ ASK_TOOL_GUIDANCE = (
 
 # The rounds a quick answer's tool loop may take before it must answer
 # (OPENPROGRAM_ASK_MAX_TOOL_ITERATIONS). Three ran out on "What is blocking
-# <project>?" in QA round V2: finding the project, its pods and their
+# <project>?" in a QA run: finding the project, its pods and their
 # blockers, with one look at its status first, is four. Five leaves one more
 # for following a blocker to its owner or issue; a round is one model call of
 # a few seconds, so even all five stay far inside the 120-second budget.
@@ -369,7 +369,7 @@ _RAN_OUT = re.compile(
 # Claims that something is absent, each with the reads that can show it. One
 # of them stands in an answer written at the cap only when a read of its kind
 # ran and none was left unrun; otherwise the sentence goes. "<Project> has no
-# blockers reported today" came 2 seconds after the cap in QA round V2, with a
+# blockers reported today" came 2 seconds after the cap in a QA run, with a
 # blocker open in one of its pods.
 _ABSENT_QUALIFIERS = r"(?:(?:open|active|current|known|reported|new|other|outstanding)\s+)*"
 _UNREAD_NEGATIVES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
@@ -980,7 +980,7 @@ class StatusReasonsTool:
     as_of: date
     kinds: frozenset[NodeKind]
     #: The reader counts people only (an executive): the tree as /programs/{id}/tree
-    #: gives it them, nobody's node and no one's own status among the factors (D103).
+    #: gives it them, nobody's node and no one's own status among the factors.
     counts_only: bool = False
 
     name: str = "status_reasons"
@@ -1091,7 +1091,7 @@ class PortfolioHeatmapTool:
     service: PersonaViewService
     repository: GraphRepository
     as_of: date
-    #: The asker sees no person (an executive): the route's own projection (D87).
+    #: The asker sees no person (an executive): the route's own projection.
     counts_only: bool = False
     asker_id: str | None = None
 
@@ -2222,8 +2222,8 @@ class AskService:
     async def reader(self, tenant_id: str, as_of: date, *, people: bool = True) -> AnswerReader:
         """What turns a model's reply into an answer for the nodes of ``as_of``.
 
-        ``people`` False is a reader who reads no person's name (an executive,
-        D103): a person's id in an answer, or among its sources, reads as their
+        ``people`` False is a reader who reads no person's name (an executive):
+        a person's id in an answer, or among its sources, reads as their
         role or team, and no name in the answer is taken for a person.
         """
         nodes = await _nodes_by_any_id(self._graph_repository, tenant_id, as_of)
@@ -2371,7 +2371,7 @@ class AskService:
         )
         if self._profile_service is not None and not hides_names(principal):
             # Names and pod roles are directory data, which every role reads but an
-            # executive (no People & roles for them, D87): behind /ask's own check, as
+            # executive (no People & roles for them): behind /ask's own check, as
             # the graph reads are.
             offered = (
                 *offered,
@@ -2421,7 +2421,7 @@ class AskService:
         tools = tuple(tool for tool, allowed in offered if allowed(principal))
         if hides_names(principal):
             # An executive's answers say each person as the Project page does: their
-            # role or team, never a name or an id that leads to one (D103).
+            # role or team, never a name or an id that leads to one.
             words = AskPeopleWords(repository=graph, tenant_id=tenant_id, as_of=as_of)
             tools = tuple(NamelessTool(inner=tool, words=words) for tool in tools)
         return tools

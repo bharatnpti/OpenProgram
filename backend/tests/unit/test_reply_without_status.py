@@ -1,9 +1,9 @@
-"""A reply without a status never counts as green, read by rules first (V2 B16b).
+"""A reply without a status never counts as green, read by rules first.
 
-V2 live: Elena, an exec with no tickets, answered "Thanks, nothing from me today.
+In a live run Elena, an exec with no tickets, answered "Thanks, nothing from me today.
 No blockers on my side and no open tickets or MRs." The model called it a
-status, the coordinator rule (N16) took "No blockers" for team context, and her
-day was recorded confirmed: her No-pod tile read green. In V1 her "thanks,
+status, the coordinator rule took "No blockers" for team context, and her
+day was recorded confirmed: her No-pod tile read green. In an earlier run her "thanks,
 nothing from me" had stayed a reply without a status because the model said so.
 """
 
@@ -26,11 +26,11 @@ from infra.persistence.in_memory_graph import InMemoryGraphStore
 from tests.contract.fakes import FakeChatProvider, FakeIssueTracker
 from tests.unit.test_status_collector import SequenceLlmProvider
 
-# Elena's V2 reply, word for word.
-_ELENA_V2 = "Thanks, nothing from me today. No blockers on my side and no open tickets or MRs."
-# What the model answered for it in V2: a status, which the coordinator rule
+# Elena's reply, word for word.
+_ELENA_REPLY = "Thanks, nothing from me today. No blockers on my side and no open tickets or MRs."
+# What the model answered for it: a status, which the coordinator rule
 # then recorded confirmed ("No progress reported; nothing to update today.").
-_V2_READ_AS_STATUS = json.dumps(
+_MODEL_READ_AS_STATUS = json.dumps(
     {
         "is_status_update": True,
         "sufficient": True,
@@ -66,9 +66,9 @@ _ASKED_AT = datetime(2026, 10, 11, 4, 47, tzinfo=UTC)
 @pytest.mark.parametrize(
     "reply",
     [
-        "thanks, nothing from me",  # Elena, V1
-        "thanks, no update from me",  # Elena, R2
-        "no updates today",  # Elena, R3 (N22)
+        "thanks, nothing from me",  # Elena
+        "thanks, no update from me",  # Elena
+        "no updates today",  # Elena
         "No update.",
         "Thanks! Nothing to report from my side. Have a nice weekend!",
         "Thanks, no open tickets or MRs on my side.",
@@ -83,25 +83,25 @@ def test_acknowledgements_and_nothing_from_me_carry_no_status_for_anyone(reply: 
     assert not depends_on_own_work(reply)
 
 
-def test_elenas_v2_reply_carries_no_status_from_someone_with_no_work() -> None:
-    assert reads_without_status(_ELENA_V2, has_own_work=False)
+def test_elenas_reply_carries_no_status_from_someone_with_no_work() -> None:
+    assert reads_without_status(_ELENA_REPLY, has_own_work=False)
     # From someone with open work "no blockers" is a status, and an unknown
     # tracker reads as if they had work: the model reads it.
-    assert not reads_without_status(_ELENA_V2, has_own_work=True)
-    assert not reads_without_status(_ELENA_V2, has_own_work=None)
-    assert depends_on_own_work(_ELENA_V2)
+    assert not reads_without_status(_ELENA_REPLY, has_own_work=True)
+    assert not reads_without_status(_ELENA_REPLY, has_own_work=None)
+    assert depends_on_own_work(_ELENA_REPLY)
 
 
 @pytest.mark.parametrize(
     "reply",
     [
-        # Ira (sm, no tickets of her own), R1, R2 and R5: team context (N16).
+        # Ira (sm, no tickets of her own), on three days: team context.
         "no tickets; Payments and Identity stand-ups fine, nothing blocking",
         "Quiet day on my end - both Payments and Identity are moving along fine. "
         "No new blockers to report.",
         "Payments and Identity both tracking well, no new blockers. The teams have what they "
         "need to keep moving forward.",
-        # Hana, V2.
+        # Hana.
         "Hi! IDP-9 (Enterprise SSO onboarding guide) is in progress, about half done. No "
         "blockers, ETA hasn't changed. No MR for it, it's docs only.",
         # A quiet day, an answer to a blockers question, team words.
@@ -128,13 +128,13 @@ def test_nothing_from_me_with_no_blockers_is_a_status_from_someone_with_tasks() 
 
 
 async def test_the_evaluator_does_not_ask_the_model_about_elenas_reply() -> None:
-    llm = SequenceLlmProvider(texts=[_V2_READ_AS_STATUS])
+    llm = SequenceLlmProvider(texts=[_MODEL_READ_AS_STATUS])
     evaluator = ClarificationEvaluator(llm, model="test-model")
 
     decision = await evaluator.evaluate(
         tenant_id=_TENANT,
         developer_id="U-elena",
-        raw_reply=_ELENA_V2,
+        raw_reply=_ELENA_REPLY,
         correlation_id="corr-elena",
         has_own_work=False,
     )
@@ -226,14 +226,14 @@ def _in_progress(person: str, key: str) -> FakeIssueTracker:
     )
 
 
-async def test_elenas_v2_reply_is_recorded_without_a_status_never_green() -> None:
+async def test_elenas_reply_is_recorded_without_a_status_never_green() -> None:
     person = "U-elena"
     store = await _store(person, roles="exec")
     chat = FakeChatProvider()
-    llm = SequenceLlmProvider(texts=[_V2_READ_AS_STATUS])
+    llm = SequenceLlmProvider(texts=[_MODEL_READ_AS_STATUS])
     collector = _collector(store, chat, llm, FakeIssueTracker())
 
-    outcome = await collector.handle_reply(_message(person, _ELENA_V2))
+    outcome = await collector.handle_reply(_message(person, _ELENA_REPLY))
     closed = await collector.record_non_response(
         tenant_id=_TENANT, developer_id=person, as_of=_DAY, correlation_id=f"corr-{person}"
     )
@@ -291,6 +291,6 @@ async def test_a_tracker_that_cannot_be_read_leaves_no_blockers_to_the_model() -
     llm = SequenceLlmProvider(texts=[_QUIET_DAY_STATUS])
     collector = _collector(store, FakeChatProvider(), llm, _UnreadableTracker())
 
-    await collector.handle_reply(_message(person, _ELENA_V2))
+    await collector.handle_reply(_message(person, _ELENA_REPLY))
 
     assert len(llm.requests) == 1

@@ -1,4 +1,4 @@
-// Mock for profiles per pod membership (lane B): the catalog, a pod's people with their role and
+// Mock for profiles per pod membership: the catalog, a pod's people with their role and
 // profile, one membership's suggestion, the review list with Accept all, the member's own
 // profiles, and the profile an admin sends when adding someone to a pod or importing people into
 // one. NOT real data: shapes follow src/api/generated.ts, the people are the demo roster in

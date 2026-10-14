@@ -1,4 +1,4 @@
-// Mock handlers for lane R (Requests and Pods), used by scripts/mock-api.mjs
+// Mock handlers for Requests and Pods, used by scripts/mock-api.mjs
 // before the other mocks: a request's trail, the board as counts, the asks
 // resolved lately, a pod's check-ins with the day's silence ladder, and a
 // project's check-in counts. NOT real data: made-up demo shapes that follow

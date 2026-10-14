@@ -1,4 +1,4 @@
-"""The portfolio's bulk reads (D90): one request each for every project a person reads.
+"""The portfolio's bulk reads: one request each for every project a person reads.
 
 - ``GET /portfolio/delivery``: Will we make the date? From the kept forecast rows,
   labelled with when they were computed, never a live forecast per project. Read

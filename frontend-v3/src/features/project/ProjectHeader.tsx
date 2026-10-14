@@ -12,10 +12,10 @@ import { ProjectSwitcher } from "./ProjectSwitcher";
 
 /**
  * The top of the Project page: where it sits (the programme), the project's
- * name, which opens the switcher, the date verdict as its one pill (D92), the
+ * name, which opens the switcher, the date verdict as its one pill, the
  * day report, then one line of who owns it and one of today's health in words
  * ("Today: CHK-102 blocked"), never as a second colour. An executive gets
- * neither line, and no day report link: no names (D87, D103).
+ * neither line, and no day report link: no names.
  */
 export function ProjectHeader({
   projectId,

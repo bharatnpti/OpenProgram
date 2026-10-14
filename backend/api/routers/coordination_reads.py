@@ -1,11 +1,11 @@
-"""Requests and pods, the reads lane R adds: a request's trail, the board as counts, the
+"""Requests and pods, the reads: a request's trail, the board as counts, the
 resolved asks, and a project's check-in counts.
 
 - ``GET /cross-person-requests/{id}/trail``: what happened to an ask, and what
-  is due (D91). For its requester, the person asked, and the board's readers;
+  is due. For its requester, the person asked, and the board's readers;
   an executive reads it with no one named.
 - ``GET /cross-person-requests/counts``: the board as counts, for every reader
-  of it; an executive's whole view of it (D87).
+  of it; an executive's whole view of it.
 - ``GET /cross-person-requests/resolved``: the asks resolved lately, for the
   board's readers who read names.
 - ``GET /projects/{id}/checkin-coverage``: the day's check-ins across the
@@ -117,7 +117,7 @@ async def project_checkin_coverage(
     """Counts only, no one named: every reader of the project's progress gets them.
 
     A reader who counts people only (an executive) gets none for a project of
-    fewer than five people (D104): its dates and verdict are on its page.
+    fewer than five people: its dates and verdict are on its page.
     """
     try:
         await scope.ensure_project_read(principal, project_id)

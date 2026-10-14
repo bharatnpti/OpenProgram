@@ -504,7 +504,7 @@ async def test_the_markers_are_per_day_and_kind_and_carry_the_change_label() -> 
     assert all(marker.count == len(marker.items) for marker in view.markers if marker.items)
 
 
-# --- Days per event on the markers (D88) ---------------------------------------------------
+# --- Days per event on the markers ---------------------------------------------------
 #
 # A made-up week of kept rows on Checkout Revamp, Mon 5 Oct to Fri 9 Oct:
 #
@@ -527,7 +527,7 @@ _WEEK: dict[date, dict[Driver, tuple[float, float]]] = {
     THU: {Driver.SCOPE_ADDED: (1, 3)},
     FRI: {Driver.SCOPE_ADDED: (3, 4)},
 }
-#: The re-estimate on Tuesday: it joins the scope-added bar but is no event's (D12).
+#: The re-estimate on Tuesday: it joins the scope-added bar but is no event's.
 _RE_ESTIMATE = {Measure.P50: 0.0, Measure.P85: 1.0}
 
 

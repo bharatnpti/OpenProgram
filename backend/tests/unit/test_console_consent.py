@@ -1,7 +1,7 @@
-"""Jira changes answered from the console (D89): one resolve path with the chat, one write.
+"""Jira changes answered from the console: one resolve path with the chat, one write.
 
 Liam (always_ask) said CHK-3 is in review and CHK-4 started; the check-in is
-held open for his yes or no (G1). He may answer in the DM or in the console's
+held open for his yes or no. He may answer in the DM or in the console's
 "Jira changes waiting for your yes". Both go through
 ``WriteBackService.resolve_proposal`` under the correlation's lock, so the issue
 moves once whoever answers first; the console's answer finishes the held
@@ -284,7 +284,7 @@ async def test_a_dm_answer_after_the_console_one_meets_the_resolved_proposal() -
 async def _finalized_with_a_pending_proposal() -> tuple[
     StatusCollector, FakeIssueTracker, FakeChatProvider, InMemoryGraphStore, WriteBackAudit
 ]:
-    """Liam's check-in was recorded, and his CHK-3 proposal still waits (a later yes, N48)."""
+    """Liam's check-in was recorded, and his CHK-3 proposal still waits (a later yes)."""
     collector, tracker, chat, store = await _liam_collector([])
     replied_at = datetime(2026, 10, 3, 12, 15, tzinfo=UTC)
     await store.record_checkin(

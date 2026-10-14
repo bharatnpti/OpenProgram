@@ -1,5 +1,5 @@
 // Early warnings (`/warnings`): the groups and their items in words, pure, from the
-// bulk read (`GET /portfolio/warnings`, D90). Findings attach to work items; a
+// bulk read (`GET /portfolio/warnings`). Findings attach to work items; a
 // person appears only as the owner of one, and a reader who sees no person reads
 // the team. Type imports, and runtime imports by their .ts path, so `node --test`
 // runs it as written.

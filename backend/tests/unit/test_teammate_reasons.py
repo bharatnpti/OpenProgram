@@ -1,4 +1,4 @@
-"""A developer reads their pod's colour in counts and work items, never a teammate (D102).
+"""A developer reads their pod's colour in counts and work items, never a teammate.
 
 The scrum master reads the same pod's reasons as built: whose status is
 unknown, whose blocker says what. A developer in the pod reads "2 not

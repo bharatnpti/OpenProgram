@@ -1,11 +1,11 @@
-"""When a check-in reply carries no status, read by rules before any model (N22, V2 B16b).
+"""When a check-in reply carries no status, read by rules before any model.
 
-A reply without a status never counts as green. V2 live: Elena, an exec with no
+A reply without a status never counts as green. In a live run Elena, an exec with no
 tickets, answered "Thanks, nothing from me today. No blockers on my side and no
 open tickets or MRs." The evaluator's only rule was a handful of single words
 ("ok", "thanks"), so the model read the reply. It called it a status, the
-coordinator rule (N16) took "No blockers" for team context, and her day was
-recorded confirmed: her No-pod tile read green. V1's "thanks, nothing from me"
+coordinator rule took "No blockers" for team context, and her day was
+recorded confirmed: her No-pod tile read green. An earlier run's "thanks, nothing from me"
 had stayed a reply without a status only because the model happened to say so.
 
 A reply reads as carrying no status when it is made only of:
@@ -21,7 +21,7 @@ A reply reads as carrying no status when it is made only of:
 Anything else is for the model: an issue key, a merge request, a number, or any
 other word. So is "no blockers" from someone with open work, since "quiet day,
 nothing blocking" is a status from a person with tasks, and a bare "no blockers"
-from a coordinator, which N16 counts as team context.
+from a coordinator, which counts as team context.
 """
 
 from __future__ import annotations

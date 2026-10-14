@@ -47,7 +47,7 @@ async def project_baselines(
         )
     except GraphNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    # An executive reads who marked planning complete as their role (D87, D98).
+    # An executive reads who marked planning complete as their role.
     return for_reader(PlanningBaselinesResponse.from_view(view), words)
 
 

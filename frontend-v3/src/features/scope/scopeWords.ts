@@ -1,5 +1,5 @@
 // Scope control (`/scope`): the table across projects in words, pure, from the bulk
-// read (`GET /portfolio/scope`, D90). Keys and counts, never who added anything.
+// read (`GET /portfolio/scope`). Keys and counts, never who added anything.
 // Type imports, and runtime imports by their .ts path, so `node --test` runs it.
 import type { ScopeFindingDto, ScopeProjectDto } from "../../api/schema";
 import { formatDay } from "../../lib/format.ts";

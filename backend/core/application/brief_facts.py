@@ -155,7 +155,7 @@ class BriefInputs:
     #: The day's headline as Exec Today shows it (``attention``), for the
     #: exec brief: the same cause and the same team counts as the hero.
     headline: str | None = None
-    #: False for the exec brief of a portfolio of fewer than five people (D104):
+    #: False for the exec brief of a portfolio of fewer than five people:
     #: no line counts or lists whose check-in came in, today's or the window's.
     people_counted: bool = True
 

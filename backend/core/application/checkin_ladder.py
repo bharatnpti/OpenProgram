@@ -1,4 +1,4 @@
-"""Who reads what of a pod's check-ins beyond each person's state (D87).
+"""Who reads what of a pod's check-ins beyond each person's state.
 
 The silence ladder of the day (when each person was asked and replied, and the
 rungs that went out: ``core.domain.checkin_rungs``) is for the roles that

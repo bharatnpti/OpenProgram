@@ -1,4 +1,4 @@
-// Pure wording for the Requests page and a request's trail (D91). Type imports
+// Pure wording for the Requests page and a request's trail. Type imports
 // only, and runtime imports by their .ts path, so `node --test` runs it as written.
 import type {
   CrossPersonRequestResponse,
@@ -189,7 +189,7 @@ export function matchesSearch(text: string, query: string): boolean {
 export type CountTile = { label: string; value: number; note: string };
 
 /**
- * An executive's Requests: counts only, never who asked whom (D87). Each tile
+ * An executive's Requests: counts only, never who asked whom. Each tile
  * says what it counts in a few words.
  */
 export function countTiles(counts: RequestCountsResponse): CountTile[] {

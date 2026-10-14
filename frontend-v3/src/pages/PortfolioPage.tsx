@@ -27,7 +27,7 @@ type Row =
 
 /**
  * Will we make the date? (`/portfolio`): every project the person reads, worst
- * first, from the kept forecast rows in one read a page (D90), never a live
+ * first, from the kept forecast rows in one read a page, never a live
  * forecast per project. The count tiles are the filters; search and the
  * programme stay in the URL (`?q=`, `?verdict=`, `?program=`). Programmes group
  * the list for the readers of programmes (manager, executive, admin). Past a

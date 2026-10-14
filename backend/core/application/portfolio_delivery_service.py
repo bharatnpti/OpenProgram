@@ -1,4 +1,4 @@
-"""Will we make the date? for every project a person reads, in one read (D90).
+"""Will we make the date? for every project a person reads, in one read.
 
 From what is kept, never a live forecast per project: each scope's latest
 ``forecast_days`` row (the hourly run's, so its dates are "as of" the time it
@@ -8,7 +8,7 @@ planning baseline, the day's stored rollup and check-ins. For every project:
 - the three dates: committed (else Jira's release date), likely (the 50% and 85%
   dates) and the team's own date, with how many working days late it is;
 - the verdict, and one reason line that counts work items (core/domain/portfolio);
-- today's health in words (D92), never as a second colour;
+- today's health in words, never as a second colour;
 - done of total, for the project and each pod;
 - the marks on its bar: scope added, removed or reopened, with the working days
   each moved the 85% date on its day, and the committed date's moves.

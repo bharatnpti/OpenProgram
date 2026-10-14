@@ -363,7 +363,7 @@ async def test_a_name_no_member_has_says_nobody_was_asked() -> None:
 
 async def test_a_late_update_names_its_ask_after_the_late_lead() -> None:
     store = await _store(NOAH)
-    # The check-in closed unanswered before Zoe replied (G9).
+    # The check-in closed unanswered before Zoe replied.
     await store.consume_checkin_correlation(TENANT, CORRELATION, ASKED_AT)
     chat = _Chat()
     collector = _collector(store, chat, _ScriptedLlm([_status(_review("Noah"))]))

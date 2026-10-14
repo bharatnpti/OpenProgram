@@ -212,7 +212,7 @@ class PortfolioWarningsService:
     ) -> WarningItem:
         key = reader.label(finding.entity_ref)
         since = local_date(finding.detected_at, self._zone)
-        # Worded as the item disagreeing; only its owner sees their own name (P5).
+        # Worded as the item disagreeing; only its owner sees their own name.
         disagree = kind is WarningKind.TOOLS_DISAGREE
         owner = reader.owner(finding.owner_id, project, finding.entity_ref, hide=disagree)
         return WarningItem(
