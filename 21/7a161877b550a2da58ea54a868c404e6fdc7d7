@@ -1,0 +1,76 @@
+backend/core/ports/delivery_loop.py
+  s_c2fca91494c4a6::t_50bfb4df1a4672 19
+  s_c2fca91494c4a6::t_d7bdc077a0a271 125
+backend/tests/unit/test_delivery_loop_rules.py
+  s_c2fca91494c4a6::t_d7bdc077a0a271 232
+  s_c2fca91494c4a6::t_50bfb4df1a4672 14
+backend/api/routers/delivery_loop.py
+  s_c2fca91494c4a6::t_50bfb4df1a4672 31
+  s_c2fca91494c4a6::t_d7bdc077a0a271 57
+  s_c2fca91494c4a6::t_e2426c270846b2 1-30,32-56,58-93
+frontend/src/api/generated.ts
+  s_c2fca91494c4a6::t_b1b2cb3260c4f3 1229-1279,3849-3883,3897-3947,3966-3993,3995-4014,4020-4029,4115-4125,4369-4373,5820-5836,11030-11063,11065-11130
+  s_c2fca91494c4a6::t_50bfb4df1a4672 3994,4015-4019,11064
+frontend-v3/src/api/openapi.json
+  s_c2fca91494c4a6::t_50bfb4df1a4672 5746,14786,14886-14890,19530
+  s_c2fca91494c4a6::t_b1b2cb3260c4f3 5686-5745,5747-5861,14379-14472,14499,14501,14503,14505,14507,14509-14510,14512-14516,14518-14697,14700-14785,14787-14885,14891-14909,15101-15133,15900-15904,19513-19529
+backend/api/delivery_loop_dtos.py
+  s_c2fca91494c4a6::t_d7bdc077a0a271 44
+  s_c2fca91494c4a6::t_50bfb4df1a4672 14
+  s_c2fca91494c4a6::t_0e48ba469b5d45 1-13,15-43,45-221
+backend/api/main.py
+  s_c2fca91494c4a6::t_2d0e6a4c367a9e 23,149
+frontend/src/api/openapi.json
+  s_c2fca91494c4a6::t_50bfb4df1a4672 5746,14786,14886-14890,19530
+  s_c2fca91494c4a6::t_b1b2cb3260c4f3 5686-5745,5747-5861,14379-14472,14499,14501,14503,14505,14507,14509-14510,14512-14516,14518-14697,14700-14785,14787-14885,14891-14909,15101-15133,15900-15904,19513-19529
+features.md
+  s_c2fca91494c4a6::t_006fa45312f9c7 594-608
+backend/infra/persistence/in_memory_delivery_loop.py
+  s_c2fca91494c4a6::t_d7bdc077a0a271 7,50
+backend/tests/unit/test_delivery_loop_service.py
+  s_c2fca91494c4a6::t_50bfb4df1a4672 18
+  s_c2fca91494c4a6::t_d7bdc077a0a271 336,427,470,486,508,518
+frontend-v2/src/api/openapi.json
+  s_c2fca91494c4a6::t_50bfb4df1a4672 5746,14786,14886-14890,19530
+  s_c2fca91494c4a6::t_b1b2cb3260c4f3 5686-5745,5747-5861,14379-14472,14499,14501,14503,14505,14507,14509-14510,14512-14516,14518-14697,14700-14785,14787-14885,14891-14909,15101-15133,15900-15904,19513-19529
+backend/tests/unit/test_delivery_loop_api.py
+  s_c2fca91494c4a6::t_d7bdc077a0a271 52
+  s_c2fca91494c4a6::t_087f9e781d2a72 1-17,19-51,53-197
+  s_c2fca91494c4a6::t_50bfb4df1a4672 18
+backend/core/application/delivery_loop_service.py
+  s_c2fca91494c4a6::t_d7bdc077a0a271 249,326,338,463,487,491,521,537,554,556,569,609,612,684
+  s_c2fca91494c4a6::t_50bfb4df1a4672 45
+frontend-v3/src/api/generated.ts
+  s_c2fca91494c4a6::t_50bfb4df1a4672 3986,4007-4011,11051
+  s_c2fca91494c4a6::t_b1b2cb3260c4f3 1229-1279,3841-3875,3889-3939,3958-3985,3987-4006,4012-4021,4102-4112,4356-4360,5807-5823,11017-11050,11052-11117
+backend/api/dependencies.py
+  s_c2fca91494c4a6::t_1a63fbf06d232b 19,218-220
+  s_c2fca91494c4a6::t_e32acb6f1a88d0 221-222
+backend/core/domain/delivery_loop.py
+  s_c2fca91494c4a6::t_d7bdc077a0a271 111,649,669,788
+backend/tests/integration/test_delivery_loop_repository.py
+  s_c2fca91494c4a6::t_d7bdc077a0a271 89,133,143
+  s_c2fca91494c4a6::t_50bfb4df1a4672 25
+backend/infra/persistence/postgres_delivery_loop.py
+  s_c2fca91494c4a6::t_50bfb4df1a4672 17
+  s_c2fca91494c4a6::t_d7bdc077a0a271 156,309
+frontend-v2/src/api/generated.ts
+  s_c2fca91494c4a6::t_50bfb4df1a4672 3986,4007-4011,11051
+  s_c2fca91494c4a6::t_b1b2cb3260c4f3 1229-1279,3841-3875,3889-3939,3958-3985,3987-4006,4012-4021,4102-4112,4356-4360,5807-5823,11017-11050,11052-11117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "217a161877b550a2da58ea54a868c404e6fdc7d7",
+  "prompts": {},
+  "sessions": {
+    "s_c2fca91494c4a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cfbcb2ee-3fad-4c25-a40c-44e94f462848",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
