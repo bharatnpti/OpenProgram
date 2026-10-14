@@ -1930,8 +1930,9 @@ def test_directory_names_workstream_people_for_every_role_that_opens_delivery(
 ) -> None:
     """The member list is admin-only, so the directory carries the names.
 
-    Delivery shows a workstream's owner, TPM and SM to every role that opens it.
-    Without names in the directory response those roles could only show ids.
+    Delivery shows a workstream's owner, TPM and SM to every role that opens it
+    but an executive, who reads no person (D87): theirs lists none, and names
+    no owner, TPM or scrum master in its metadata either.
     """
     app = create_app(settings=settings.model_copy(update={"demo_mode": True}))
     with TestClient(app) as client:
@@ -1970,6 +1971,11 @@ def test_directory_names_workstream_people_for_every_role_that_opens_delivery(
     for role, (members_status, listing, detail) in by_role.items():
         assert members_status == 403, role
         assert listing.status_code == 200, role
+        if role == "exec":
+            assert listing.json()[0]["people"] == [], role
+            assert detail.json()["people"] == [], role
+            assert not {"owner_id", "tpm_id", "sm_id"} & set(listing.json()[0]["metadata"]), role
+            continue
         assert listing.json()[0]["people"] == expected, role
         assert detail.json()["people"] == expected, role
         # The stored ids are untouched, so the admin form still round-trips them.

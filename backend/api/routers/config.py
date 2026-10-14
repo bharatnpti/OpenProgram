@@ -50,6 +50,7 @@ from api.dtos import (
     WritebackConsentResponse,
     WritebackConsentUpdateRequest,
 )
+from api.people_projection import PeopleWordsDep, all_for_reader, for_reader
 from config.settings import Settings
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.config_service import (
@@ -1250,12 +1251,16 @@ async def list_programs(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
+    words: PeopleWordsDep,
 ) -> list[DirectoryItemResponse]:
     _ensure(principal, Capability.READ_DIRECTORY)
-    return [
-        DirectoryItemResponse.from_view(item)
-        for item in await service.list_programs(principal.tenant_id, as_of)
-    ]
+    return all_for_reader(
+        [
+            DirectoryItemResponse.from_view(item)
+            for item in await service.list_programs(principal.tenant_id, as_of)
+        ],
+        words,
+    )
 
 
 @router.get("/projects", response_model=list[DirectoryItemResponse])
@@ -1263,12 +1268,16 @@ async def list_projects(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
+    words: PeopleWordsDep,
 ) -> list[DirectoryItemResponse]:
     _ensure(principal, Capability.READ_DIRECTORY)
-    return [
-        DirectoryItemResponse.from_view(item)
-        for item in await service.list_projects(principal.tenant_id, as_of)
-    ]
+    return all_for_reader(
+        [
+            DirectoryItemResponse.from_view(item)
+            for item in await service.list_projects(principal.tenant_id, as_of)
+        ],
+        words,
+    )
 
 
 @router.get("/workstreams", response_model=list[DirectoryItemResponse])
@@ -1276,12 +1285,16 @@ async def list_workstreams(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
+    words: PeopleWordsDep,
 ) -> list[DirectoryItemResponse]:
     _ensure(principal, Capability.READ_DIRECTORY)
-    return [
-        DirectoryItemResponse.from_view(item)
-        for item in await service.list_workstreams(principal.tenant_id, as_of)
-    ]
+    return all_for_reader(
+        [
+            DirectoryItemResponse.from_view(item)
+            for item in await service.list_workstreams(principal.tenant_id, as_of)
+        ],
+        words,
+    )
 
 
 @router.get("/workstreams/{workstream_id}", response_model=DirectoryItemResponse)
@@ -1290,13 +1303,14 @@ async def get_workstream(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
+    words: PeopleWordsDep,
 ) -> DirectoryItemResponse:
     _ensure(principal, Capability.READ_DIRECTORY)
     try:
         item = await service.get_workstream(principal.tenant_id, workstream_id, as_of)
     except GraphNotFound as exc:
         raise _http_error(exc) from exc
-    return DirectoryItemResponse.from_view(item)
+    return for_reader(DirectoryItemResponse.from_view(item), words)
 
 
 @router.get("/projects/{project_id}/workstreams", response_model=list[DirectoryItemResponse])
@@ -1305,13 +1319,14 @@ async def list_project_workstreams(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
+    words: PeopleWordsDep,
 ) -> list[DirectoryItemResponse]:
     _ensure(principal, Capability.READ_DIRECTORY)
     try:
         items = await service.list_project_workstreams(principal.tenant_id, project_id, as_of)
     except GraphNotFound as exc:
         raise _http_error(exc) from exc
-    return [DirectoryItemResponse.from_view(item) for item in items]
+    return all_for_reader([DirectoryItemResponse.from_view(item) for item in items], words)
 
 
 @router.get("/pods", response_model=list[DirectoryItemResponse])
@@ -1319,12 +1334,16 @@ async def list_pods(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
+    words: PeopleWordsDep,
 ) -> list[DirectoryItemResponse]:
     _ensure(principal, Capability.READ_DIRECTORY)
-    return [
-        DirectoryItemResponse.from_view(item)
-        for item in await service.list_pods(principal.tenant_id, as_of)
-    ]
+    return all_for_reader(
+        [
+            DirectoryItemResponse.from_view(item)
+            for item in await service.list_pods(principal.tenant_id, as_of)
+        ],
+        words,
+    )
 
 
 async def _create_node(

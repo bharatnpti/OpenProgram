@@ -57,6 +57,9 @@ _ROLE_WORDS: tuple[tuple[str, str], ...] = (
     ("admin", "the admin"),
     ("exec", "the executive"),
 )
+#: The same, by role: "sm" is "the scrum master". For a stand-in that is a role by
+#: definition, such as a pod's escalation contact, whoever holds it.
+ROLE_WORDS: Mapping[str, str] = dict(_ROLE_WORDS)
 
 
 def hides_names(principal: Principal) -> bool:
@@ -214,6 +217,7 @@ def _placed(match: re.Match[str], words: str) -> str:
 
 
 __all__ = [
+    "ROLE_WORDS",
     "SMALL_GROUP",
     "SMALL_GROUP_ALONE_LINE",
     "SMALL_GROUP_LINE",

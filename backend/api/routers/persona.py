@@ -379,6 +379,7 @@ async def portfolio_pull_request_flow(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[PullRequestFlowService, Depends(get_pull_request_flow_service)],
+    words: PeopleWordsDep,
     days: Annotated[int, Query(ge=1, le=180)] = 30,
     program_id: Annotated[str | None, Query()] = None,
     project_id: Annotated[str | None, Query()] = None,
@@ -405,18 +406,19 @@ async def portfolio_pull_request_flow(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return PullRequestFlowResponse.from_view(view)
+    return for_reader(PullRequestFlowResponse.from_view(view), words)
 
 
 @router.get("/portfolio/feed", response_model=PortfolioFeedResponse)
 async def portfolio_feed(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[PortfolioFeedService, Depends(get_portfolio_feed_service)],
+    words: PeopleWordsDep,
     since: Annotated[datetime | None, Query()] = None,
 ) -> PortfolioFeedResponse:
     _ensure_aggregate(principal)
     view = await service.feed(principal.tenant_id, since)
-    return PortfolioFeedResponse.from_view(view)
+    return for_reader(PortfolioFeedResponse.from_view(view), words)
 
 
 @router.get("/persona/briefs", response_model=NarrativeBriefsResponse)

@@ -14,7 +14,10 @@ nobody:
   same way and leaves work items as they are;
 - every other piece of text (reasons, notes, summaries) says each member's
   name as their role or team;
-- a person's own status, in their words ("owner_status_summary"), is left out.
+- a person's own status, in their words ("owner_status_summary"), is left out;
+- a directory item (a program, project, workstream or pod) lists no member, names
+  no owner, TPM or scrum master, and gives a pod's escalation contacts as the role
+  they hold ("the scrum master", "the manager"), with no member or chat id.
 
 Everyone else gets the response as it was built. The route decides by the
 principal, never the console.
@@ -22,19 +25,27 @@ principal, never the console.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import date
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import Depends, Request
 from pydantic import BaseModel
 
 from api.dependencies import get_current_principal, get_registry
+from api.dtos import DirectoryItemResponse
 from core.application.attention import TeamGraph
-from core.application.people_words import PeopleWords, hides_names, people_words
+from core.application.config_service import PERSON_METADATA_KEYS
+from core.application.people_words import ROLE_WORDS, PeopleWords, hides_names, people_words
 from core.application.portfolio_privacy import small_groups
 from core.domain.auth import Principal
+from core.domain.escalation import (
+    ESCALATION_MEMBER_METADATA_KEYS,
+    ESCALATION_METADATA_KEYS,
+    EscalationTarget,
+)
 from core.domain.graph import EdgeKind
 
 #: Fields that hold a person's id: said as their role or team when they are a member.
@@ -72,6 +83,11 @@ _NAME_FIELDS: dict[str, str | None] = {
 _NAME_MAPS = frozenset({"actor_names", "source_names"})
 #: A person's own status, in their words and by its source: an executive reads none (D87).
 _LEFT_OUT = frozenset({"owner_status_summary", "owner_status_source", "owner_status_as_of"})
+#: A pod's escalation contacts as an executive reads them: the role, never the person.
+_CONTACT_WORDS: dict[EscalationTarget, str] = {
+    EscalationTarget.SCRUM_MASTER: ROLE_WORDS["sm"],
+    EscalationTarget.MANAGER: ROLE_WORDS["mgr"],
+}
 
 
 async def get_people_words(
@@ -109,6 +125,8 @@ def all_for_reader[M: BaseModel](models: list[M], words: PeopleWords | None) -> 
 
 
 def _model[M: BaseModel](model: M, words: PeopleWords) -> M:
+    if isinstance(model, DirectoryItemResponse):
+        return cast("M", _directory_item(model, words))
     values = dict(model)
     update: dict[str, object] = {}
     for name, value in values.items():
@@ -142,6 +160,56 @@ def _field(name: str, value: object, siblings: dict[str, object], words: PeopleW
         person = siblings.get(pair) if pair else None
         return words.label(person if isinstance(person, str) else None, value)
     return _text(value, words)
+
+
+def _directory_item(item: DirectoryItemResponse, words: PeopleWords) -> DirectoryItemResponse:
+    """A program, project, workstream or pod with none of its people.
+
+    The members it holds and the people its metadata names (owner, TPM, scrum
+    master) are left out, not stood in for: counting them is the small-group
+    rule's (D104) and the directory has no count. A pod's escalation contacts
+    stay as the role ("the scrum master"), so it still says it has them.
+    """
+    return item.model_copy(
+        update={
+            "description": _said(item.description, words),
+            "metadata": _directory_metadata(item.metadata, words),
+            "member_ids": [],
+            "people": [],
+        }
+    )
+
+
+def _directory_metadata(
+    metadata: Mapping[str, str | int | float | bool | None], words: PeopleWords
+) -> dict[str, str | int | float | bool | None]:
+    kept = dict(metadata)
+    for target, role in _CONTACT_WORDS.items():
+        chat_key, name_key = ESCALATION_METADATA_KEYS[target]
+        member_key = ESCALATION_MEMBER_METADATA_KEYS[target]
+        has_contact = any(_is_set(kept.get(key)) for key in (chat_key, name_key, member_key))
+        kept.pop(chat_key, None)
+        kept.pop(member_key, None)
+        if has_contact:
+            kept[name_key] = role
+    for key in PERSON_METADATA_KEYS:
+        kept.pop(key, None)
+    for key, value in list(kept.items()):
+        # A person typed under a key this does not know is still a person.
+        if isinstance(value, str) and words.is_person(" ".join(value.split())):
+            del kept[key]
+        elif key == "description":
+            kept[key] = _said(value, words)
+    return kept
+
+
+def _is_set(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _said(value: object, words: PeopleWords) -> str | None:
+    """A description with every member's name said as their stand-in."""
+    return words.say(value) if isinstance(value, str) else None
 
 
 def _text(value: object, words: PeopleWords) -> object:
