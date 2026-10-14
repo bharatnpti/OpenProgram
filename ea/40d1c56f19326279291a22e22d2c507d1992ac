@@ -1,0 +1,47 @@
+backend/config/settings.py
+  s_c2fca91494c4a6::t_5852f75b4254a3 179-208
+backend/infra/adapters/executor/unconfigured.py
+  s_c2fca91494c4a6::t_b8e710c16ad31b 1-78
+backend/tests/contract/test_delivery_loop_adapters.py
+  s_c2fca91494c4a6::t_6f272688ad831b 84,336
+  s_c2fca91494c4a6::t_4c753b75e949b3 80,196,301
+  s_c2fca91494c4a6::t_ac530c7028dce8 1-79,81-83,85-195,197-300,302-335,337-411
+backend/infra/adapters/jira/jira_adapter.py
+  s_c2fca91494c4a6::t_0dae6719bd8124 30
+  s_c2fca91494c4a6::t_4d5f87bda340f0 681-719
+  s_c2fca91494c4a6::t_67248f36fef830 319-369
+  s_c2fca91494c4a6::t_ed7d60bc39583e 720-721
+backend/infra/adapters/executor/__init__.py
+  s_c2fca91494c4a6::t_7daf7e66099516 1
+backend/infra/adapters/executor/paperclip.py
+  s_c2fca91494c4a6::t_bef70d94a3f50e 1-119,123-272,276-366
+  s_c2fca91494c4a6::t_6f272688ad831b 120-122,273-275
+backend/infra/adapters/delivery_loop.py
+  s_c2fca91494c4a6::t_c75d2429c1bf42 1-105
+backend/infra/adapters/gitlab/delivery_repos.py
+  s_c2fca91494c4a6::t_6f272688ad831b 131-135
+  s_c2fca91494c4a6::t_d7d26007b4ec81 98,127,161,165-167
+  s_c2fca91494c4a6::t_e854f5c352f5a8 1-97,99-126,128-130,136-160,162-164,168-196
+backend/infra/registry.py
+  s_c2fca91494c4a6::t_53b1a693782d72 125,286-288,567-594
+  s_c2fca91494c4a6::t_f6a01b2b2d1c0a 23,68,140,165
+  s_c2fca91494c4a6::t_373de80d77ceb1 595
+backend/tests/unit/test_architecture_boundaries.py
+  s_c2fca91494c4a6::t_18dbea2fb39f47 39-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ea40d1c56f19326279291a22e22d2c507d1992ac",
+  "prompts": {},
+  "sessions": {
+    "s_c2fca91494c4a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cfbcb2ee-3fad-4c25-a40c-44e94f462848",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
