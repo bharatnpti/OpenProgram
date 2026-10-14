@@ -1,0 +1,77 @@
+backend/api/dependencies.py
+  s_5f08a60d42019a::t_300d7d7f327123 83-94
+backend/api/people_projection.py
+  s_5f08a60d42019a::t_f49349619a6b41 118-119,124-126
+backend/api/routers/baselines.py
+  s_5f08a60d42019a::t_55c10751971576 21,38
+backend/api/routers/coordination_reads.py
+  s_5f08a60d42019a::t_ededacc4839b4b 23,65,78,96,115
+backend/api/routers/delivery_impact.py
+  s_5f08a60d42019a::t_12a2bc84263efa 18-22,40
+backend/api/routers/jira_changes.py
+  s_5f08a60d42019a::t_95d00315ea1f6c 64
+backend/api/routers/persona.py
+  s_5f08a60d42019a::t_f32d334e424df4 23,293,318-321
+backend/api/routers/portfolio_reads.py
+  s_5f08a60d42019a::t_d7725f48165804 24-29,62-63,67,85,97,115,123,161,179
+backend/api/routers/profiles.py
+  s_5f08a60d42019a::t_02daa550f89d13 18-23,93,114
+backend/api/routers/timeline.py
+  s_5f08a60d42019a::t_33eff967d98a83 18,32,54
+backend/api/routers/today.py
+  s_5f08a60d42019a::t_de110dc34590a4 18,21-22,58,69,87,103
+backend/core/application/ask_hygiene.py
+  s_5f08a60d42019a::t_e8caa3e60b2d83 18,119-122,127-132,134-138,196-197,199
+backend/core/application/ask_service.py
+  s_5f08a60d42019a::t_9591ea0a5b4863 7,1784-1786,3357,3362,3397-3398,3400
+backend/core/application/blocker_settlement.py
+  s_5f08a60d42019a::t_2f2118703957a9 45,71,117,127-130,222-223
+backend/core/application/forecast_service.py
+  s_5f08a60d42019a::t_edab1e4f5943a5 243-246
+backend/core/application/hygiene_service.py
+  s_5f08a60d42019a::t_95c73efdacc611 25,91,351,366-369,853,901,1109-1111,1288-1289,1291,1544,1547-1548,1553
+backend/core/application/jira_changes_service.py
+  s_5f08a60d42019a::t_2b278f6fdad1cc 155,166-168,170,174,388
+backend/core/application/narrative_brief_service.py
+  s_5f08a60d42019a::t_37a257b46ae61a 6,27,99,104-106,115-119,130,138,168-169,206,208,261-264,274,352,356,359
+backend/core/application/portfolio_delivery_service.py
+  s_5f08a60d42019a::t_dd01ccff8c5150 26-27,56,195,205-208,217-219,314,433-436,439,449,476
+backend/core/application/portfolio_scope_service.py
+  s_5f08a60d42019a::t_19857eee867bc8 26,41,121,130-132,180,321,339-340
+backend/core/application/portfolio_warnings_service.py
+  s_5f08a60d42019a::t_b6ef88644b941c 31,43,134,144-146,179,214,372-374,381
+backend/core/application/today_service.py
+  s_5f08a60d42019a::t_f79670c07ad3e5 149,159-161,167
+backend/infra/registry.py
+  s_5f08a60d42019a::t_f26a3e0ac85e8b 784,824-827,1690
+backend/infra/workflows/brief_generation.py
+  s_5f08a60d42019a::t_e6dd41d6253514 101
+backend/tests/unit/test_tenant_day_console.py
+  s_5f08a60d42019a::t_65fe2286b230dc 1-733
+frontend-v3/src/api/asOf.ts
+  s_5f08a60d42019a::t_37a9b6c601a445 104-108
+frontend-v3/src/app/viewingDate.ts
+  s_5f08a60d42019a::t_bd856b3fbeb9eb 3,81-90
+frontend-v3/src/features/coordination/RequestCard.tsx
+  s_5f08a60d42019a::t_29c92e849528b8 3,24
+frontend-v3/src/features/pods/BlockersAndWaits.tsx
+  s_5f08a60d42019a::t_90e9d625eb0cbc 10,32
+frontend-v3/src/pages/RequestsPage.tsx
+  s_5f08a60d42019a::t_ff742e989f756f 43,159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "51a24998ce5db4b090f8ba14b08d6460ade5c0d4",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
