@@ -6,6 +6,10 @@ for part of every day. Each test pins the tenant's day three days after the serv
 as for a tenant east of the server just after the tenant's midnight: a link made
 through the config API starts on the tenant's day, so a read on the server's day
 does not see it yet, and a route that echoes its day names the server's.
+
+The workflows, and the services they run, took today as the UTC date instead; the
+pinned day is never that either. The check-in fan-out keeps its UTC date: its cron
+is registered in UTC.
 """
 
 from __future__ import annotations
@@ -21,13 +25,29 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from config.settings import Settings
 from core.application.sync_targets import RuntimeSyncTargetResolver
-from core.domain.graph import EdgeKind, GraphEdge, GraphNode, NodeKind, Task
+from core.domain.cross_person import CrossPersonRequestStatus
+from core.domain.graph import (
+    Developer,
+    EdgeKind,
+    GraphEdge,
+    GraphNode,
+    NodeKind,
+    Program,
+    Project,
+    Task,
+)
 from core.domain.llm import LlmRequest, LlmResponse
+from core.domain.status import CheckIn, IssueClaim
 from core.domain.sync_status import SyncSource
 from infra.adapters.llm.fake import FakeLlmProvider
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.registry import ServiceRegistry
+from infra.workflows import rollup as rollup_workflow
 from infra.workflows import runtime_sync
+from tests.unit.qa2_checkout_slice import OMAR, checkout_slice
+from tests.unit.test_attention import DAY as ATTENTION_DAY
+from tests.unit.test_attention import _unanswered_day
+from tests.unit.test_rollup_refresh import _to_omar
 from tests.unit.test_task_update import _DEV, _team
 
 TENANT = "demo"
@@ -299,3 +319,149 @@ async def test_the_runtime_sync_and_its_status_read_the_tenants_day(
     assert "pod-runtime" in {item.payload["target_node_id"] for item in plan.dispatches}
     issues = next(item for item in report.sources if item.source is SyncSource.ISSUE_TRACKER)
     assert "Pod Runtime" in {target.label for target in issues.targets}
+
+
+# --- Workflows and the services they run ----------------------------------------------
+
+
+def _offline(settings: Settings) -> Settings:
+    """Every provider fake, so the registry builds the workflow-side services offline."""
+    return settings.model_copy(
+        update={
+            "chat_provider": "fake",
+            "directory_provider": "fake",
+            "issue_tracker_provider": "fake",
+            "vcs_provider": "fake",
+            "calendar_provider": "fake",
+            "llm_provider": "fake",
+            "workflow_provider": "fake",
+        }
+    )
+
+
+async def test_the_rollup_with_no_as_of_records_the_tenants_day(
+    settings: Settings, tenant_day: date, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registry = ServiceRegistry(_offline(settings))
+    rollups = registry.rollup_repository()
+    program = Program(tenant_id=TENANT, id="prog", name="Commerce")
+    await registry.graph_repository().upsert_node(program)
+    monkeypatch.setattr(rollup_workflow, "_service_registry", lambda: registry)
+
+    await rollup_workflow.run_rollup_activity(
+        rollup_workflow.RollupInput(tenant_id=TENANT, backfill_days=0)
+    )
+
+    recorded = await rollups.node_status_history(
+        TENANT, program.ref, tenant_day - timedelta(days=7), tenant_day + timedelta(days=7)
+    )
+    assert [status.as_of for status in recorded] == [tenant_day]
+
+
+async def test_a_resolved_wait_refreshes_the_rollup_of_the_tenants_day(
+    settings: Settings, tenant_day: date
+) -> None:
+    store = await checkout_slice()
+    registry = ServiceRegistry(_offline(settings), graph_store=store)
+    service = registry.cross_person_request_service()
+    assert service.blocker_settlement is not None
+    refresher = service.blocker_settlement._rollup_refresher
+    to_omar = await store.create(_to_omar())
+
+    await service.update_status(TENANT, to_omar.id, CrossPersonRequestStatus.RESOLVED, actor=OMAR)
+
+    assert refresher.requests == [(TENANT, tenant_day)]  # type: ignore[union-attr]
+
+
+async def test_the_status_collector_reads_the_links_in_force_on_the_tenants_day(
+    settings: Settings, tenant_day: date
+) -> None:
+    registry = ServiceRegistry(_offline(settings))
+    store = registry.graph_repository()
+    for node in (
+        Project(tenant_id=TENANT, id="checkout", name="Checkout"),
+        Task(tenant_id=TENANT, id="CHK-1", name="Card payments"),
+        Task(tenant_id=TENANT, id="CHK-2", name="Refunds"),
+        Developer(tenant_id=TENANT, id="dev-eli", name="Eli"),
+        Developer(tenant_id=TENANT, id="dev-ira", name="Ira"),
+    ):
+        await store.upsert_node(node)
+    for parent, child, kind in (
+        ("checkout", "CHK-1", EdgeKind.CONTAINS),
+        ("checkout", "CHK-2", EdgeKind.CONTAINS),
+        ("dev-ira", "CHK-2", EdgeKind.ASSIGNED_TO),
+    ):
+        await store.add_edge(
+            GraphEdge(
+                tenant_id=TENANT,
+                from_node_id=parent,
+                to_node_id=child,
+                kind=kind,
+                valid_from=tenant_day,
+            )
+        )
+    collector = registry.status_collector()
+    undated = CheckIn(
+        tenant_id=TENANT,
+        developer_id="dev-eli",
+        correlation_id="checkin-eli",
+        asked_at=None,
+        replied_at=None,
+        raw_reply=None,
+        signals=None,
+        checkin_date=None,
+    )
+
+    keys = await collector._project_task_keys(TENANT)
+    others = await collector._issues_of_others(undated, ["CHK-2"], ())
+
+    assert keys["CHK-1"] == frozenset({"CHK-1", "CHK-2"})
+    assert others == {"CHK-2"}
+
+
+def test_the_heat_map_says_today_on_the_tenants_day(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A past tenant's day: the UTC date it fell back to is later, so its words said
+    # "that day" about the tenant's today.
+    monkeypatch.setattr(ServiceRegistry, "_tenant_today", lambda _self: ATTENTION_DAY)
+    store = asyncio.run(_unanswered_day())
+    app = create_app(settings=settings, registry=ServiceRegistry(settings, graph_store=store))
+    with TestClient(app) as client:
+        response = client.get("/portfolio/heatmap", params={"program_root_id": "prog"})
+
+    assert response.status_code == 200, response.text
+    reasons = {cell["entity_ref"]["id"]: cell["reason"] for cell in response.json()["cells"]}
+    assert reasons["pod-web"] == "3 of 3 unanswered today"
+
+
+async def test_a_tracker_comment_with_no_check_in_date_names_the_tenants_day(
+    settings: Settings, tenant_day: date
+) -> None:
+    registry = ServiceRegistry(_offline(settings))
+
+    comment = await registry.write_back_service()._write_back_comment(
+        TENANT,
+        "dev-eli",
+        IssueClaim(issue_key="CHK-1", claimed_done=True),
+        "Done",
+        written=None,
+        reported_on=None,
+    )
+
+    assert tenant_day.isoformat() in comment
+
+
+def test_an_admin_check_in_with_no_date_is_for_the_tenants_day(
+    settings: Settings, tenant_day: date
+) -> None:
+    app = _app(settings, workflow_provider="fake")
+    with TestClient(app) as client:
+        assert client.post("/config/members", json={"id": "dev-eli", "name": "Eli"}).status_code
+        checkin = client.post(
+            "/admin/workflows/checkin/dispatch",
+            json={"tenant_id": TENANT, "developer_id": "dev-eli"},
+        )
+
+    assert checkin.status_code == 200, checkin.text
+    assert checkin.json()["workflow_id"] == f"fake-checkin-demo-dev-eli-{tenant_day.isoformat()}"

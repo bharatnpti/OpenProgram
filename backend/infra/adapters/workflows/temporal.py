@@ -152,6 +152,9 @@ class ScheduledCheckinFanoutWorkflow:
             dispatch_checkins_for_tenant_activity,
             CheckinFanoutInput(
                 tenant_id=config.tenant_id,
+                # The fan-out cron is registered with no zone, so a run is for its UTC
+                # date (CheckInSendSchedule reads `send` in UTC too); a zone given to the
+                # cron would date the run there.
                 checkin_date=workflow.now().date().isoformat(),
             ),
             start_to_close_timeout=timedelta(minutes=10),
@@ -934,6 +937,7 @@ class TemporalWorkflowScheduler:
 
     async def dispatch_developer_checkin(self, input: DeveloperCheckinDispatch) -> str:
         client = await _connect_temporal(self.target)
+        # The day only names the run: the uuid makes every id new, so it never dedupes.
         workflow_id = safe_workflow_id(
             "checkin-"
             f"{input.tenant_id}-{input.developer_id}-"

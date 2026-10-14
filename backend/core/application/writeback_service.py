@@ -189,6 +189,7 @@ class WriteBackService:
         writeback_enabled_default: bool = False,
         kind_switch: KindSwitch | None = None,
         clock: Callable[[], datetime] | None = None,
+        today: Callable[[], date] | None = None,
     ) -> None:
         self._issue_tracker = issue_tracker
         self._audit = audit_repository
@@ -201,6 +202,9 @@ class WriteBackService:
         self._default_enabled = writeback_enabled_default
         self._kind_switch = kind_switch
         self._clock = clock or (lambda: datetime.now(tz=UTC))
+        # The day a tracker comment names when the update brought none; the
+        # registry passes the tenant's today, the day a console move names.
+        self._today = today or (lambda: self._clock().date())
 
     async def system_gate_open(self, tenant_id: str) -> bool:
         """The master switch: off, nothing is written to the tracker, whatever else is on."""
@@ -1236,7 +1240,7 @@ class WriteBackService:
             person=await self._person_name(tenant_id, developer_id),
             reported=_reported_phrase(claim, to_state),
             merge_requests=await self._backing_merge_requests(tenant_id, claim.issue_key, to_state),
-            reported_on=reported_on or self._clock().date(),
+            reported_on=reported_on or self._today(),
             via=via,
         )
 

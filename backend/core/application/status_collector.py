@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
@@ -295,6 +295,7 @@ class StatusCollector:
         outbound_dm_max_chars: int = OUTBOUND_DM_MAX_CHARS,
         recent_fact_lookback_days: int = RECENT_FACT_LOOKBACK_DAYS,
         issue_tracker_name: str = DEFAULT_ISSUE_TRACKER_NAME,
+        today: Callable[[], date] | None = None,
     ) -> None:
         self._issue_tracker = issue_tracker
         # How a status summary names the tracker a check-in's update went to (N48).
@@ -327,6 +328,11 @@ class StatusCollector:
         self._checkin_max_clarifications = max(0, checkin_max_clarifications)
         self._checkin_ack_enabled = checkin_ack_enabled
         self._tenant_default_timezone = tenant_default_timezone
+        # The tenant's today, the day graph links are dated on, for the reads of
+        # the links in force now; the registry passes ServiceRegistry.tenant_today.
+        self._today = today or (
+            lambda: _local_date(datetime.now(tz=UTC), None, tenant_default_timezone)
+        )
         self._outbound_dm_max_chars = outbound_dm_max_chars
         self._recent_fact_lookback_days = recent_fact_lookback_days
         self._parser = parser or StatusParser(llm_provider, model, tool_agent=tool_agent)
@@ -1059,7 +1065,7 @@ class StatusCollector:
         nodes = {node.id: node for node in await self._graph_repository.list_nodes(tenant_id)}
         # The links in force now: one ended earlier is history and would map a
         # moved task to the project it left.
-        today = datetime.now(tz=UTC).date()
+        today = self._today()
         edges = [
             edge
             for edge in await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
@@ -1278,7 +1284,7 @@ class StatusCollector:
         wanted = {key for key in keys if key and key not in own_keys}
         if not wanted or self._graph_repository is None:
             return set()
-        today = checkin.checkin_date or datetime.now(tz=UTC).date()
+        today = checkin.checkin_date or self._today()
         assignees: dict[str, set[str]] = {}
         for edge in await self._graph_repository.list_edges(
             checkin.tenant_id, kind=EdgeKind.ASSIGNED_TO

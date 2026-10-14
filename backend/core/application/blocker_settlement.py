@@ -112,12 +112,16 @@ class BlockerSettlement:
         *,
         rollup_refresher: RollupRefresher | None = None,
         clock: Callable[[], datetime] = _utc_now,
+        today: Callable[[], date] | None = None,
     ) -> None:
         self._status_repository = status_repository
         # Records today's rollup again after a pass changed a blocker; None
         # leaves the change to the next hourly rollup.
         self._rollup_refresher = rollup_refresher
         self._clock = clock
+        # The day that refresh records; the registry passes the tenant's today,
+        # the day the console reads rollups on.
+        self._today = today or (lambda: clock().date())
 
     async def settle_for_request(
         self,
@@ -235,7 +239,7 @@ class BlockerSettlement:
         if self._rollup_refresher is None:
             return
         try:
-            await self._rollup_refresher.refresh_rollup(tenant_id, self._clock().date())
+            await self._rollup_refresher.refresh_rollup(tenant_id, self._today())
         except Exception as error:
             _logger.warning(
                 "rollup_refresh_request_failed",

@@ -341,6 +341,7 @@ def get_persona_view_service(request: Request) -> PersonaViewService:
         # ones carry (N3), read by the Signals list's own reader.
         drift_signals=get_risk_service(request),
         identity_link_repository=registry.identity_link_repository(),
+        today=registry.tenant_today,
     )
 
 

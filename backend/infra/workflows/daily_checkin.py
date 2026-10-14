@@ -175,6 +175,9 @@ def prepare_daily_checkin_payload(
     if scheduled.asked_at is None:
         scheduled = replace(scheduled, asked_at=now.isoformat())
     if scheduled.checkin_date is None:
+        # Every dispatch names its day (the fan-out its run's, reconcile its zone's,
+        # the admin route the tenant's); this UTC date serves only one that does
+        # not, and a Temporal workflow body has no registry to ask for the tenant's.
         scheduled = replace(scheduled, checkin_date=now.date().isoformat())
     return scheduled
 
@@ -188,6 +191,7 @@ def nudge_input_for_daily_checkin_result(
     return NudgeInput(
         tenant_id=result.tenant_id,
         correlation_id=result.correlation_id,
+        # Set by prepare_daily_checkin_payload; the UTC date is its last resort too.
         as_of=scheduled.checkin_date or now.date().isoformat(),
         developer_name=scheduled.developer_name,
         chat_external_id=scheduled.chat_external_id,
@@ -278,6 +282,8 @@ async def _record_schedule_run(
 
 
 def _checkin_date(payload: DailyCheckinInput, fallback: datetime) -> date:
+    # prepare_daily_checkin_payload sets checkin_date on every workflow path, so
+    # the UTC fallback serves only a direct call.
     if payload.checkin_date is not None:
         return date.fromisoformat(payload.checkin_date)
     asked_at = _optional_datetime(payload.asked_at)

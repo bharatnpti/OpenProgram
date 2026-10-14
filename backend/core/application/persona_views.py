@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from typing import Literal, Protocol
@@ -391,17 +391,21 @@ class PersonaViewService:
         time_series_repository: TimeSeriesRepository,
         drift_signals: DriftSignals | None = None,
         identity_link_repository: IdentityLinkRepository | None = None,
+        today: Callable[[], date] | None = None,
     ) -> None:
         """``drift_signals`` gives a rollup computed here, with nothing stored, its drift (N3).
 
         ``identity_link_repository`` maps a person to their tracker account, so
-        a focus task can say whether they are its synced assignee.
+        a focus task can say whether they are its synced assignee. ``today`` is
+        the day a reason calls "today" when a read names no reader's day; the
+        API and workflows pass the tenant's (ServiceRegistry.tenant_today).
         """
         self._graph_repository = graph_repository
         self._status_repository = status_repository
         self._rollup_repository = rollup_repository
         self._time_series_repository = time_series_repository
         self._identity_links = identity_link_repository
+        self._today = today or (lambda: datetime.now(tz=UTC).date())
         self._blocker_resolution = BlockerResolutionService(graph_repository, status_repository)
         self._rollup_service = RollupService(
             status_repository, rollup_repository, self._blocker_resolution, drift_signals
@@ -882,9 +886,7 @@ class PersonaViewService:
         if loaded is None:
             return PortfolioHeatmapView(as_of=as_of, rows=(), columns=(), cells=())
         statuses, tree = loaded
-        day = await self._attention_day(
-            tenant_id, statuses, as_of, today or datetime.now(tz=UTC).date(), names
-        )
+        day = await self._attention_day(tenant_id, statuses, as_of, today or self._today(), names)
         # An empty workstream is optional, not unreported: it gets no cell.
         shown = [status for status in statuses if day.graph.shows(status.entity_ref)]
         cells = await self._heatmap_cells(tenant_id, shown, tree, day)

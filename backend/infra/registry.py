@@ -613,6 +613,7 @@ class ServiceRegistry:
             status_repository=self.status_repository(),
             rollup_repository=self.rollup_repository(),
             time_series_repository=self.time_series_repository(),
+            today=self._tenant_today,
         )
         try:
             return [task.id for task in (await views.pod_tasks(tenant_id, pod_id, day)).tasks]
@@ -1491,7 +1492,9 @@ class ServiceRegistry:
             time_series_repository=self.time_series_repository(),
             llm_provider=self.llm_provider(),
             blocker_settlement=BlockerSettlement(
-                self.status_repository(), rollup_refresher=self.rollup_refresher()
+                self.status_repository(),
+                rollup_refresher=self.rollup_refresher(),
+                today=self._tenant_today,
             ),
             model=self.settings.litellm_model,
             auto_notify=self.settings.cross_person_auto_notify,
@@ -1560,6 +1563,7 @@ class ServiceRegistry:
             graph_repository=self.graph_repository(),
             writeback_enabled_default=self.settings.jira_writeback_enabled,
             kind_switch=self.jira_writes_service().kind_on,
+            today=self._tenant_today,
         )
 
     def status_collector(self) -> StatusCollector:
@@ -1586,6 +1590,7 @@ class ServiceRegistry:
             checkin_max_clarifications=self.settings.checkin_max_clarifications,
             checkin_ack_enabled=self.settings.checkin_ack_enabled,
             tenant_default_timezone=self.settings.tenant_default_timezone,
+            today=self._tenant_today,
             outbound_dm_max_chars=self.settings.outbound_dm_max_chars,
             recent_fact_lookback_days=self.settings.recent_fact_lookback_days,
             # Every tracker but the fake one is the Jira adapter (catalog).

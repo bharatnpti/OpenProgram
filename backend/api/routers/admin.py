@@ -38,9 +38,9 @@ async def dispatch_checkin(
             developer_id=request.developer_id,
             developer_name=request.developer_name,
             chat_external_id=request.chat_external_id,
-            checkin_date=request.checkin_date.isoformat()
-            if request.checkin_date is not None
-            else None,
+            # Left out, the tenant's today, the day the console reads check-ins
+            # on, not the UTC date the workflow would give it.
+            checkin_date=(request.checkin_date or registry.tenant_today()).isoformat(),
         )
     )
     return WorkflowDispatchResponse(workflow_id=workflow_id)

@@ -193,6 +193,9 @@ async def dbos_scheduled_checkin_fanout_workflow(
     return await _run_dbos_checkin_fanout(
         CheckinFanoutInput(
             tenant_id=context["tenant_id"],
+            # The fan-out cron is registered with no zone, so a run is for its UTC
+            # date (CheckInSendSchedule reads `send` in UTC too); a zone given to the
+            # cron would date the run there.
             checkin_date=scheduled_time.date().isoformat(),
         )
     )
@@ -600,6 +603,7 @@ async def _start_daily_checkins_concurrently(
 
 
 async def _start_daily_checkin_workflow(input: DeveloperCheckinDispatch) -> str:
+    # The day only names the run: the uuid makes every id new, so it never dedupes.
     workflow_id = safe_workflow_id(
         "checkin-"
         f"{input.tenant_id}-{input.developer_id}-"
