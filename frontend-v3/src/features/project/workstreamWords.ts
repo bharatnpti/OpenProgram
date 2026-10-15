@@ -43,6 +43,18 @@ export function workstreamLine(
 }
 
 /** Workstreams in order of their target date (none last), then by name. */
+/**
+ * The Workstreams section's line: how many, and what a fold holds for this
+ * reader: its tasks and reasons for a reader of project progress, else its
+ * facts and pods (the progress read is the progress readers').
+ */
+export function workstreamsMeta(count: number, readsProgress: boolean): string {
+  const many = `${count} ${count === 1 ? "workstream" : "workstreams"}`;
+  return readsProgress
+    ? `${many} · open one for its tasks and reasons`
+    : `${many} · open one for its facts and pods`;
+}
+
 export function byTarget<T extends Pick<DirectoryItemResponse, "metadata" | "name">>(
   items: readonly T[],
 ): T[] {

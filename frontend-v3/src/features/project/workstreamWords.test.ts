@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { byTarget, workstreamLine } from "./workstreamWords.ts";
+import { byTarget, workstreamLine, workstreamsMeta } from "./workstreamWords.ts";
 
 const day = (iso: string) => `day ${iso}`;
 
@@ -54,4 +54,9 @@ describe("a workstream's row", () => {
       ["Gamma", "Beta", "Alpha", "Zed"],
     );
   });
+});
+
+test("the section's line says what a fold holds for the reader", () => {
+  assert.equal(workstreamsMeta(2, true), "2 workstreams · open one for its tasks and reasons");
+  assert.equal(workstreamsMeta(1, false), "1 workstream · open one for its facts and pods");
 });

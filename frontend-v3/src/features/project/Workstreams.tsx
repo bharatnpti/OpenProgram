@@ -9,12 +9,12 @@ import { podTabPath } from "../../app/links";
 import { useRole } from "../../app/role";
 import { PanelState, SectionHeader } from "../../components/PanelState";
 import { formatDay } from "../../lib/format";
-import { PERSON_KEY_WORDS, plural } from "../../lib/words";
+import { PERSON_KEY_WORDS } from "../../lib/words";
 import { FactorsPanel, Facts } from "../delivery/NodeBits";
 import { ProgressSummary, TaskTable } from "../delivery/ProgressBlock";
 import { metadataFacts } from "../delivery/factors";
 import { usePodOpens } from "../hub/useHub";
-import { byTarget, workstreamLine } from "./workstreamWords";
+import { byTarget, workstreamLine, workstreamsMeta } from "./workstreamWords";
 
 /**
  * A project's workstreams, on its Will we make the date?, only where it uses
@@ -28,6 +28,8 @@ import { byTarget, workstreamLine } from "./workstreamWords";
 export function Workstreams({ projectId }: { projectId: string }) {
   const { access } = useRole();
   const names = !access.hub.countsOnly;
+  // A workstream's progress, tasks and reasons are the project-progress readers' (the server's rule).
+  const readsProgress = access.overall.forecast;
   const [search] = useSearchParams();
   const asked = search.get("workstream");
   const list = useQuery({
@@ -42,11 +44,7 @@ export function Workstreams({ projectId }: { projectId: string }) {
       <SectionHeader
         id="workstreams-h"
         title="Workstreams"
-        meta={
-          list.data
-            ? `${plural(inUse.length, "workstream", "workstreams")} · open one for its tasks and reasons`
-            : undefined
-        }
+        meta={list.data ? workstreamsMeta(inUse.length, readsProgress) : undefined}
       />
       <PanelState isLoading={list.isLoading} error={list.error} onRetry={() => void list.refetch()}>
         <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
@@ -56,6 +54,7 @@ export function Workstreams({ projectId }: { projectId: string }) {
               item={item}
               projectId={projectId}
               names={names}
+              readsProgress={readsProgress}
               asked={asked === item.id}
             />
           ))}
@@ -69,11 +68,13 @@ function WorkstreamRow({
   item,
   projectId,
   names,
+  readsProgress,
   asked,
 }: {
   item: DirectoryItemResponse;
   projectId: string;
   names: boolean;
+  readsProgress: boolean;
   asked: boolean;
 }) {
   const ref = useRef<HTMLDetailsElement>(null);
@@ -109,7 +110,14 @@ function WorkstreamRow({
             <span className="hidden group-open:inline">Close</span>
           </span>
         </summary>
-        {opened ? <WorkstreamDetail item={item} projectId={projectId} names={names} /> : null}
+        {opened ? (
+          <WorkstreamDetail
+            item={item}
+            projectId={projectId}
+            names={names}
+            readsProgress={readsProgress}
+          />
+        ) : null}
       </details>
     </li>
   );
@@ -120,16 +128,19 @@ function WorkstreamDetail({
   item,
   projectId,
   names,
+  readsProgress,
 }: {
   item: DirectoryItemResponse;
   projectId: string;
   names: boolean;
+  readsProgress: boolean;
 }) {
   const pods = usePods();
   const opens = usePodOpens();
   const progress = useQuery({
     queryKey: ["workstream", item.id, "progress"],
     queryFn: () => apiClient.workstreamProgress(item.id),
+    enabled: readsProgress,
   });
   const p = progress.data;
   const facts: [string, string][] = [
@@ -169,27 +180,29 @@ function WorkstreamDetail({
           )}
         </p>
       ) : null}
-      <PanelState
-        isLoading={progress.isLoading}
-        error={progress.error}
-        onRetry={() => void progress.refetch()}
-      >
-        {p ? (
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-            <ProgressSummary progress={p} />
-            <TaskTable tasks={p.tasks} />
-            {/* A reader who sees no names reads no one behind the reasons. */}
-            {names ? (
-              <FactorsPanel
-                title="Today's health: every reason"
-                factors={p.factors}
-                names={p.source_names}
-                always
-              />
-            ) : null}
-          </div>
-        ) : null}
-      </PanelState>
+      {readsProgress ? (
+        <PanelState
+          isLoading={progress.isLoading}
+          error={progress.error}
+          onRetry={() => void progress.refetch()}
+        >
+          {p ? (
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+              <ProgressSummary progress={p} />
+              <TaskTable tasks={p.tasks} />
+              {/* A reader who sees no names reads no one behind the reasons. */}
+              {names ? (
+                <FactorsPanel
+                  title="Today's health: every reason"
+                  factors={p.factors}
+                  names={p.source_names}
+                  always
+                />
+              ) : null}
+            </div>
+          ) : null}
+        </PanelState>
+      ) : null}
     </div>
   );
 }
