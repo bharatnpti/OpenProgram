@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import type { PortfolioProjectDto } from "../../api/schema";
-import { usePrograms } from "../../app/directory";
+import { useProjects, useWorkstreams } from "../../app/directory";
 import { useRole } from "../../app/role";
 import { useViewingDate } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
@@ -12,7 +12,10 @@ import { formatTime } from "../../lib/format";
 import { BarLegend } from "../../features/portfolio/ProjectBar";
 import { ProjectCard } from "../../features/portfolio/ProjectCard";
 import { PortfolioTiles } from "../../features/portfolio/PortfolioTiles";
+import { ProgrammeLine } from "../../features/portfolio/ProgrammeLine";
+import { ProgrammePicker } from "../../features/portfolio/ProgrammePicker";
 import { usePortfolio } from "../../features/portfolio/usePortfolio";
+import { useProgrammes } from "../../features/portfolio/useProgrammes";
 import { WindowedList } from "../../features/portfolio/WindowedList";
 import {
   asOfWords,
@@ -41,7 +44,9 @@ export function PortfolioDate() {
   const [search, setSearch] = useSearchParams();
   const filters = filtersOf(search);
   const portfolio = usePortfolio(filters);
-  const programs = usePrograms();
+  const { programmes } = useProgrammes();
+  const directory = useProjects();
+  const workstreams = useWorkstreams();
   const [typed, setTyped] = useState(filters.q);
 
   // The search box writes the URL a moment after typing stops.
@@ -82,7 +87,14 @@ export function PortfolioDate() {
   }, [canReadPortfolio, first, projects]);
 
   const update = (next: URLSearchParams) => setSearch(next, { replace: true });
-  const programOptions = programs.data ?? [];
+  // The workstreams each project uses, by name, for the card's one muted line:
+  // they are optional, so a project that uses none says nothing about them.
+  const workstreamsOf = (projectId: string): string[] => {
+    const ids = directory.data?.find((item) => item.id === projectId)?.workstream_ids ?? [];
+    return (workstreams.data ?? [])
+      .filter((item) => ids.includes(item.id) && item.in_use !== false)
+      .map((item) => item.name);
+  };
   const asOf = first ? asOfWords(first.computed_at) : null;
   const meta = [
     "Across the portfolio: three dates side by side, one colour and the reason, worst first.",
@@ -109,31 +121,18 @@ export function PortfolioDate() {
             className="h-10 w-full rounded-full border border-grey-border bg-(--op-viz-surface) px-4 text-[14px] text-ink"
           />
         </div>
-        {programOptions.length > 1 ? (
-          <div className="min-w-0">
-            <label htmlFor="portfolio-program" className="mb-1 block text-[12px] font-bold">
-              Programme
-            </label>
-            <select
-              id="portfolio-program"
-              value={filters.program ?? ""}
-              onChange={(event) => {
-                const next = new URLSearchParams(search);
-                if (event.target.value) next.set("program", event.target.value);
-                else next.delete("program");
-                update(next);
-              }}
-              className="h-10 max-w-full rounded-full border border-grey-border bg-(--op-viz-surface) px-4 text-[14px] font-bold text-ink"
-            >
-              <option value="">Every programme</option>
-              {programOptions.map((program) => (
-                <option key={program.id} value={program.id}>
-                  {program.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
+        <ProgrammePicker
+          id="portfolio-program"
+          every
+          programmes={programmes}
+          value={filters.program ?? ""}
+          onChange={(id) => {
+            const next = new URLSearchParams(search);
+            if (id) next.set("program", id);
+            else next.delete("program");
+            update(next);
+          }}
+        />
       </div>
 
       <PanelState
@@ -169,14 +168,7 @@ export function PortfolioDate() {
                 }
                 render={(row) =>
                   row.kind === "programme" ? (
-                    <h3 className="mb-3 mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[15px] font-extrabold first:mt-0">
-                      {row.name}
-                      {row.line ? (
-                        <span className="text-[12px] font-normal text-grey-secondary">
-                          {row.line}
-                        </span>
-                      ) : null}
-                    </h3>
+                    <ProgrammeLine id={row.id} name={row.name} line={row.line} />
                   ) : (
                     <div className="pb-4">
                       <ProjectCard
@@ -184,6 +176,7 @@ export function PortfolioDate() {
                         today={today}
                         shownDay={shownDay}
                         viewingPast={chosen !== null}
+                        workstreams={workstreamsOf(row.project.id)}
                       />
                     </div>
                   )

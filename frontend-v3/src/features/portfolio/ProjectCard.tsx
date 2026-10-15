@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
 import type { PortfolioPodDto, PortfolioProjectDto } from "../../api/schema";
-import { projectPath } from "../../app/links";
+import { podTabPath, projectPath } from "../../app/links";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
 import { ProjectBar } from "./ProjectBar";
@@ -17,18 +17,23 @@ import {
 /**
  * One project on Will we make the date?: its name and release, the verdict as
  * the one pill, the reason with today's health in words, the three dates
- * side by side, the bar, done per pod, and the way to the project's page.
+ * side by side, the bar, done per pod (each pod opening its part of the
+ * project), the workstreams it uses in one muted line, and the way to the
+ * project's page.
  */
 export function ProjectCard({
   project,
   today,
   shownDay,
   viewingPast,
+  workstreams = [],
 }: {
   project: PortfolioProjectDto;
   today: string;
   shownDay: string;
   viewingPast: boolean;
+  /** The names of the workstreams it uses; none for a project that uses none. */
+  workstreams?: readonly string[];
 }) {
   const pill = verdictPill(project);
   const release = releaseChip(project.releases);
@@ -85,7 +90,13 @@ export function ProjectCard({
 
       <ProjectBar project={project} today={today} />
 
-      {project.pods.length > 0 ? <PodRows pods={project.pods} /> : null}
+      {project.pods.length > 0 ? <PodRows projectId={project.id} pods={project.pods} /> : null}
+
+      {workstreams.length > 0 ? (
+        <p className="text-[12px] text-grey-secondary">
+          <span className="font-bold">Workstreams:</span> {workstreams.join(" · ")}
+        </p>
+      ) : null}
 
       <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-grey-border pt-3 text-[13px]">
         <span className="text-grey-secondary">
@@ -100,8 +111,13 @@ export function ProjectCard({
   );
 }
 
-/** Done per pod: a row each, its share of the project's requirements done, and its verdict. */
-function PodRows({ pods }: { pods: PortfolioPodDto[] }) {
+/**
+ * Done per pod: a row each, its share of the project's requirements done, and
+ * its verdict, the pod's name opening its part of the project. The server
+ * lists for a reader only the pods they may open (for one who sees no names,
+ * pods of five people or more).
+ */
+function PodRows({ projectId, pods }: { projectId: string; pods: PortfolioPodDto[] }) {
   return (
     <table className="w-full table-fixed border-collapse text-[13px]">
       <caption className="sr-only">Done per pod</caption>
@@ -123,8 +139,13 @@ function PodRows({ pods }: { pods: PortfolioPodDto[] }) {
           const share = pod.total > 0 ? pod.done / pod.total : 0;
           return (
             <tr key={pod.id} className="border-t border-grey-border">
-              <td className="truncate py-2 pr-2 font-bold text-ink" title={pod.name}>
-                {pod.name}
+              <td className="truncate py-2 pr-2 font-bold" title={pod.name}>
+                <Link
+                  to={podTabPath(projectId, pod.id, "date")}
+                  className="text-ink no-underline hover:underline"
+                >
+                  {pod.name}
+                </Link>
               </td>
               <td className="py-2 pr-2">
                 <span className="flex items-center gap-2">
