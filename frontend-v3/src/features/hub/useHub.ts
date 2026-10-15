@@ -11,11 +11,13 @@ import { formatTime } from "../../lib/format";
 import { ownProjects } from "../delivery/ownTree";
 import { useGateBoard, useReleases } from "../overall/queries";
 import type { HubPlace } from "./hubPaths";
+import { podReads } from "../pods/podLevel";
+import { useScopeRead, useWarnings } from "../warnings/queries";
 import {
+  badgeScope,
   podChoices,
-  projectScopeBadge,
   reportsBadge,
-  scopeBadge,
+  scopeBadgeAt,
   warningsBadge,
   type Badge,
   type PodChoice,
@@ -200,17 +202,20 @@ export function useReleaseChoice(projectId: string) {
 
 /**
  * Each tab's badge at a place, each from one bulk read narrowed to it: the open
- * warnings (`/portfolio/warnings?project_id=`), what joined after planning and
- * the open hygiene findings (`/portfolio/scope`), and when today's day report
- * went out (`/reports?project_id=`). The pod level waits for the reads' pod
- * filter, so its warnings and scope carry none yet.
+ * warnings (`/portfolio/warnings?project_id=&pod_id=`), what joined after
+ * planning and the open hygiene findings (`/portfolio/scope?project_id=&pod_id=`),
+ * and when today's day report went out (`/reports?project_id=`). At a pod the
+ * two reads are the pod's part, cached as its tabs read them, and made only for
+ * a reader of that tab there.
  */
 export function useHubBadges(place: HubPlace): Partial<Record<HubTab, Badge | null>> {
-  const { access } = useRole();
+  const { access, lens } = useRole();
   const day = useShownDay();
-  const projectId = place.level === "all" ? null : place.projectId;
+  const { projectId, podId } = badgeScope(place);
   const bulk = access.hub.bulk;
-  const atPod = place.level === "pod";
+  const atPod = podId !== null;
+  const podAccess = usePodAccess(podId ?? "");
+  const reads = podReads(lens, podAccess.full);
   const warnings = useQuery({
     queryKey: ["portfolio", "warnings", projectId ?? ""],
     queryFn: () => apiClient.portfolioWarnings({ projectId }),
@@ -221,23 +226,16 @@ export function useHubBadges(place: HubPlace): Partial<Record<HubTab, Badge | nu
     queryFn: () => apiClient.portfolioScope(),
     enabled: bulk && !atPod,
   });
+  const podWarnings = useWarnings({ projectId, podId }, atPod && reads.warnings);
+  const podScope = useScopeRead({ projectId, podId }, atPod && bulk && reads.scope);
   const reports = useQuery({
     queryKey: ["day-reports", "project", projectId ?? ""],
     queryFn: () => apiClient.dayReports(projectId ?? undefined),
     enabled: access.reports.daily && place.level === "project",
   });
-  const scopeRow =
-    projectId === null
-      ? scope.data
-        ? scopeBadge(
-            scope.data.projects.reduce((sum, project) => sum + (project.plan?.added ?? 0), 0),
-            scope.data.findings_total,
-          )
-        : null
-      : projectScopeBadge(scope.data?.projects.find((project) => project.id === projectId));
   return {
-    warnings: atPod ? null : warningsBadge(warnings.data?.total),
-    scope: atPod ? null : scopeRow,
+    warnings: warningsBadge((atPod ? podWarnings : warnings).data?.total),
+    scope: scopeBadgeAt(projectId, (atPod ? podScope : scope).data),
     reports: place.level === "project" && day ? reportsBadge(reports.data, day, formatTime) : null,
   };
 }

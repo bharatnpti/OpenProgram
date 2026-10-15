@@ -77,6 +77,35 @@ export function scopeBadge(
   return { text, label };
 }
 
+/**
+ * What a place's badges are read over: the whole portfolio at All projects,
+ * one project, or one pod's part of one project. The warnings and scope
+ * badges are each one bulk read narrowed to it, the read its tab draws.
+ */
+export function badgeScope(place: HubPlace): { projectId: string | null; podId: string | null } {
+  if (place.level === "all") return { projectId: null, podId: null };
+  return { projectId: place.projectId, podId: place.level === "pod" ? place.podId : null };
+}
+
+/**
+ * The Scope control badge at a place from the scope read: across every
+ * project at All projects (what joined after planning, and the open findings),
+ * else the place's project row, which the read narrows to the pod at a pod.
+ */
+export function scopeBadgeAt(
+  projectId: string | null,
+  read: { projects: readonly ScopeProjectDto[]; findings_total: number } | undefined,
+): Badge | null {
+  if (!read) return null;
+  if (projectId === null) {
+    return scopeBadge(
+      read.projects.reduce((sum, project) => sum + (project.plan?.added ?? 0), 0),
+      read.findings_total,
+    );
+  }
+  return projectScopeBadge(read.projects.find((project) => project.id === projectId));
+}
+
 /** A project's row of the scope read, as its badge. */
 export function projectScopeBadge(project: ScopeProjectDto | undefined): Badge | null {
   return project ? scopeBadge(project.plan?.added ?? 0, project.hygiene_open) : null;

@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { DayReportResponse } from "../../api/schema";
+import type { DayReportResponse, ScopeProjectDto } from "../../api/schema";
 import {
+  badgeScope,
   hubHref,
   podChoices,
   podVerdict,
   reportsBadge,
   scopeBadge,
+  scopeBadgeAt,
   tabAt,
   verdictTone,
   verdictWords,
@@ -177,4 +179,33 @@ test("a pod's verdict chip, and every verdict's tone and words", () => {
   assert.equal(verdictTone(null), "neutral");
   assert.equal(verdictWords(null), "No forecast yet");
   assert.equal(verdictWords("not_enough_data"), "Not enough history to forecast");
+});
+
+test("a pod's badges read the pod's part of its project, a project's its own, All every project", () => {
+  assert.deepEqual(badgeScope({ level: "all" }), { projectId: null, podId: null });
+  assert.deepEqual(badgeScope({ level: "project", projectId: "p" }), {
+    projectId: "p",
+    podId: null,
+  });
+  assert.deepEqual(badgeScope({ level: "pod", projectId: "p", podId: "x" }), {
+    projectId: "p",
+    podId: "x",
+  });
+});
+
+test("the scope badge sums every project at All, and reads the place's row below it", () => {
+  const row = (id: string, added: number, open: number) =>
+    ({ id, plan: { added }, hygiene_open: open }) as unknown as ScopeProjectDto;
+  const read = { projects: [row("p", 2, 1), row("q", 1, 0)], findings_total: 4 };
+  assert.deepEqual(scopeBadgeAt(null, read), {
+    text: "+3 · 4",
+    label: "3 added after planning, 4 open Jira hygiene findings",
+  });
+  // The pod's part of p: the read narrows the row to the pod.
+  assert.deepEqual(scopeBadgeAt("p", { projects: [row("p", 1, 0)], findings_total: 0 }), {
+    text: "+1",
+    label: "1 added after planning",
+  });
+  assert.equal(scopeBadgeAt("r", read), null);
+  assert.equal(scopeBadgeAt("p", undefined), null);
 });
