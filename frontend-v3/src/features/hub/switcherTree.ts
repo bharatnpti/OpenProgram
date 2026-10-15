@@ -150,6 +150,7 @@ export function treeRows(
 /** A row's height in the list, in pixels, for drawing only the rows near the screen. */
 export function rowHeight(row: TreeRow): number {
   if (row.kind === "heading") return 34;
+  if (row.kind === "all") return 46;
   if (row.kind === "project") return row.project.workstreams.length > 0 ? 62 : 46;
   return 42;
 }

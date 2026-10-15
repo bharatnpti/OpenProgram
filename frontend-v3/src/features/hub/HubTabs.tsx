@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { useRole } from "../../app/role";
@@ -23,10 +24,25 @@ export function HubTabs({
 }) {
   const { access } = useRole();
   const { search } = useLocation();
+  const row = useRef<HTMLElement>(null);
   const tabs = access.hub.tabs[place.level];
+  const widths = tabs.map((item) => badges[item]?.text ?? "").join("|");
+  // On a phone the tab on screen may sit past the row's edge: bring it into the row's view.
+  useEffect(() => {
+    const box = row.current;
+    const current = box?.querySelector<HTMLElement>("[aria-current=page]");
+    if (!box || !current) return;
+    const outer = box.getBoundingClientRect();
+    const inner = current.getBoundingClientRect();
+    if (inner.right > outer.right - 28 || inner.left < outer.left) {
+      box.scrollLeft = Math.max(0, box.scrollLeft + inner.left - outer.left - 16);
+    }
+    // The badges arrive after the tabs and widen them: placed again when they do.
+  }, [tab, widths]);
   if (tabs.length <= 1) return null;
   return (
     <nav
+      ref={row}
       aria-label="Questions"
       className="-mx-1 mb-4 overflow-x-auto border-b border-grey-border px-1 [scrollbar-width:none] max-md:[mask-image:linear-gradient(to_right,black_calc(100%-28px),transparent)]"
     >

@@ -19,7 +19,13 @@ import { ProjectSwitcher } from "../project/ProjectSwitcher";
 import { Breadcrumb } from "./Breadcrumb";
 import { ALL_PROJECTS, type HubPlace, type HubTab } from "./hubPaths";
 import { hubHref, podVerdict } from "./hubTabs";
-import { useDirectoryPod, useHubProject, usePodChoices, usePortfolioRow } from "./useHub";
+import {
+  useDirectoryPod,
+  useHubProject,
+  usePodAccess,
+  usePodChoices,
+  usePortfolioRow,
+} from "./useHub";
 
 /**
  * The hub's header, at every level: where the level sits (the trail), the
@@ -160,7 +166,7 @@ function ProjectHeader({
 }
 
 function PodHeader({ projectId, podId, tab }: { projectId: string; podId: string; tab: HubTab }) {
-  const { access, canReadPodDetail } = useRole();
+  const { access } = useRole();
   const { search } = useLocation();
   const day = useDayWords();
   const pod = useDirectoryPod(podId);
@@ -187,7 +193,7 @@ function PodHeader({ projectId, podId, tab }: { projectId: string; podId: string
   const treePod = tree.data?.pods.find((item) => item.id === podId);
   // The pod's detail (check-ins, blockers, why its colour): the readers of every pod's,
   // and the person's own pods by their tree.
-  const full = access.deliveryScope === "all" ? canReadPodDetail : treePod?.access === "panel";
+  const { full } = usePodAccess(podId);
   const rollup = useQuery({
     queryKey: ["pod", podId, "rollup"],
     queryFn: () => apiClient.podRollup(podId),

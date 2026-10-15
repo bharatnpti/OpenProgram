@@ -13,6 +13,7 @@ import { fullPodIds } from "../../features/delivery/ownTree.ts";
 import {
   askRow,
   directoryRows,
+  hubTabRows,
   matchRows,
   noPodNote,
   ownRows,
@@ -312,6 +313,30 @@ test("a product owner's palette lists their project and its pods, and no people"
       ["pod", "Payments Pod"],
       ["pod", "Storefront Pod"],
     ],
+  );
+});
+
+test("the All level's tabs are screens: a search for a question finds it across projects", () => {
+  const all = accessOf({ lens: ["mgr"], chatEnabled: false }).hub.tabs.all;
+  const rows = hubTabRows(all);
+  assert.deepEqual(
+    rows.map((row) => [row.label, row.to]),
+    [
+      ["Will we make the date?", "/portfolio/date"],
+      ["Early warnings", "/portfolio/warnings"],
+      ["Scope control", "/portfolio/scope"],
+      ["Reports", "/portfolio/reports"],
+    ],
+  );
+  assert.deepEqual(
+    matchRows(rows, "warn").map((row) => row.to),
+    ["/portfolio/warnings"],
+  );
+  assert.ok(rows.every((row) => row.kind === "screen" && row.hint.startsWith("All projects")));
+  // A developer's All level is the day reports only.
+  assert.deepEqual(
+    hubTabRows(accessOf({ lens: ["dev"], chatEnabled: false }).hub.tabs.all).map((row) => row.to),
+    ["/portfolio/reports"],
   );
 });
 

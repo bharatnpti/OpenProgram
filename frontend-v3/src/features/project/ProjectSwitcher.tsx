@@ -57,7 +57,7 @@ export function ProjectSwitcher({
       <h1 className="max-w-full text-[30px] font-extrabold tracking-tight max-sm:text-[26px]">
         <Dialog.Trigger
           aria-label={`${title}. Switch project or pod`}
-          className="group -mx-1 inline-flex max-w-full items-center gap-2 rounded-2xl px-1 text-left hover:bg-grey-fill"
+          className="group inline-flex max-w-full items-center gap-2 rounded-2xl text-left hover:bg-grey-fill"
         >
           <span className="min-w-0">{title}</span>
           <ChevronDown
@@ -581,7 +581,7 @@ function TreeLine({
           ) : null}
         </span>
         {hint ? (
-          <span className="min-w-0 max-w-[40%] truncate text-right text-[12px] text-grey-secondary">
+          <span className="hidden min-w-0 max-w-[40%] truncate text-right text-[12px] text-grey-secondary sm:block">
             {hint}
           </span>
         ) : null}

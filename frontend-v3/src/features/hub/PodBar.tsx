@@ -99,9 +99,7 @@ export function PodBar({
               {dated ? <VerdictDot verdict={pod.verdict} /> : null}
               {pod.name}
               {said ? (
-                <span
-                  className={cn("font-normal", current ? "text-white/80" : "text-grey-secondary")}
-                >
+                <span className={cn("font-normal", current ? "opacity-80" : "text-grey-secondary")}>
                   {said}
                 </span>
               ) : null}
