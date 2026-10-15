@@ -1,0 +1,27 @@
+frontend-v3/src/features/pods/podWords.test.ts
+  s_5f08a60d42019a::t_d55d0f59a47ca6 192-206
+  s_5f08a60d42019a::t_275300525de9e5 9
+frontend-v3/src/features/pods/NudgeList.tsx
+  s_5f08a60d42019a::t_d55d0f59a47ca6 9,11,19-21,26,31-32,61,88-90
+  s_5f08a60d42019a::t_fa49e2eeaf4dcd 91-92
+frontend-v3/src/features/pods/podWords.ts
+  s_5f08a60d42019a::t_d55d0f59a47ca6 81-95
+frontend-v3/src/pages/hub/PodWarnings.tsx
+  s_5f08a60d42019a::t_d55d0f59a47ca6 80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c35fac0f314eadd9a929ca2116bbfd9949424857",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
