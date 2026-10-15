@@ -1,11 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
-import { apiClient } from "../../api/client";
 import { portfolioPath } from "../../app/links";
 import { useRole } from "../../app/role";
 import { Sparkline } from "../../components/ui/Bits";
-import { momentum } from "./momentum";
+import { momentum } from "../../lib/momentum";
+import { useHealthTrend } from "../hub/useHealthTrend";
 
 /**
  * A programme's heading on All projects › Will we make the date?: its name,
@@ -26,11 +25,7 @@ export function ProgrammeLine({
 }) {
   const { access } = useRole();
   const shown = access.hub.portfolioHealth && id !== "";
-  const trend = useQuery({
-    queryKey: ["portfolio", "trend", "program", id],
-    queryFn: () => apiClient.nodeTrend("program", id, { windowDays: 30 }),
-    enabled: shown,
-  });
+  const trend = useHealthTrend("program", id, shown);
   const m = trend.data ? momentum(trend.data.points) : null;
   return (
     <div className="mb-3 mt-4 flex flex-wrap items-center gap-x-4 gap-y-1">

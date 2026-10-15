@@ -46,3 +46,7 @@ test("the note says how many of the days the direction rests on", () => {
     "14 days · 1 day reported · not enough reported days",
   );
 });
+
+test("unreported days leave a gap in the line, not a zero", () => {
+  assert.deepEqual(momentum([point("unknown"), point("red"), point("green")]).values, [null, 0, 1]);
+});

@@ -7,6 +7,7 @@ import { useRole } from "../../app/role";
 import { useDayWords } from "../../app/viewingDate";
 import { PanelState, SectionHeader } from "../../components/PanelState";
 import { FactorsPanel } from "../../features/delivery/NodeBits";
+import { HealthTrend } from "../../features/hub/HealthTrend";
 import { TabIntro } from "../../features/hub/TabIntro";
 import { usePodAccess } from "../../features/hub/useHub";
 import { BlockersAndWaits } from "../../features/pods/BlockersAndWaits";
@@ -30,7 +31,8 @@ import { readState } from "../../lib/readState";
  * status of its tasks with what Jira says and when each is due. Then, for every
  * reader of its warnings, what Jira and Git raise on its part of this project,
  * in counts and teams where the server words them so. Then why it has its
- * colour and its review flow. Its morning is pod-wide, across every project it
+ * colour, its health over the last 30 days (the aggregate readers) and its
+ * review flow. Its morning is pod-wide, across every project it
  * works on; its warnings are this project's part. Blockers are said once: in
  * Blockers and waits where it is drawn, else as the warnings' first group.
  */
@@ -131,16 +133,21 @@ export function PodWarnings({ projectId, podId }: { projectId: string; podId: st
       ),
     });
   }
-  if (full && rollup.data) {
+  if ((full && rollup.data) || reads.trend) {
     sections.push({
       id: "why",
-      label: "Why this colour",
+      label: full ? "Why this colour" : "Health, 30 days",
       element: (
-        <FactorsPanel
-          title="Why this colour"
-          factors={colourReasons(rollup.data.factors)}
-          names={rollup.data.source_names}
-        />
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+          {full && rollup.data ? (
+            <FactorsPanel
+              title="Why this colour"
+              factors={colourReasons(rollup.data.factors)}
+              names={rollup.data.source_names}
+            />
+          ) : null}
+          {reads.trend ? <HealthTrend level="pod" id={pod.id} name={pod.name} /> : null}
+        </div>
       ),
     });
   }

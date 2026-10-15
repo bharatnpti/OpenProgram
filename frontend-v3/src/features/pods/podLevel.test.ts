@@ -17,6 +17,7 @@ test("a manager and an admin read every pod's part whole", () => {
       readiness: true,
       reports: true,
       flow: true,
+      trend: true,
     });
   }
 });
@@ -31,6 +32,7 @@ test("a scrum master reads their own pods whole and the others' warnings and dat
     { morning: false, scope: false, readiness: false },
   );
   assert.equal(other.warnings && other.projectTimeline && other.reports, true);
+  assert.equal(own.trend && other.trend, true);
 });
 
 test("a product owner and an executive read no pod's morning", () => {
@@ -39,6 +41,7 @@ test("a product owner and an executive read no pod's morning", () => {
     assert.equal(part.morning, false);
     assert.equal(part.readiness, false);
     assert.equal(part.warnings && part.requirements && part.scope && part.reports, true);
+    assert.equal(part.trend, true);
   }
 });
 
@@ -46,7 +49,7 @@ test("a developer reads their own pod's morning and warnings, and no other pod",
   const own = reads(["dev"], true);
   assert.equal(own.morning && own.warnings, true);
   assert.equal(
-    own.projectTimeline || own.requirements || own.scope || own.reports || own.flow,
+    own.projectTimeline || own.requirements || own.scope || own.reports || own.flow || own.trend,
     false,
   );
   assert.equal(reads(["dev"], false).warnings, false);

@@ -25,7 +25,9 @@ import { plural } from "../../lib/words.ts";
  * - `readiness`: the pod's own readiness board: a manager, an admin, a scrum
  *   master the pods they run;
  * - `reports`: the pod's daily briefs; a developer reads none;
- * - `flow`: its review flow.
+ * - `flow`: its review flow;
+ * - `trend`: its health over the last 30 days, the aggregate readers (everyone
+ *   but a developer, by the trend read's own rule).
  */
 export type PodReads = {
   morning: boolean;
@@ -36,6 +38,7 @@ export type PodReads = {
   readiness: boolean;
   reports: boolean;
   flow: boolean;
+  trend: boolean;
 };
 
 export function podReads(lens: readonly AppRole[], own: boolean): PodReads {
@@ -53,6 +56,7 @@ export function podReads(lens: readonly AppRole[], own: boolean): PodReads {
     readiness: every || (sm && own),
     reports: progress || sm,
     flow: progress || sm,
+    trend: progress || sm,
   };
 }
 

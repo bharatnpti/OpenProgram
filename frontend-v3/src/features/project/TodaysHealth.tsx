@@ -3,11 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../api/client";
 import { useRole } from "../../app/role";
 import { PanelState, SectionHeader } from "../../components/PanelState";
-import { Panel, RagDot, Sparkline } from "../../components/ui/Bits";
+import { Panel, RagDot } from "../../components/ui/Bits";
 import { FactorsPanel } from "../delivery/NodeBits";
 import { setBy } from "../delivery/factors";
+import { HealthTrend } from "../hub/HealthTrend";
 import { healthSentence } from "../portfolio/heat";
-import { momentum, momentumNote } from "../portfolio/momentum";
 import { PrFlowSection } from "../signals/PrFlowSection";
 
 /**
@@ -23,13 +23,8 @@ export function TodaysHealth({ projectId, name }: { projectId: string; name: str
     queryKey: ["project", projectId, "progress"],
     queryFn: () => apiClient.projectProgress(projectId),
   });
-  const trend = useQuery({
-    queryKey: ["portfolio", "trend", "project", projectId],
-    queryFn: () => apiClient.nodeTrend("project", projectId, { windowDays: 30 }),
-  });
   const p = progress.data;
   const sets = p ? setBy(p.rag, p.factors) : null;
-  const m = trend.data ? momentum(trend.data.points) : null;
 
   return (
     <section id="health" aria-labelledby="health-h" className="scroll-mt-28">
@@ -57,25 +52,7 @@ export function TodaysHealth({ projectId, name }: { projectId: string; name: str
             ) : null}
           </PanelState>
         </Panel>
-        <Panel
-          title="Health, 30 days"
-          note={trend.data && m ? momentumNote(m, trend.data.window_days) : undefined}
-        >
-          <PanelState
-            isLoading={trend.isLoading}
-            error={trend.error}
-            onRetry={() => void trend.refetch()}
-          >
-            {m ? (
-              <>
-                <Sparkline values={m.values} label={`${name}'s health over 30 days: ${m.label}`} />
-                <p className="mt-2 text-[12px] text-grey-secondary">
-                  Measured only over days that reported a status.
-                </p>
-              </>
-            ) : null}
-          </PanelState>
-        </Panel>
+        <HealthTrend level="project" id={projectId} name={name} />
       </div>
       {names && p && p.factors.length > 1 ? (
         <div className="mt-4">
