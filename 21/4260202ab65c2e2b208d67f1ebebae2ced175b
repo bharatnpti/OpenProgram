@@ -1,0 +1,24 @@
+frontend-v3/src/features/hub/hubTabs.test.ts
+  s_5f08a60d42019a::t_8fb6f5f17966e1 4,6,12
+  s_5f08a60d42019a::t_b86c03ef0d16ed 183-211
+frontend-v3/src/features/hub/useHub.ts
+  s_5f08a60d42019a::t_b86c03ef0d16ed 14-15,17,20,205-209,212,214,216-218,229-230,237-238
+frontend-v3/src/features/hub/hubTabs.ts
+  s_5f08a60d42019a::t_b86c03ef0d16ed 80-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "214260202ab65c2e2b208d67f1ebebae2ced175b",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
