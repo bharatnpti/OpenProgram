@@ -1,0 +1,20 @@
+frontend-v3/src/pages/HubPage.tsx
+  s_5f08a60d42019a::t_698cca235ced9c 187-188,191,216-222
+  s_5f08a60d42019a::t_c403b3c745bb8c 223-224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b3d8748f1ae4196bbb117f8693583f69cfe3c612",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
