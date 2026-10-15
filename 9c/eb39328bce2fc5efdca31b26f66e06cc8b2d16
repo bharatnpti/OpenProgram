@@ -1,0 +1,35 @@
+frontend-v3/src/pages/TodayPage.tsx
+  s_5f08a60d42019a::t_5b7bff6fe66781 105-108
+  s_5f08a60d42019a::t_4c373b56bba390 31,55
+frontend-v3/src/features/today/TodayBlocks.tsx
+  s_5f08a60d42019a::t_f64c14bfb26ece 21
+  s_5f08a60d42019a::t_5b7bff6fe66781 130
+frontend-v3/src/features/today/todayWords.ts
+  s_5f08a60d42019a::t_5b7bff6fe66781 54-58
+frontend-v3/src/features/today/TodayCards.tsx
+  s_5f08a60d42019a::t_f64c14bfb26ece 7
+  s_5f08a60d42019a::t_5b7bff6fe66781 19,202-205,207,212,221,223
+frontend-v3/src/features/warnings/queries.ts
+  s_5f08a60d42019a::t_5b7bff6fe66781 6-17
+  s_5f08a60d42019a::t_1c08b965e634af 5
+frontend-v3/src/features/today/todayWords.test.ts
+  s_5f08a60d42019a::t_5b7bff6fe66781 17,82-83
+frontend-v3/src/pages/hub/PortfolioWarnings.tsx
+  s_5f08a60d42019a::t_5b7bff6fe66781 12,49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ceb39328bce2fc5efdca31b26f66e06cc8b2d16",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
