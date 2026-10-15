@@ -16,18 +16,23 @@ For every project the person reads:
 
 A finding is never sent from here: a rule switched to ask its owner asks
 through the day report, so a finding says so instead of offering a send.
+
+One pod's part (``pod_id``, ``pod_level``) counts the plan over the
+requirements below the pod on each project it works on, and keeps the
+findings on its issues or its own board.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.baseline_service import BaselineService
 from core.application.forecast_service import ForecastService
+from core.application.pod_level import pod_projects
 from core.application.portfolio_index import IndexedProject, PortfolioIndex, PortfolioIndexReader
 from core.application.readiness_access import project_viewer
 from core.application.release_readiness_service import ReleaseReadinessService, Viewer
@@ -139,7 +144,11 @@ class PortfolioScopeService:
         search: str = "",
         program_id: str | None = None,
         project_id: str | None = None,
+        pod_id: str | None = None,
     ) -> PortfolioScopeView:
+        """``pod_id``: one pod's part. Raises GraphNotFound for no such pod, or one that
+        does not work on ``project_id``, and AuthorizationDenied for a small pod read by
+        an executive."""
         tenant_id = principal.tenant_id
         index = await self._index.read(principal, as_of)
         projects = [project for project in index.projects if project.matches(search)]
@@ -147,6 +156,8 @@ class PortfolioScopeService:
             projects = [p for p in projects if program_id in {g.id for g in p.programs}]
         if project_id:
             projects = [p for p in projects if p.id == project_id]
+        if pod_id:
+            projects = pod_projects(principal, index, projects, pod_id, project_id)
         reads_baselines = self._policy.can(principal, Capability.READ_PROJECT_PROGRESS)
         viewers = {
             project.id: viewer
@@ -166,12 +177,13 @@ class PortfolioScopeService:
                 projects,
                 viewers,
                 index,
+                pod_id,
             )
             if enabled and rules
             else {}
         )
         rows = [
-            await self._row(tenant_id, project, index, as_of, reads_baselines, found)
+            await self._row(tenant_id, project, index, as_of, reads_baselines, found, pod_id)
             for project in projects
         ]
         rows.sort(key=_scope_order)
@@ -226,6 +238,7 @@ class PortfolioScopeService:
         as_of: date,
         reads_baselines: bool,
         found: Mapping[str, list[tuple[HygieneFinding, HygieneRule]]],
+        pod_id: str | None = None,
     ) -> ScopeProjectView:
         plan: AgainstPlan | None = None
         added: tuple[str, ...] = ()
@@ -254,11 +267,22 @@ class PortfolioScopeService:
                 if (task := index.tasks.get(key)) is not None
             }
             since = since_baseline(baseline, current, labels)
+            planned = baseline.keys
+            if pod_id:
+                # The pod's part: the planned, added and removed requirements below it.
+                own = index.pod_keys(project, current | baseline.keys).get(pod_id, frozenset())
+                planned = baseline.keys & own
+                since = replace(
+                    since,
+                    added=tuple(key for key in since.added if key in own),
+                    added_with_label=tuple(key for key in since.added_with_label if key in own),
+                    removed=tuple(key for key in since.removed if key in own),
+                )
             labelled = set(since.added_with_label)
             unlabelled = tuple(key for key in since.added if key not in labelled)
             plan = AgainstPlan(
                 planned_on=baseline.planned_on,
-                planned=len(baseline.items),
+                planned=len(planned),
                 added=len(since.added),
                 without_label=len(unlabelled),
                 change_label=baseline.change_label,
@@ -286,11 +310,13 @@ def _findings_by_project(
     projects: Sequence[IndexedProject],
     viewers: Mapping[str, Viewer],
     index: PortfolioIndex,
+    pod_id: str | None = None,
 ) -> dict[str, list[tuple[HygieneFinding, HygieneRule]]]:
     """Each project's open findings that its board would show this reader.
 
     A project's or a release's finding names its project; a pod's belongs to every
-    project the pod works on, as the pod's board sits under each.
+    project the pod works on, as the pod's board sits under each. With ``pod_id``,
+    only the pod's: on its own board, or on an issue below it.
     """
     pods_of: dict[str, list[str]] = {}
     for project in projects:
@@ -307,9 +333,29 @@ def _findings_by_project(
             owners = [finding.project_id] if finding.project_id else []
         for project_id in owners:
             viewer = viewers.get(project_id)
-            if viewer is not None and viewer.sees(finding.scope):
-                found.setdefault(project_id, []).append((finding, rule))
+            if viewer is None or not viewer.sees(finding.scope):
+                continue
+            if pod_id and not _in_pod(finding, pod_id, project_id, projects, index):
+                continue
+            found.setdefault(project_id, []).append((finding, rule))
     return found
+
+
+def _in_pod(
+    finding: HygieneFinding,
+    pod_id: str,
+    project_id: str,
+    projects: Sequence[IndexedProject],
+    index: PortfolioIndex,
+) -> bool:
+    """Whether a finding is the pod's: on its board, else on an issue below it."""
+    if finding.scope.kind is ScopeKind.POD:
+        return finding.scope.id == pod_id
+    project = next((p for p in projects if p.id == project_id), None)
+    pods = index.pods_of_issue(finding.issue_key, project) if project is not None else ()
+    if pods:
+        return pod_id in {pod.id for pod in pods}
+    return pod_id in finding.pod_ids
 
 
 def _line(

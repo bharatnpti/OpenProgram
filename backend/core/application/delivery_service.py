@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 
 from core.application.persona_views import owned_project_tasks
@@ -71,6 +71,15 @@ class TimelinePoint:
 
 
 @dataclass(frozen=True, kw_only=True)
+class PodPart:
+    """One pod's part of a project: the keys of the requirements below the pod."""
+
+    id: str
+    name: str
+    keys: frozenset[str]
+
+
+@dataclass(frozen=True, kw_only=True)
 class RequirementView:
     item: RequirementItem
     assignee_name: str | None
@@ -86,6 +95,9 @@ class RequirementsView:
     #: Set when the view covers one release of the project.
     release_id: str | None
     release_name: str | None
+    #: Set when the view covers one pod's part: the requirements below it.
+    pod_id: str | None = None
+    pod_name: str | None = None
     #: Counted from the graph now (today), not read from a stored snapshot.
     live: bool
     #: False for an earlier day nothing was recorded on.
@@ -330,7 +342,13 @@ class DeliveryService:
         *,
         days: int = DEFAULT_TIMELINE_DAYS,
         release: Release | None = None,
+        pod: PodPart | None = None,
     ) -> RequirementsView:
+        """``pod``: one pod's part, its keys worked out by the caller (``pod_level``).
+
+        Each day's stored snapshot is counted again over the pod's keys; a day
+        stored before snapshots kept their keys is left out of its timeline.
+        """
         project = await self._graph.get_node(tenant_id, project_id, as_of=as_of)
         if project is None or project.kind is not NodeKind.PROJECT:
             raise GraphNotFound(f"project {project_id} not found for tenant {tenant_id}")
@@ -347,7 +365,8 @@ class DeliveryService:
             tasks = tuple(
                 task
                 for task in owned.get(project_id, ())
-                if release is None or release.includes(task.metadata)
+                if (release is None or release.includes(task.metadata))
+                and (pod is None or _key(task) in pod.keys)
             )
             items = _requirements(tasks, mapping, await self._assignees(tenant_id, as_of))
             current = _snapshot(
@@ -359,11 +378,15 @@ class DeliveryService:
                 computed_at=self._clock(),
             )
         else:
-            current = await self._snapshots.get(tenant_id, scope_id, as_of)
-        history = await self._snapshots.list_between(
-            tenant_id, scope_id, as_of - timedelta(days=days - 1), as_of
-        )
-        previous = await self._snapshots.latest_before(tenant_id, scope_id, as_of)
+            current = _part(await self._snapshots.get(tenant_id, scope_id, as_of), pod)
+        history = [
+            part
+            for snapshot in await self._snapshots.list_between(
+                tenant_id, scope_id, as_of - timedelta(days=days - 1), as_of
+            )
+            if (part := _part(snapshot, pod)) is not None
+        ]
+        previous = _part(await self._snapshots.latest_before(tenant_id, scope_id, as_of), pod)
         timeline = [snapshot for snapshot in history if snapshot.day < as_of]
         if current is not None:
             timeline.append(current)
@@ -371,6 +394,7 @@ class DeliveryService:
         return _view(
             project=project,
             release=release,
+            pod=pod,
             as_of=as_of,
             live=live,
             current=current,
@@ -494,6 +518,46 @@ def _items_from_snapshot(snapshot: RequirementsSnapshot | None) -> tuple[Require
     )
 
 
+def _part(
+    snapshot: RequirementsSnapshot | None, pod: PodPart | None
+) -> RequirementsSnapshot | None:
+    """The snapshot counted over the pod's keys alone; as it is without a pod.
+
+    None for a snapshot that kept counts but no keys: its pod's part is not known.
+    """
+    if snapshot is None or pod is None:
+        return snapshot
+    if snapshot.total and not snapshot.items:
+        return None
+    items = {key: stage for key, stage in snapshot.items.items() if key in pod.keys}
+    counts = {stage: 0 for stage in STAGE_ORDER}
+    points = {stage: 0.0 for stage in STAGE_ORDER}
+    for key, stage in items.items():
+        counts[stage] += 1
+        detail = snapshot.details.get(key)
+        points[stage] += (detail.points or 0.0) if detail is not None else 0.0
+    return replace(
+        snapshot,
+        stage_counts=counts,
+        stage_points=points,
+        has_points=bool(items)
+        and all(
+            (detail := snapshot.details.get(key)) is not None and detail.points is not None
+            for key in items
+        ),
+        # Excluded statuses are counted for the whole scope, never per key.
+        excluded=0,
+        items=items,
+        titles={key: title for key, title in snapshot.titles.items() if key in items},
+        details={key: detail for key, detail in snapshot.details.items() if key in items},
+    )
+
+
+def _key(task: GraphNode) -> str:
+    key = task.metadata.get("key")
+    return key if isinstance(key, str) and key else task.id
+
+
 def _scope_id(project_id: str, release: Release | None) -> str:
     return release_snapshot_id(release.release_id) if release is not None else project_id
 
@@ -502,6 +566,7 @@ def _view(
     *,
     project: GraphNode,
     release: Release | None,
+    pod: PodPart | None = None,
     as_of: date,
     live: bool,
     current: RequirementsSnapshot | None,
@@ -531,6 +596,8 @@ def _view(
         as_of=as_of,
         release_id=release.release_id if release is not None else None,
         release_name=release.name if release is not None else None,
+        pod_id=pod.id if pod is not None else None,
+        pod_name=pod.name if pod is not None else None,
         live=live,
         available=current is not None,
         total=current.total if current else 0,

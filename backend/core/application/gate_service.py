@@ -17,7 +17,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from uuid import uuid4
 
-from core.application.delivery_service import DeliveryService
+from core.application.delivery_service import DeliveryService, PodPart
 from core.application.gate_extraction import ModelItemFinder, extract_from_issue
 from core.domain.auth import Role
 from core.domain.delivery import DeliveryStage, StageMapping, place
@@ -101,6 +101,8 @@ class GateBoardView:
     questions: tuple[TrackedQuestion, ...]
     #: Display names of the people who signed off items or asked questions, by id.
     actor_names: Mapping[str, str] = field(default_factory=dict)
+    #: Set when the board covers one pod's part: the requirements below it.
+    pod_id: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -182,12 +184,22 @@ class GateService:
     # ---- the board ------------------------------------------------------------
 
     async def board(
-        self, tenant_id: str, project_id: str, as_of: date, release: Release | None = None
+        self,
+        tenant_id: str,
+        project_id: str,
+        as_of: date,
+        release: Release | None = None,
+        pod: PodPart | None = None,
     ) -> GateBoardView:
+        """``pod``: one pod's part, its keys worked out by the caller (``pod_level``)."""
         if not await self._delivery.is_project(tenant_id, project_id, as_of):
             raise GraphNotFound(f"No project {project_id!r}.")
         templates = [item for item in (await self.templates(tenant_id))[0] if item.enabled]
-        tasks = await self._delivery.scope_tasks(tenant_id, project_id, as_of, release)
+        tasks = tuple(
+            task
+            for task in await self._delivery.scope_tasks(tenant_id, project_id, as_of, release)
+            if pod is None or _key(task) in pod.keys
+        )
         mapping = (await self._delivery.delivery_settings(tenant_id)).settings.mapping
         keys = [_key(task) for task in tasks]
         items = await self._items.list_for_issues(tenant_id, keys)
@@ -217,6 +229,7 @@ class GateService:
             issues=tuple(sorted(issues, key=lambda issue: issue.key)),
             questions=tuple(questions),
             actor_names=await self._names(tenant_id, actors),
+            pod_id=pod.id if pod is not None else None,
         )
 
     async def _names(self, tenant_id: str, actors: set[str]) -> dict[str, str]:

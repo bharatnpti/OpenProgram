@@ -3196,6 +3196,9 @@ export interface paths {
     /**
      * Portfolio Scope
      * @description What joined each project after planning, and its open Jira hygiene findings.
+     *
+     *     With ``pod_id``, the pod's part of each project it works on: the plan counted
+     *     over the requirements below the pod, and the findings on its issues or its board.
      */
     get: operations["portfolio_scope_portfolio_scope_get"];
     put?: never;
@@ -3216,6 +3219,9 @@ export interface paths {
     /**
      * Portfolio Warnings
      * @description Early warnings across the readable projects, grouped by kind with a count each.
+     *
+     *     Each item names the pods it sits in. With ``pod_id``, only that pod's part; a
+     *     developer reads their own pod's, in counts and teams.
      */
     get: operations["portfolio_warnings_portfolio_warnings_get"];
     put?: never;
@@ -5523,6 +5529,11 @@ export interface components {
       project_id: string;
       /** Release Id */
       release_id: string | null;
+      /**
+       * Pod Id
+       * @description Set for one pod's part: the requirements below the pod.
+       */
+      pod_id: string | null;
       /** Templates */
       templates: components["schemas"]["GateTemplateDto"][];
       /** Issues */
@@ -6912,6 +6923,25 @@ export interface components {
      * @enum {string}
      */
     OwnerKind: "assignee" | "reporter" | "profile" | "decision_owner" | "pod_scrum_master";
+    /**
+     * OwnerSaysDto
+     * @description What the item's owner last said in their own status, and where it came from.
+     */
+    OwnerSaysDto: {
+      /**
+       * Text
+       * @description Their latest status in their words, member ids said as names.
+       */
+      text: string;
+      /** @description confirmed: they said it; partial, inferred (from Jira and Git) or stale. */
+      source: components["schemas"]["StatusSource"];
+      /**
+       * On
+       * Format: date
+       * @description The day of that status.
+       */
+      on: string;
+    };
     /**
      * PeriodKind
      * @enum {string}
@@ -9264,6 +9294,13 @@ export interface components {
       release_id: string | null;
       /** Release Name */
       release_name: string | null;
+      /**
+       * Pod Id
+       * @description Set for one pod's part: the requirements below the pod.
+       */
+      pod_id: string | null;
+      /** Pod Name */
+      pod_name: string | null;
       /** Live */
       live: boolean;
       /** Available */
@@ -10314,6 +10351,13 @@ export interface components {
        * @default false
        */
       watermelon: boolean;
+      /**
+       * Pods
+       * @description The project's pods it sits in: the issue's, else its owner's, by name.
+       */
+      pods: components["schemas"]["WarningPodDto"][];
+      /** @description What the named owner last said in their own status; null wherever the reader sees the team instead of the owner. */
+      owner_says: components["schemas"]["OwnerSaysDto"] | null;
     };
     /**
      * WarningKind
@@ -10326,6 +10370,13 @@ export interface components {
       | "review_stuck"
       | "no_movement"
       | "no_code_yet";
+    /** WarningPodDto */
+    WarningPodDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+    };
     /** WorkItemCreateRequest */
     WorkItemCreateRequest: {
       /** Id */
@@ -13883,6 +13934,8 @@ export interface operations {
         days?: number | null;
         /** @description One release of the project. */
         release_id?: string | null;
+        /** @description One pod's part: the requirements below the pod. */
+        pod_id?: string | null;
         /** @description The day to read. Left out: today in the tenant's timezone. */
         as_of?: string | null;
       };
@@ -14805,6 +14858,8 @@ export interface operations {
     parameters: {
       query?: {
         release_id?: string | null;
+        /** @description One pod's part: the requirements below the pod. */
+        pod_id?: string | null;
         /** @description The day to read. Left out: today in the tenant's timezone. */
         as_of?: string | null;
       };
@@ -17962,6 +18017,8 @@ export interface operations {
         q?: string;
         program_id?: string | null;
         project_id?: string | null;
+        /** @description One pod's part: the work below the pod, its findings and its people's blockers. */
+        pod_id?: string | null;
         /** @description The day to read. Left out: today in the tenant's timezone. */
         as_of?: string | null;
       };
@@ -17998,6 +18055,8 @@ export interface operations {
       query?: {
         q?: string;
         project_id?: string | null;
+        /** @description One pod's part: the work below the pod, its findings and its people's blockers. */
+        pod_id?: string | null;
         /** @description The day to read. Left out: today in the tenant's timezone. */
         as_of?: string | null;
       };

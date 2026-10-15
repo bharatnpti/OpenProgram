@@ -10,6 +10,8 @@ returns.
 Which projects a person reads is ``DeliveryScopeService.readable_projects``,
 the rule every project read keeps: every project for its readers (product
 owner, manager, executive, admin), a scrum master's own, a developer's none.
+A read of one pod a developer is in (``member_pod``, which the caller has
+checked) reads that pod's projects too, for the pod's own part of them.
 """
 
 from __future__ import annotations
@@ -80,6 +82,19 @@ class PortfolioIndex:
         node = self.nodes.get(node_id) if node_id else None
         return node.name if node is not None else None
 
+    def pod(self, pod_id: str) -> GraphNode | None:
+        """The pod on the day, or None when the id is not a pod."""
+        node = self.nodes.get(pod_id)
+        return node if node is not None and node.kind is NodeKind.POD else None
+
+    def people_in(self, pod_id: str) -> int:
+        """How many people the pod holds on the day."""
+        return sum(
+            1
+            for child in self.children.get(pod_id, ())
+            if (node := self.nodes.get(child)) is not None and node.kind is NodeKind.DEVELOPER
+        )
+
     def people_of(self, project: IndexedProject) -> tuple[str, ...]:
         """The people in the project's pods on the day, by id."""
         return tuple(
@@ -135,7 +150,10 @@ class PortfolioIndexReader:
         self._graph = graph
         self._scope = scope
 
-    async def read(self, principal: Principal, as_of: date) -> PortfolioIndex:
+    async def read(
+        self, principal: Principal, as_of: date, *, member_pod: str | None = None
+    ) -> PortfolioIndex:
+        """``member_pod``: a pod the reader is in, whose projects they read for its part."""
         tenant_id = principal.tenant_id
         nodes = {node.id: node for node in await self._graph.list_nodes(tenant_id, as_of=as_of)}
         parents: dict[str, list[str]] = {}
@@ -146,6 +164,12 @@ class PortfolioIndexReader:
                 children.setdefault(edge.from_node_id, []).append(edge.to_node_id)
         project_ids = [node.id for node in nodes.values() if node.kind is NodeKind.PROJECT]
         readable = set(await self._scope.readable_projects(principal, project_ids))
+        if member_pod is not None:
+            readable |= {
+                parent
+                for parent in parents.get(member_pod, ())
+                if (node := nodes.get(parent)) is not None and node.kind is NodeKind.PROJECT
+            }
 
         def of_kind(ids: Iterable[str], kind: NodeKind) -> tuple[GraphNode, ...]:
             return _by_name(

@@ -3998,6 +3998,10 @@ class RequirementsResponse(BaseModel):
     as_of: date
     release_id: str | None
     release_name: str | None
+    pod_id: str | None = Field(
+        description="Set for one pod's part: the requirements below the pod."
+    )
+    pod_name: str | None
     live: bool
     available: bool
     total: int
@@ -4031,6 +4035,8 @@ class RequirementsResponse(BaseModel):
             as_of=view.as_of,
             release_id=view.release_id,
             release_name=view.release_name,
+            pod_id=view.pod_id,
+            pod_name=view.pod_name,
             live=view.live,
             available=view.available,
             total=view.total,
@@ -5183,6 +5189,9 @@ class GateBoardResponse(BaseModel):
 
     project_id: str
     release_id: str | None
+    pod_id: str | None = Field(
+        description="Set for one pod's part: the requirements below the pod."
+    )
     templates: list[GateTemplateDto]
     issues: list[IssueGatesResponse]
     questions: list[TrackedQuestionResponse]
@@ -5193,6 +5202,7 @@ class GateBoardResponse(BaseModel):
         return cls(
             project_id=view.project_id,
             release_id=view.release_id,
+            pod_id=view.pod_id,
             templates=[GateTemplateDto.from_domain(item) for item in view.templates],
             issues=[
                 IssueGatesResponse(

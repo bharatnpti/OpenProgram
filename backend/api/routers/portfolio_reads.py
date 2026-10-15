@@ -10,8 +10,13 @@
 - ``GET /portfolio/warnings``: Early warnings by kind, for the aggregate readers;
   blockers listed to the pods' blocker readers, counted for everyone else.
 
-A developer reads none of them (403). The tenant always comes from the principal,
-and none of them writes anything.
+Scope control and Early warnings also read one pod's part (``pod_id``): the
+work below the pod, its findings and its people's blockers. An executive reads
+no pod of fewer than five people on its own (403), and a pod that does not work
+on the project asked for is not found (404).
+
+A developer reads none of them (403), but for their own pod's early warnings.
+The tenant always comes from the principal, and none of them writes anything.
 """
 
 from __future__ import annotations
@@ -44,7 +49,8 @@ from core.application.portfolio_index import PortfolioIndexReader
 from core.application.portfolio_scope_service import PortfolioScopeService
 from core.application.portfolio_warnings_service import PortfolioWarningsService
 from core.application.risk_service import RiskService
-from core.domain.auth import Principal
+from core.domain.auth import Principal, Role
+from core.domain.errors import AuthorizationDenied, GraphNotFound
 from core.domain.portfolio import PortfolioSort, VerdictFilter
 from infra.registry import ServiceRegistry
 
@@ -56,6 +62,7 @@ Registry = Annotated[ServiceRegistry, Depends(get_registry)]
 _NOT_A_DATES_READER = "Will we make the date? is read by the people who read projects' dates."
 _NOT_A_SCOPE_READER = "Scope control is read by the people who read projects' scope."
 _NOT_AN_AGGREGATE_READER = "Early warnings are read by the people who read the portfolio."
+_POD_PART = "One pod's part: the work below the pod, its findings and its people's blockers."
 
 
 def _scope_service(registry: ServiceRegistry) -> DeliveryScopeService:
@@ -110,6 +117,7 @@ def get_portfolio_warnings_service(
         ),
         graph=registry.graph_repository(),
         scope=_scope_service(registry),
+        statuses=registry.status_repository(),
         tracker=names.tracker,
         vcs=names.vcs,
         zone=registry.tenant_zone(),
@@ -162,13 +170,26 @@ async def portfolio_scope(
     q: Annotated[str, Query(max_length=120)] = "",
     program_id: Annotated[str | None, Query()] = None,
     project_id: Annotated[str | None, Query()] = None,
+    pod_id: Annotated[str | None, Query(description=_POD_PART)] = None,
 ) -> PortfolioScopeResponse:
-    """What joined each project after planning, and its open Jira hygiene findings."""
+    """What joined each project after planning, and its open Jira hygiene findings.
+
+    With ``pod_id``, the pod's part of each project it works on: the plan counted
+    over the requirements below the pod, and the findings on its issues or its board.
+    """
     if not reads_project(AuthorizationPolicy(), principal, own=True):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_NOT_A_SCOPE_READER)
-    view = await service.read(
-        principal, as_of, search=q, program_id=program_id or None, project_id=project_id or None
-    )
+    try:
+        view = await service.read(
+            principal,
+            as_of,
+            search=q,
+            program_id=program_id or None,
+            project_id=project_id or None,
+            pod_id=pod_id or None,
+        )
+    except (AuthorizationDenied, GraphNotFound) as exc:
+        raise _refused(exc) from exc
     return PortfolioScopeResponse.from_view(view)
 
 
@@ -179,13 +200,29 @@ async def portfolio_warnings(
     as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     q: Annotated[str, Query(max_length=120)] = "",
     project_id: Annotated[str | None, Query()] = None,
+    pod_id: Annotated[str | None, Query(description=_POD_PART)] = None,
 ) -> PortfolioWarningsResponse:
-    """Early warnings across the readable projects, grouped by kind with a count each."""
+    """Early warnings across the readable projects, grouped by kind with a count each.
+
+    Each item names the pods it sits in. With ``pod_id``, only that pod's part; a
+    developer reads their own pod's, in counts and teams.
+    """
     policy = AuthorizationPolicy()
-    if not (
-        policy.can(principal, Capability.READ_TEAM_AGGREGATE)
-        or policy.can(principal, Capability.READ_EXEC_AGGREGATE)
-    ):
+    reads = policy.can(principal, Capability.READ_TEAM_AGGREGATE) or policy.can(
+        principal, Capability.READ_EXEC_AGGREGATE
+    )
+    if not reads and not (pod_id and principal.has_role(Role.DEV)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_NOT_AN_AGGREGATE_READER)
-    view = await service.read(principal, as_of, project_id=project_id or None, search=q)
+    try:
+        view = await service.read(
+            principal, as_of, project_id=project_id or None, pod_id=pod_id or None, search=q
+        )
+    except (AuthorizationDenied, GraphNotFound) as exc:
+        raise _refused(exc) from exc
     return PortfolioWarningsResponse.from_view(view)
+
+
+def _refused(exc: AuthorizationDenied | GraphNotFound) -> HTTPException:
+    if isinstance(exc, GraphNotFound):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))

@@ -20,12 +20,19 @@ never by person. An executive reads no person: the team stands for the owner.
 A drift finding's age counts from when the scheduled scan first saw it
 (``RiskService``); until the scan has recorded long enough, an age that starts
 on its first recording is a "seen since" day, never a guess.
+
+Each item names the pods it sits in: the pods the issue sits under, else its
+owner's pods on the project, and a blocker's own pods. ``pod_id`` keeps one
+pod's part (``pod_level``): its items, and its people's blockers counted. Where
+the owner is named, the item also says what the owner last said in their own
+status, and where that came from; a reader who sees the team instead reads
+none of it.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from enum import StrEnum
 from zoneinfo import ZoneInfo
@@ -33,18 +40,22 @@ from zoneinfo import ZoneInfo
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
 from core.application.delivery_scope import DeliveryScopeService
+from core.application.person_names import without_member_ids
+from core.application.pod_level import pod_projects
 from core.application.portfolio_index import IndexedProject, PortfolioIndex, PortfolioIndexReader
 from core.application.portfolio_privacy import reads_people
 from core.application.risk_service import RiskService
 from core.domain.auth import Principal, Role
-from core.domain.graph import EdgeKind, EntityRef, NodeKind
+from core.domain.graph import EdgeKind, EntityRef, GraphNode, NodeKind
 from core.domain.risk import DriftFinding, DriftFindingKind, RiskFinding, RiskRuleId
 from core.domain.rollup import Rag
-from core.domain.status import local_date
-from core.ports.repositories import GraphRepository
+from core.domain.status import DeveloperStatus, StatusSource, local_date
+from core.ports.repositories import GraphRepository, StatusRepository
 
 #: The most of a blocker's own words an item repeats.
 MAX_LINE = 140
+#: The most of what an owner last said that an item repeats.
+MAX_SAYS = 280
 
 
 class WarningKind(StrEnum):
@@ -95,6 +106,19 @@ class WarningItem:
     evidence_url: str | None = None
     #: The owner's own status says on track while the signals disagree.
     watermelon: bool = False
+    #: The project's pods it sits in, by name: the issue's, else its owner's.
+    pods: tuple[GraphNode, ...] = ()
+    #: What the named owner last said in their own status; None where unnamed.
+    owner_says: OwnerSays | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class OwnerSays:
+    """The owner's latest status, in their words: what an item says they say."""
+
+    text: str
+    source: StatusSource
+    on: date
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -128,12 +152,14 @@ class PortfolioWarningsService:
         blockers: BlockerResolutionService,
         graph: GraphRepository,
         scope: DeliveryScopeService,
+        statuses: StatusRepository | None = None,
         tracker: str = "the issue tracker",
         vcs: str = "Git",
         policy: AuthorizationPolicy | None = None,
         zone: ZoneInfo | None = None,
     ) -> None:
         self._index = index
+        self._statuses = statuses
         self._risks = risks
         self._blockers = blockers
         self._graph = graph
@@ -151,13 +177,20 @@ class PortfolioWarningsService:
         as_of: date,
         *,
         project_id: str | None = None,
+        pod_id: str | None = None,
         search: str = "",
     ) -> PortfolioWarningsView:
+        """``pod_id``: one pod's part. Raises GraphNotFound for no such pod, or one that
+        does not work on ``project_id``, and AuthorizationDenied where the pod level
+        is not this reader's (a small pod for an executive, another pod for a developer)."""
         tenant_id = principal.tenant_id
-        index = await self._index.read(principal, as_of)
+        member_pod = await self._member_pod(principal, pod_id)
+        index = await self._index.read(principal, as_of, member_pod=member_pod)
         projects = [project for project in index.projects if project.matches(search)]
         if project_id:
             projects = [project for project in projects if project.id == project_id]
+        if pod_id:
+            projects = pod_projects(principal, index, projects, pod_id, project_id)
         reader = _Reader(
             subject=principal.subject,
             named=reads_people(principal),
@@ -170,14 +203,23 @@ class PortfolioWarningsService:
             tenant_id, [project.id for project in projects], as_of
         )
         risks = await self._risks.risks_by_project(tenant_id, as_of)
+        says = _Says(self._statuses, tenant_id, as_of, index)
         for project in projects:
             for finding in drift.get(project.id, []):
                 kind = _drift_group(finding.kind)
-                items[kind].append(self._drift_item(finding, project, reader, kind))
+                item = self._drift_item(finding, project, reader, kind)
+                if item.owner is not None:
+                    item = replace(item, owner_says=await says.latest(finding.owner_id))
+                items[kind].append(item)
             for risk in risks.get(project.id, []):
                 kind = _RISK_GROUPS.get(risk.rule_id, WarningKind.NO_MOVEMENT)
-                items[kind].append(_risk_item(risk, project, reader, self._zone))
-        blockers = await self._blocker_items(principal, projects, reader)
+                items[kind].append(_risk_item(risk, project, reader, self._zone, says))
+        if pod_id:
+            items = {
+                kind: [item for item in found if pod_id in {pod.id for pod in item.pods}]
+                for kind, found in items.items()
+            }
+        blockers = await self._blocker_items(principal, projects, reader, pod_id)
         items[WarningKind.BLOCKERS] = list(blockers.listed)
         groups = tuple(
             WarningGroup(
@@ -197,6 +239,17 @@ class PortfolioWarningsService:
             projects=len(projects),
         )
 
+    async def _member_pod(self, principal: Principal, pod_id: str | None) -> str | None:
+        """The pod a developer reads as its member: their own pod, else refused.
+
+        None for a reader of the portfolio's warnings, who reads every pod of
+        the projects they read.
+        """
+        if not pod_id or _reads_aggregate(self._policy, principal):
+            return None
+        await self._scope.ensure_pod_detail(principal, pod_id)
+        return pod_id
+
     def _title(self, kind: WarningKind) -> str:
         return {
             WarningKind.BLOCKERS: "Blockers people reported",
@@ -215,6 +268,7 @@ class PortfolioWarningsService:
         # Worded as the item disagreeing; only its owner sees their own name.
         disagree = kind is WarningKind.TOOLS_DISAGREE
         owner = reader.owner(finding.owner_id, project, finding.entity_ref, hide=disagree)
+        pods = reader.pods(finding.owner_id, project, finding.entity_ref)
         return WarningItem(
             id=f"drift:{finding.kind.value}:{project.id}:{finding.entity_ref.id}",
             kind=finding.kind.value,
@@ -230,6 +284,7 @@ class PortfolioWarningsService:
             project_name=project.name,
             severity=finding.severity,
             evidence_url=finding.evidence.url if finding.evidence else None,
+            pods=pods,
         )
 
     def _drift_line(self, finding: DriftFinding, key: str) -> str:
@@ -249,12 +304,17 @@ class PortfolioWarningsService:
         return words or _trimmed(finding.reason)
 
     async def _blocker_items(
-        self, principal: Principal, projects: Sequence[IndexedProject], reader: _Reader
+        self,
+        principal: Principal,
+        projects: Sequence[IndexedProject],
+        reader: _Reader,
+        pod_id: str | None = None,
     ) -> _Blockers:
         """Each project's open blockers: all counted, listed for the pods the reader reads.
 
         Read for everyone, so a reader who sees only the count gets the right one;
-        listed only for the pods whose blockers the reader reads.
+        listed only for the pods whose blockers the reader reads. With ``pod_id``,
+        only the blockers in that pod.
         """
         tenant_id = principal.tenant_id
         listed_pods = await self._blocker_pods(principal)
@@ -266,7 +326,7 @@ class PortfolioWarningsService:
         count = 0
         cache: dict[str, tuple[ResolvedBlocker, ...]] = {}
         for project in projects:
-            pods = {pod.id for pod in project.pods}
+            pods = {pod.id for pod in project.pods if not pod_id or pod.id == pod_id}
             seen: set[str] = set()
             for person in reader.index.people_of(project):
                 if person not in cache:
@@ -281,7 +341,7 @@ class PortfolioWarningsService:
                     count += 1
                     if listed_pods is not None and not set(here) & listed_pods:
                         continue
-                    found.append(_blocker_item(blocker, project, here[0], reader, assignees))
+                    found.append(_blocker_item(blocker, project, here, reader, assignees))
         return _Blockers(listed=tuple(found), count=count, counts_only=listed_pods == frozenset())
 
     async def _blocker_pods(self, principal: Principal) -> frozenset[str] | None:
@@ -342,6 +402,20 @@ class _Reader:
         own = [pod for pod in mine if pod.id in pods] or list(mine)
         return own[0].name if own else None
 
+    def pods(
+        self, person_id: str | None, project: IndexedProject, ref: EntityRef | None = None
+    ) -> tuple[GraphNode, ...]:
+        """The project's pods an item sits in: the issue's, else its owner's there."""
+        if ref is not None and ref.kind is not NodeKind.DEVELOPER:
+            issue_pods = self.index.pods_of_issue(self.label(ref), project)
+            if issue_pods:
+                return issue_pods
+        person = ref.id if ref is not None and ref.kind is NodeKind.DEVELOPER else person_id
+        if person is None:
+            return ()
+        on_project = {pod.id for pod in project.pods}
+        return tuple(pod for pod in self.index.pods_of_person(person) if pod.id in on_project)
+
     def owner(
         self,
         person_id: str | None,
@@ -370,7 +444,7 @@ def _drift_group(kind: DriftFindingKind) -> WarningKind:
 
 
 def _risk_item(
-    risk: RiskFinding, project: IndexedProject, reader: _Reader, zone: ZoneInfo
+    risk: RiskFinding, project: IndexedProject, reader: _Reader, zone: ZoneInfo, says: _Says
 ) -> WarningItem:
     key = (
         risk.evidence.identifier
@@ -379,6 +453,11 @@ def _risk_item(
     )
     owner = reader.owner(risk.owner_id, project, risk.entity_ref)
     since = local_date(risk.detected_at, zone)
+    owner_says = (
+        says.of(risk.owner_status_summary, risk.owner_status_source, risk.owner_status_as_of)
+        if owner.name is not None
+        else None
+    )
     return WarningItem(
         id=f"risk:{risk.rule_id.value}:{project.id}:{risk.entity_ref.id}:{risk.evidence.identifier}",
         kind=risk.rule_id.value,
@@ -395,17 +474,20 @@ def _risk_item(
         severity=risk.severity,
         evidence_url=risk.evidence.url,
         watermelon=risk.is_watermelon,
+        pods=reader.pods(risk.owner_id, project, risk.entity_ref),
+        owner_says=owner_says,
     )
 
 
 def _blocker_item(
     blocker: ResolvedBlocker,
     project: IndexedProject,
-    pod_id: str,
+    pod_ids: Sequence[str],
     reader: _Reader,
     assignees: Mapping[str, Sequence[str]],
 ) -> WarningItem:
     """A blocker with who resolves it: the waited issue's assignee, else a scrum master."""
+    pod_id = pod_ids[0]
     resolver: str | None
     if blocker.cross_team:
         waited = blocker.depends_on_ref.id if blocker.depends_on_ref is not None else None
@@ -443,6 +525,58 @@ def _blocker_item(
         project_id=project.id,
         project_name=project.name,
         severity=Rag.RED if blocker.critical else Rag.AMBER,
+        pods=tuple(pod for pod in project.pods if pod.id in pod_ids),
+    )
+
+
+class _Says:
+    """What each named owner last said, read once per person for the request."""
+
+    def __init__(
+        self, statuses: StatusRepository | None, tenant_id: str, as_of: date, index: PortfolioIndex
+    ) -> None:
+        self._statuses = statuses
+        self._tenant_id = tenant_id
+        self._as_of = as_of
+        self._names = _member_names(index)
+        self._cache: dict[str, DeveloperStatus | None] = {}
+
+    async def latest(self, person_id: str | None) -> OwnerSays | None:
+        if person_id is None or self._statuses is None:
+            return None
+        if person_id not in self._cache:
+            self._cache[person_id] = await self._statuses.latest_developer_status(
+                self._tenant_id, person_id, self._as_of
+            )
+        status = self._cache[person_id]
+        return self.of(status.summary, status.source, status.as_of) if status else None
+
+    def of(
+        self, text: str | None, source: StatusSource | None, on: date | None
+    ) -> OwnerSays | None:
+        """The words, cleaned of member ids; None without words, a source or a day."""
+        clean = _trimmed(without_member_ids(text, self._names), MAX_SAYS) if text else ""
+        if not clean or source is None or on is None:
+            return None
+        return OwnerSays(text=clean, source=source, on=on)
+
+
+def _member_names(index: PortfolioIndex) -> dict[str, str]:
+    """Every member by each id they go by: node id and chat id."""
+    names: dict[str, str] = {}
+    for node in index.nodes.values():
+        if node.kind is not NodeKind.DEVELOPER:
+            continue
+        names[node.id] = node.name
+        chat_id = node.metadata.get("chat_external_id")
+        if isinstance(chat_id, str) and chat_id:
+            names[chat_id] = node.name
+    return names
+
+
+def _reads_aggregate(policy: AuthorizationPolicy, principal: Principal) -> bool:
+    return policy.can(principal, Capability.READ_TEAM_AGGREGATE) or policy.can(
+        principal, Capability.READ_EXEC_AGGREGATE
     )
 
 
@@ -454,12 +588,13 @@ def _oldest_first(item: WarningItem) -> tuple[object, ...]:
     return (-item.age_days, item.project_name.casefold(), item.key, item.id)
 
 
-def _trimmed(text: str) -> str:
+def _trimmed(text: str, limit: int = MAX_LINE) -> str:
     clean = " ".join(text.split())
-    return clean if len(clean) <= MAX_LINE else clean[: MAX_LINE - 1].rstrip() + "…"
+    return clean if len(clean) <= limit else clean[: limit - 1].rstrip() + "…"
 
 
 __all__ = [
+    "OwnerSays",
     "PortfolioWarningsService",
     "PortfolioWarningsView",
     "WarningGroup",

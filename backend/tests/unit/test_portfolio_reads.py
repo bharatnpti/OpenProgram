@@ -57,7 +57,9 @@ from infra.registry import ServiceRegistry
 T = "demo"
 AS_OF = date(2026, 6, 15)
 NOW = datetime(2026, 6, 15, 8, 30, tzinfo=UTC)
-PEOPLE = ("Ada Quill", "Ben Marsh", "Sam Ortiz")
+#: Comet's crew: a pod of five, the smallest an executive reads on its own.
+CREW = ("Cleo Dunn", "Ravi Hale", "Nia Ford", "Omar Vance", "Lena Park")
+PEOPLE = ("Ada Quill", "Ben Marsh", "Sam Ortiz", *CREW)
 
 
 def _ref(kind: NodeKind, node_id: str) -> EntityRef:
@@ -139,6 +141,11 @@ async def _seed(store: InMemoryGraphStore, registry: ServiceRegistry) -> None:
         ),
         Pod(tenant_id=T, id="pod-a2", name="Atlas Edge"),
         Pod(tenant_id=T, id="pod-b", name="Beacon Pod"),
+        Pod(tenant_id=T, id="pod-c", name="Comet Crew"),
+        *(
+            Developer(tenant_id=T, id=f"dev-c{number}", name=name)
+            for number, name in enumerate(CREW, start=1)
+        ),
         Developer(tenant_id=T, id="dev-ada", name="Ada Quill"),
         Developer(tenant_id=T, id="dev-ben", name="Ben Marsh"),
         Developer(tenant_id=T, id="dev-sam", name="Sam Ortiz"),
@@ -170,6 +177,8 @@ async def _seed(store: InMemoryGraphStore, registry: ServiceRegistry) -> None:
         ("p-atlas", "pod-a1"),
         ("p-atlas", "pod-a2"),
         ("p-beacon", "pod-b"),
+        ("p-comet", "pod-c"),
+        *(("pod-c", f"dev-c{number}") for number in range(1, len(CREW) + 1)),
         ("pod-a1", "dev-ada"),
         ("pod-a1", "dev-ben"),
         ("pod-a1", "dev-sam"),
@@ -602,4 +611,276 @@ def test_warnings_group_by_kind_and_list_blockers_to_their_readers(
     assert exec_groups["blockers"]["count"] == 1
     assert exec_groups["blockers"]["counts_only"] and exec_groups["blockers"]["items"] == []
     assert _named(executive.json()) == []
+    assert developer.status_code == 403
+
+
+# ---- One pod's part ---------------------------------------------------------------------
+
+
+def _findings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A blocker in Atlas Core, a stale issue in Atlas Edge and a merged issue in Atlas Core."""
+    from core.application.blocker_resolution import (
+        BlockerProvenance,
+        BlockerResolutionService,
+        ResolvedBlocker,
+    )
+    from core.application.risk_service import RiskService
+    from core.domain.risk import (
+        DriftFinding,
+        DriftFindingKind,
+        RiskEvidence,
+        RiskFinding,
+        RiskFindingStatus,
+        RiskRuleId,
+    )
+
+    blocker = ResolvedBlocker(
+        blocker_id="b-1",
+        description="Waiting on the payment sandbox",
+        developer_id="dev-ada",
+        first_seen_on=AS_OF - timedelta(days=6),
+        work_item_ref=_ref(NodeKind.TASK, "ATL-2"),
+        work_item_name="Story ATL-2",
+        explicit_pod_ref=None,
+        pod_ids=("pod-a1",),
+        unattributed=False,
+        critical=True,
+        provenance=BlockerProvenance.LIFECYCLE,
+    )
+    stale = RiskFinding(
+        tenant_id=T,
+        rule_id=RiskRuleId.STALE_WORK_ITEM,
+        severity=Rag.AMBER,
+        entity_ref=_ref(NodeKind.TASK, "ATL-4"),
+        workstream_id=None,
+        reason="ATL-4 has not moved for 9 days.",
+        evidence=RiskEvidence(identifier="ATL-4"),
+        age_days=9,
+        threshold_days=5,
+        detected_at=NOW - timedelta(days=2),
+        status=RiskFindingStatus.OPEN,
+        owner_id="dev-ben",
+        # A summary stored before it named people still holds a member id.
+        owner_status_summary="On track, pairing with dev-ada on the last screen.",
+        owner_status_source=StatusSource.CONFIRMED,
+        owner_status_as_of=AS_OF,
+    )
+    merged = DriftFinding(
+        tenant_id=T,
+        kind=DriftFindingKind.MERGED_ISSUE_OPEN,
+        severity=Rag.AMBER,
+        entity_ref=_ref(NodeKind.TASK, "ATL-1"),
+        workstream_id=None,
+        reason="merged, still open",
+        detected_at=NOW - timedelta(days=1),
+        owner_id="dev-ada",
+    )
+
+    async def blockers_for(
+        self: BlockerResolutionService, tenant_id: str, developer_id: str, as_of: date
+    ) -> tuple[ResolvedBlocker, ...]:
+        return (blocker,) if developer_id == "dev-ada" else ()
+
+    async def risks(
+        self: RiskService, tenant_id: str, as_of: date
+    ) -> dict[str | None, list[RiskFinding]]:
+        return {"p-atlas": [stale]}
+
+    async def drift(
+        self: RiskService, tenant_id: str, project_ids: list[str], as_of: date
+    ) -> dict[str, list[DriftFinding]]:
+        return {
+            project_id: [merged] if project_id == "p-atlas" else [] for project_id in project_ids
+        }
+
+    monkeypatch.setattr(BlockerResolutionService, "open_blockers_for_developer", blockers_for)
+    monkeypatch.setattr(RiskService, "risks_by_project", risks)
+    monkeypatch.setattr(RiskService, "drift_by_project", drift)
+
+
+def _items(body: dict[str, object]) -> dict[str, list[dict[str, object]]]:
+    groups = body["groups"]
+    assert isinstance(groups, list)
+    return {group["kind"]: group["items"] for group in groups}
+
+
+def _counts(body: dict[str, object]) -> dict[str, int]:
+    groups = body["groups"]
+    assert isinstance(groups, list)
+    return {group["kind"]: group["count"] for group in groups}
+
+
+def test_warnings_name_each_items_pods_and_what_its_owner_says(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _findings(monkeypatch)
+
+    manager = _as(client, f"/portfolio/warnings?as_of={AS_OF}", "mgr")
+    owner = _as(client, f"/portfolio/warnings?as_of={AS_OF}", "po")
+    executive = _as(client, f"/portfolio/warnings?as_of={AS_OF}", "exec")
+
+    assert manager.status_code == 200, manager.text
+    items = _items(manager.json())
+    (stale,) = items["no_movement"]
+    (merged,) = items["done_in_code"]
+    (blocker,) = items["blockers"]
+    # The issue's pod, else its owner's; a blocker its own.
+    assert stale["pods"] == [{"id": "pod-a2", "name": "Atlas Edge"}]
+    assert merged["pods"] == [{"id": "pod-a1", "name": "Atlas Core"}]
+    assert blocker["pods"] == [{"id": "pod-a1", "name": "Atlas Core"}]
+    # The owner's own words, with the member id said as the name, and their source.
+    assert stale["owner"] == "Ben Marsh"
+    assert stale["owner_says"] == {
+        "text": "On track, pairing with Ada Quill on the last screen.",
+        "source": "confirmed",
+        "on": "2026-06-15",
+    }
+    # A reader who sees the team instead reads none of the owner's words.
+    for body in (owner.json(), executive.json()):
+        for found in _items(body).values():
+            assert all(item["owner"] is None and item["owner_says"] is None for item in found)
+    assert _named(executive.json()) == []
+
+
+def test_warnings_keep_one_pods_part(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    _findings(monkeypatch)
+
+    core = _as(client, f"/portfolio/warnings?as_of={AS_OF}&pod_id=pod-a1", "mgr")
+    edge = _as(client, f"/portfolio/warnings?as_of={AS_OF}&project_id=p-atlas&pod_id=pod-a2", "mgr")
+    elsewhere = _as(
+        client, f"/portfolio/warnings?as_of={AS_OF}&project_id=p-beacon&pod_id=pod-a1", "mgr"
+    )
+    unknown = _as(client, f"/portfolio/warnings?as_of={AS_OF}&pod_id=pod-x", "mgr")
+
+    assert core.status_code == 200, core.text
+    assert core.json()["projects"] == 1
+    assert {kind: count for kind, count in _counts(core.json()).items() if count} == {
+        "blockers": 1,
+        "done_in_code": 1,
+    }
+    assert {kind: count for kind, count in _counts(edge.json()).items() if count} == {
+        "no_movement": 1
+    }
+    assert edge.json()["total"] == 1
+    assert elsewhere.status_code == 404
+    assert elsewhere.json()["detail"] == "Atlas Core doesn't work on Beacon."
+    assert unknown.status_code == 404
+
+
+def test_a_pods_part_keeps_the_small_group_rule_and_a_developers_own_pod(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _findings(monkeypatch)
+
+    small = _as(client, f"/portfolio/warnings?as_of={AS_OF}&pod_id=pod-a1", "exec")
+    crew = _as(client, f"/portfolio/warnings?as_of={AS_OF}&pod_id=pod-c", "exec")
+    small_scope = _as(client, f"/portfolio/scope?as_of={AS_OF}&pod_id=pod-a1", "exec")
+    own = _as(client, f"/portfolio/warnings?as_of={AS_OF}&pod_id=pod-a1", "dev", subject="dev-ada")
+    other = _as(
+        client, f"/portfolio/warnings?as_of={AS_OF}&pod_id=pod-a2", "dev", subject="dev-ada"
+    )
+    whole = _as(client, f"/portfolio/warnings?as_of={AS_OF}", "dev", subject="dev-ada")
+    elsewhere = _as(
+        client,
+        f"/portfolio/warnings?as_of={AS_OF}&project_id=p-beacon&pod_id=pod-a1",
+        "dev",
+        subject="dev-ada",
+    )
+    dev_scope = _as(client, f"/portfolio/scope?as_of={AS_OF}&pod_id=pod-a1", "dev", "dev-ada")
+
+    # Fewer than five people: an executive reads it as part of its project.
+    assert small.status_code == 403
+    assert small.json()["detail"] == "A pod of fewer than 5 people is read as part of its project."
+    assert small_scope.status_code == 403
+    assert crew.status_code == 200 and crew.json()["projects"] == 1
+    assert _named(crew.json()) == []
+    # A developer reads their own pod's part, in counts and teams, and no other.
+    assert own.status_code == 200, own.text
+    body = own.json()
+    assert body["projects"] == 1
+    blockers = next(group for group in body["groups"] if group["kind"] == "blockers")
+    assert blockers["count"] == 1 and blockers["counts_only"] and blockers["items"] == []
+    (merged,) = _items(body)["done_in_code"]
+    assert merged["owner"] is None and merged["owner_is_you"] and merged["owner_says"] is None
+    assert merged["owner_team"] == "Atlas Core"
+    assert _named(body) == []
+    assert other.status_code == 403 and whole.status_code == 403
+    assert elsewhere.status_code == 404
+    assert dev_scope.status_code == 403
+
+
+def test_delivery_gives_an_executive_no_row_for_a_pod_under_five(client: TestClient) -> None:
+    executive = _as(client, f"/portfolio/delivery?as_of={AS_OF}", "exec").json()
+    manager = _as(client, f"/portfolio/delivery?as_of={AS_OF}", "mgr").json()
+
+    def pods(body: dict[str, object], project_id: str) -> list[str]:
+        projects = body["projects"]
+        assert isinstance(projects, list)
+        found = next(project for project in projects if project["id"] == project_id)
+        return [pod["name"] for pod in found["pods"]]
+
+    assert pods(manager, "p-atlas") == ["Atlas Core", "Atlas Edge"]
+    assert pods(executive, "p-atlas") == []
+    assert pods(executive, "p-comet") == ["Comet Crew"]
+    atlas = next(project for project in executive["projects"] if project["id"] == "p-atlas")
+    # Three people: no reply is counted for an executive, the work items still are.
+    assert atlas["health"] == "1 open blocker"
+    mgr_atlas = next(project for project in manager["projects"] if project["id"] == "p-atlas")
+    assert mgr_atlas["health"] == "1 open blocker, 1 of 2 not replied"
+
+
+def test_scope_reads_one_pods_part(client: TestClient) -> None:
+    edge = _as(client, f"/portfolio/scope?as_of={AS_OF}&pod_id=pod-a2", "mgr")
+    core = _as(client, f"/portfolio/scope?as_of={AS_OF}&project_id=p-atlas&pod_id=pod-a1", "mgr")
+    elsewhere = _as(
+        client, f"/portfolio/scope?as_of={AS_OF}&project_id=p-beacon&pod_id=pod-a1", "mgr"
+    )
+
+    assert edge.status_code == 200, edge.text
+    (atlas,) = edge.json()["projects"]
+    # Nothing of the plan was the edge's; both its requirements joined after, unlabelled.
+    assert atlas["plan"]["planned"] == 0 and atlas["plan"]["added"] == 2
+    assert atlas["plan"]["without_label"] == 2
+    assert atlas["added_keys"] == ["ATL-4", "ATL-5"]
+    assert atlas["hygiene_open"] == 1
+    assert [finding["issue_key"] for finding in edge.json()["findings"]] == ["ATL-4"]
+    (atlas,) = core.json()["projects"]
+    assert atlas["plan"]["planned"] == 2 and atlas["plan"]["added"] == 1
+    assert atlas["plan"]["without_label"] == 0 and atlas["added_keys"] == ["ATL-3"]
+    assert atlas["hygiene_open"] == 0 and core.json()["findings"] == []
+    assert core.json()["rules"][0]["open"] == 0
+    assert elsewhere.status_code == 404
+
+
+def test_requirements_and_gates_read_one_pods_part(client: TestClient) -> None:
+    whole = _as(client, f"/projects/p-atlas/requirements?as_of={AS_OF}", "mgr")
+    core = _as(client, f"/projects/p-atlas/requirements?as_of={AS_OF}&pod_id=pod-a1", "mgr")
+    edge = _as(client, f"/projects/p-atlas/requirements?as_of={AS_OF}&pod_id=pod-a2", "mgr")
+    elsewhere = _as(client, f"/projects/p-atlas/requirements?as_of={AS_OF}&pod_id=pod-b", "mgr")
+    small = _as(client, f"/projects/p-atlas/requirements?as_of={AS_OF}&pod_id=pod-a1", "exec")
+    crew = _as(client, f"/projects/p-comet/requirements?as_of={AS_OF}&pod_id=pod-c", "exec")
+    board = _as(client, f"/projects/p-atlas/gates?as_of={AS_OF}&pod_id=pod-a2", "mgr")
+    small_board = _as(client, f"/projects/p-atlas/gates?as_of={AS_OF}&pod_id=pod-a1", "exec")
+    developer = _as(
+        client, f"/projects/p-atlas/requirements?as_of={AS_OF}&pod_id=pod-a1", "dev", "dev-ada"
+    )
+
+    assert (whole.json()["total"], whole.json()["done"], whole.json()["pod_id"]) == (5, 2, None)
+    assert core.status_code == 200, core.text
+    body = core.json()
+    assert (body["pod_id"], body["pod_name"]) == ("pod-a1", "Atlas Core")
+    assert (body["total"], body["done"]) == (3, 1)
+    assert sorted(item["key"] for item in body["requirements"]) == ["ATL-1", "ATL-2", "ATL-3"]
+    counts = {stage["stage"]: stage["count"] for stage in body["stages"]}
+    assert counts["in_development"] == 2 and counts["production"] == 1
+    assert (edge.json()["total"], edge.json()["done"]) == (2, 1)
+    assert elsewhere.status_code == 404
+    assert elsewhere.json()["detail"] == "Beacon Pod doesn't work on Atlas."
+    assert small.status_code == 403
+    assert crew.status_code == 200 and crew.json()["total"] == 0
+    assert board.status_code == 200, board.text
+    assert board.json()["pod_id"] == "pod-a2"
+    assert [issue["key"] for issue in board.json()["issues"]] == ["ATL-4", "ATL-5"]
+    assert small_board.status_code == 403
+    # The readers stay as they are: a developer reads no project's requirements.
     assert developer.status_code == 403

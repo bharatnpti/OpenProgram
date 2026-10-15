@@ -416,15 +416,36 @@ export const apiClient = {
     const text = search.toString();
     return requestJson<PortfolioDeliveryResponse>(`/portfolio/delivery${text ? `?${text}` : ""}`);
   },
-  /** Scope control: each project against its plan, and the open Jira hygiene findings. */
-  portfolioScope: (query: { q?: string; programId?: string | null } = {}) =>
+  /**
+   * Scope control: each project against its plan, and the open Jira hygiene findings.
+   * With `podId`, one pod's part: its requirements against the plan, its findings.
+   */
+  portfolioScope: (
+    query: {
+      q?: string;
+      programId?: string | null;
+      projectId?: string | null;
+      podId?: string | null;
+    } = {},
+  ) =>
     requestJson<PortfolioScopeResponse>(
-      withQuery("/portfolio/scope", { q: query.q, program_id: query.programId ?? undefined }),
+      withQuery("/portfolio/scope", {
+        q: query.q,
+        program_id: query.programId ?? undefined,
+        project_id: query.projectId ?? undefined,
+        pod_id: query.podId ?? undefined,
+      }),
     ),
-  /** Early warnings across the readable projects, grouped by kind. */
-  portfolioWarnings: (query: { projectId?: string | null } = {}) =>
+  /**
+   * Early warnings across the readable projects, grouped by kind. With `podId`, one
+   * pod's part (a developer reads their own pod's).
+   */
+  portfolioWarnings: (query: { projectId?: string | null; podId?: string | null } = {}) =>
     requestJson<PortfolioWarningsResponse>(
-      withQuery("/portfolio/warnings", { project_id: query.projectId ?? undefined }),
+      withQuery("/portfolio/warnings", {
+        project_id: query.projectId ?? undefined,
+        pod_id: query.podId ?? undefined,
+      }),
     ),
   portfolioCrossPersonRequests: (status: CrossPersonRequestStatus | null = "open") =>
     requestJson<CrossPersonRequestsResponse>(
@@ -714,12 +735,20 @@ export const apiClient = {
       method: "POST",
       body,
     }),
-  projectRequirements: (projectId: string, asOf?: string, days?: number, releaseId?: string) =>
+  /** A project's requirements by stage; with `podId`, the ones below that pod. */
+  projectRequirements: (
+    projectId: string,
+    asOf?: string,
+    days?: number,
+    releaseId?: string,
+    podId?: string,
+  ) =>
     requestJson<RequirementsResponse>(
       withQuery(`/projects/${encodeURIComponent(projectId)}/requirements`, {
         as_of: asOf,
         days: days ? String(days) : undefined,
         release_id: releaseId,
+        pod_id: podId,
       }),
     ),
   projectDelivery: (projectId: string, asOf?: string) =>
@@ -820,11 +849,13 @@ export const apiClient = {
     requestJson<GateTemplateDto>("/config/gates", { method: "PUT", body }),
   removeGateTemplate: (templateId: string) =>
     requestJson<void>(`/config/gates/${encodeURIComponent(templateId)}`, { method: "DELETE" }),
-  gateBoard: (projectId: string, asOf?: string, releaseId?: string) =>
+  /** A project's requirements against their gates; with `podId`, the ones below that pod. */
+  gateBoard: (projectId: string, asOf?: string, releaseId?: string, podId?: string) =>
     requestJson<GateBoardResponse>(
       withQuery(`/projects/${encodeURIComponent(projectId)}/gates`, {
         as_of: asOf,
         release_id: releaseId,
+        pod_id: podId,
       }),
     ),
   scanGates: (projectId: string, releaseId?: string) =>
@@ -873,6 +904,9 @@ export const apiClient = {
         release_id: releaseId,
       }),
     ),
+  /** A pod's own readiness findings, as its board under each of its projects lists them. */
+  podReadiness: (podId: string) =>
+    requestJson<ReadinessBoardResponse>(`/pods/${encodeURIComponent(podId)}/readiness`),
   runReadiness: (projectId: string, releaseId?: string) =>
     requestJson<ReadinessRunResponse>(
       withQuery(`/projects/${encodeURIComponent(projectId)}/readiness/run`, {

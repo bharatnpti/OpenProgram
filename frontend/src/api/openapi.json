@@ -5588,6 +5588,24 @@
             "description": "One release of the project."
           },
           {
+            "name": "pod_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One pod's part: the requirements below the pod.",
+              "title": "Pod Id"
+            },
+            "description": "One pod's part: the requirements below the pod."
+          },
+          {
             "name": "as_of",
             "in": "query",
             "required": false,
@@ -7415,6 +7433,24 @@
               ],
               "title": "Release Id"
             }
+          },
+          {
+            "name": "pod_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One pod's part: the requirements below the pod.",
+              "title": "Pod Id"
+            },
+            "description": "One pod's part: the requirements below the pod."
           },
           {
             "name": "as_of",
@@ -13369,7 +13405,7 @@
       "get": {
         "tags": ["portfolio"],
         "summary": "Portfolio Scope",
-        "description": "What joined each project after planning, and its open Jira hygiene findings.",
+        "description": "What joined each project after planning, and its open Jira hygiene findings.\n\nWith ``pod_id``, the pod's part of each project it works on: the plan counted\nover the requirements below the pod, and the findings on its issues or its board.",
         "operationId": "portfolio_scope_portfolio_scope_get",
         "parameters": [
           {
@@ -13414,6 +13450,24 @@
               ],
               "title": "Project Id"
             }
+          },
+          {
+            "name": "pod_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One pod's part: the work below the pod, its findings and its people's blockers.",
+              "title": "Pod Id"
+            },
+            "description": "One pod's part: the work below the pod, its findings and its people's blockers."
           },
           {
             "name": "as_of",
@@ -13479,7 +13533,7 @@
       "get": {
         "tags": ["portfolio"],
         "summary": "Portfolio Warnings",
-        "description": "Early warnings across the readable projects, grouped by kind with a count each.",
+        "description": "Early warnings across the readable projects, grouped by kind with a count each.\n\nEach item names the pods it sits in. With ``pod_id``, only that pod's part; a\ndeveloper reads their own pod's, in counts and teams.",
         "operationId": "portfolio_warnings_portfolio_warnings_get",
         "parameters": [
           {
@@ -13508,6 +13562,24 @@
               ],
               "title": "Project Id"
             }
+          },
+          {
+            "name": "pod_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One pod's part: the work below the pod, its findings and its people's blockers.",
+              "title": "Pod Id"
+            },
+            "description": "One pod's part: the work below the pod, its findings and its people's blockers."
           },
           {
             "name": "as_of",
@@ -19705,6 +19777,18 @@
             ],
             "title": "Release Id"
           },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id",
+            "description": "Set for one pod's part: the requirements below the pod."
+          },
           "templates": {
             "items": {
               "$ref": "#/components/schemas/GateTemplateDto"
@@ -19735,7 +19819,7 @@
           }
         },
         "type": "object",
-        "required": ["project_id", "release_id", "templates", "issues", "questions"],
+        "required": ["project_id", "release_id", "pod_id", "templates", "issues", "questions"],
         "title": "GateBoardResponse",
         "description": "A project's (or release's) requirements against their gates, and open questions."
       },
@@ -23200,6 +23284,29 @@
         "type": "string",
         "enum": ["assignee", "reporter", "profile", "decision_owner", "pod_scrum_master"],
         "title": "OwnerKind"
+      },
+      "OwnerSaysDto": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Their latest status in their words, member ids said as names."
+          },
+          "source": {
+            "$ref": "#/components/schemas/StatusSource",
+            "description": "confirmed: they said it; partial, inferred (from Jira and Git) or stale."
+          },
+          "on": {
+            "type": "string",
+            "format": "date",
+            "title": "On",
+            "description": "The day of that status."
+          }
+        },
+        "type": "object",
+        "required": ["text", "source", "on"],
+        "title": "OwnerSaysDto",
+        "description": "What the item's owner last said in their own status, and where it came from."
       },
       "PeriodKind": {
         "type": "string",
@@ -29066,6 +29173,29 @@
             ],
             "title": "Release Name"
           },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id",
+            "description": "Set for one pod's part: the requirements below the pod."
+          },
+          "pod_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Name"
+          },
           "live": {
             "type": "boolean",
             "title": "Live"
@@ -29174,6 +29304,8 @@
           "as_of",
           "release_id",
           "release_name",
+          "pod_id",
+          "pod_name",
           "live",
           "available",
           "total",
@@ -31694,6 +31826,25 @@
             "type": "boolean",
             "title": "Watermelon",
             "default": false
+          },
+          "pods": {
+            "items": {
+              "$ref": "#/components/schemas/WarningPodDto"
+            },
+            "type": "array",
+            "title": "Pods",
+            "description": "The project's pods it sits in: the issue's, else its owner's, by name."
+          },
+          "owner_says": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OwnerSaysDto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the named owner last said in their own status; null wherever the reader sees the team instead of the owner."
           }
         },
         "type": "object",
@@ -31710,7 +31861,9 @@
           "owner_is_you",
           "project_id",
           "project_name",
-          "severity"
+          "severity",
+          "pods",
+          "owner_says"
         ],
         "title": "WarningItemDto"
       },
@@ -31725,6 +31878,21 @@
           "no_code_yet"
         ],
         "title": "WarningKind"
+      },
+      "WarningPodDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name"],
+        "title": "WarningPodDto"
       },
       "WorkItemCreateRequest": {
         "properties": {

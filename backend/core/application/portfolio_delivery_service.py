@@ -16,6 +16,10 @@ planning baseline, the day's stored rollup and check-ins. For every project:
 Search, the verdict filters and the order (worst first) run over the kept rows
 alone; the per-project reads (snapshot, baseline) run only for the page asked
 for, so 50 or 500 projects cost one page of work. The project page stays live.
+
+The small-group rule holds for an executive: a pod of fewer than five people
+has no row of its own (its work is in the project's), and a project of fewer
+than five people says no reply counts in its health.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from core.application.baseline_service import BaselineService
+from core.application.people_words import hides_names, is_small
 from core.application.portfolio_index import IndexedProject, PortfolioIndex, PortfolioIndexReader
 from core.domain.auth import Principal
 from core.domain.baseline import BaselineScopeKind, since_baseline
@@ -257,6 +262,7 @@ class PortfolioDeliveryService:
                 release.release_id: release.name
                 for release in await self._releases.list_all(tenant_id)
             },
+            small_groups=hides_names(principal),
         )
         projects = await asyncio.gather(
             *(self._project(tenant_id, item, day, as_of) for item in page)
@@ -345,7 +351,7 @@ class PortfolioDeliveryService:
                     as_of=as_of,
                 )
             ),
-            health=health_words(_health(status, day.index.people_of(project), day.checkins)),
+            health=health_words(_health(status, _counted_people(project, day), day.checkins)),
             health_day=status.as_of if status is not None else None,
             done=_done(snapshot, None),
             total=_total(snapshot, None),
@@ -398,6 +404,8 @@ class _Day:
     statuses: Mapping[str, NodeStatus]
     checkins: Mapping[str, CheckInDay]
     release_names: Mapping[str, str]
+    #: The reader keeps to the small-group rule: an executive.
+    small_groups: bool = False
 
 
 def _kept(
@@ -542,12 +550,22 @@ def _health(
     )
 
 
+def _counted_people(project: IndexedProject, day: _Day) -> Sequence[str]:
+    """The people whose replies the health counts: none of a small project's for an
+    executive, whose health then says its work items only."""
+    people = day.index.people_of(project)
+    return () if day.small_groups and is_small(len(people)) else people
+
+
 def _pods(
     project: IndexedProject, snapshot: RequirementsSnapshot | None, day: _Day
 ) -> tuple[PodLine, ...]:
     keys = day.index.pod_keys(project, snapshot.items) if snapshot is not None else {}
     lines: list[PodLine] = []
     for pod in project.pods:
+        if day.small_groups and is_small(day.index.people_in(pod.id)):
+            # Read as part of the project: a row of its own would tell its people apart.
+            continue
         row = day.by_scope.get((CommitmentScopeKind.POD, pod.id, project.id))
         own = keys.get(pod.id, frozenset())
         lines.append(

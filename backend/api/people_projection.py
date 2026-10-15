@@ -91,7 +91,9 @@ _NAME_FIELDS: dict[str, str | None] = {
 #: Maps of node ids to names: a person's entry is said as their role or team.
 _NAME_MAPS = frozenset({"actor_names", "source_names"})
 #: A person's own status, in their words and by its source: an executive reads none.
-_LEFT_OUT = frozenset({"owner_status_summary", "owner_status_source", "owner_status_as_of"})
+_LEFT_OUT = frozenset(
+    {"owner_status_summary", "owner_status_source", "owner_status_as_of", "owner_says"}
+)
 #: The people a feed event's details name: each id, with the field holding their name.
 _FEED_PEOPLE: dict[str, str] = {
     "reporter_id": "reporter_name",

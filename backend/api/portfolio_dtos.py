@@ -28,6 +28,7 @@ from core.application.portfolio_scope_service import (
     ScopeProjectView,
 )
 from core.application.portfolio_warnings_service import (
+    OwnerSays,
     PortfolioWarningsView,
     WarningGroup,
     WarningItem,
@@ -36,6 +37,7 @@ from core.application.portfolio_warnings_service import (
 from core.domain.forecast import Verdict
 from core.domain.portfolio import AgainstPlan
 from core.domain.rollup import Rag
+from core.domain.status import StatusSource
 
 
 class _Frozen(BaseModel):
@@ -380,6 +382,25 @@ class PortfolioScopeResponse(_Frozen):
 # ---- Early warnings --------------------------------------------------------------------
 
 
+class OwnerSaysDto(_Frozen):
+    """What the item's owner last said in their own status, and where it came from."""
+
+    text: str = Field(description="Their latest status in their words, member ids said as names.")
+    source: StatusSource = Field(
+        description="confirmed: they said it; partial, inferred (from Jira and Git) or stale."
+    )
+    on: date = Field(description="The day of that status.")
+
+    @classmethod
+    def from_view(cls, says: OwnerSays) -> OwnerSaysDto:
+        return cls(text=says.text, source=says.source, on=says.on)
+
+
+class WarningPodDto(_Frozen):
+    id: str
+    name: str
+
+
 class WarningItemDto(_Frozen):
     id: str
     kind: str = Field(description="The drift kind, the risk rule, or 'blocker'.")
@@ -400,6 +421,15 @@ class WarningItemDto(_Frozen):
     severity: Rag
     evidence_url: str | None = None
     watermelon: bool = False
+    pods: list[WarningPodDto] = Field(
+        description="The project's pods it sits in: the issue's, else its owner's, by name.",
+    )
+    owner_says: OwnerSaysDto | None = Field(
+        description=(
+            "What the named owner last said in their own status; null wherever the "
+            "reader sees the team instead of the owner."
+        ),
+    )
 
     @classmethod
     def from_view(cls, item: WarningItem) -> WarningItemDto:
@@ -419,6 +449,10 @@ class WarningItemDto(_Frozen):
             severity=item.severity,
             evidence_url=item.evidence_url,
             watermelon=item.watermelon,
+            pods=[WarningPodDto(id=pod.id, name=pod.name) for pod in item.pods],
+            owner_says=(
+                OwnerSaysDto.from_view(item.owner_says) if item.owner_says is not None else None
+            ),
         )
 
 
