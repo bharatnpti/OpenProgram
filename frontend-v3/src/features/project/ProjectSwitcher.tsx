@@ -71,7 +71,7 @@ export function ProjectSwitcher({
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30" />
         <Dialog.Content
           aria-describedby={undefined}
-          className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-white shadow-op-palette sm:inset-auto sm:left-1/2 sm:top-[8vh] sm:w-[min(92vw,600px)] sm:-translate-x-1/2 sm:rounded-3xl animate-op-pop"
+          className="op-shell fixed inset-0 z-50 flex flex-col overflow-hidden bg-(--op-viz-surface) shadow-op-palette sm:inset-auto sm:left-1/2 sm:top-[8vh] sm:w-[min(92vw,600px)] sm:-translate-x-1/2 sm:rounded-3xl animate-op-pop"
         >
           <Dialog.Title className="sr-only">Switch project or pod</Dialog.Title>
           <SwitcherBody place={place} tab={tab} onClose={() => setOpen(false)} />

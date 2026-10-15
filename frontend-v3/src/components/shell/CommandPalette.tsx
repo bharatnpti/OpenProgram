@@ -91,7 +91,7 @@ export function CommandPalette({
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30" />
         <Dialog.Content
           aria-describedby={undefined}
-          className="fixed left-1/2 top-[10vh] z-50 w-[min(92vw,620px)] -translate-x-1/2 overflow-hidden rounded-3xl bg-white shadow-op-palette animate-op-pop"
+          className="op-shell fixed left-1/2 top-[10vh] z-50 w-[min(92vw,620px)] -translate-x-1/2 overflow-hidden rounded-3xl bg-(--op-viz-surface) shadow-op-palette animate-op-pop"
           onOpenAutoFocus={() => {
             const focused = document.activeElement;
             returnTo.current = focused instanceof HTMLElement ? focused : null;

@@ -65,12 +65,20 @@ export function Layout() {
     // The assistant's button floats at the bottom right: the room it takes is set here,
     // once, and read by main's padding and the pages' sticky side panels (index.css).
     // The header's height is a variable too, for a page's own sticky row (the Project page's index).
+    // .op-shell is the dark theme's reach (index.css): the header, the sidebar and the page turn
+    // together, on the document's data-theme, and are as they were in light.
     <div
-      className={cn("min-h-screen bg-white", roleState.access.assistant && "op-float-room")}
+      className={cn(
+        "op-shell min-h-screen bg-(--op-page)",
+        roleState.access.assistant && "op-float-room",
+      )}
       style={{ "--op-header-h": `${headerHeight}px` } as CSSProperties}
     >
       <TabTitle />
-      <header ref={header} className="sticky top-0 z-30 border-b border-grey-border bg-white">
+      <header
+        ref={header}
+        className="sticky top-0 z-30 border-b border-grey-border bg-(--op-viz-surface)"
+      >
         <div className="mx-auto flex max-w-[1480px] items-center gap-x-3 px-4 py-2.5 sm:px-6">
           <button
             type="button"
@@ -102,7 +110,7 @@ export function Layout() {
             >
               <Search size={15} aria-hidden />
               <span className="hidden lg:inline">Jump to…</span>
-              <kbd className="hidden rounded-md border border-grey-border bg-white px-1.5 text-[11px] lg:inline">
+              <kbd className="hidden rounded-md border border-grey-border bg-(--op-viz-surface) px-1.5 text-[11px] lg:inline">
                 {IS_MAC ? "⌘K" : "Ctrl K"}
               </kbd>
             </button>
@@ -143,7 +151,7 @@ export function Layout() {
           <Dialog.Content
             id="op-menu"
             aria-describedby={undefined}
-            className="fixed inset-y-0 left-0 z-50 w-[min(86vw,300px)] overflow-y-auto bg-white px-3 pb-8 pt-3 shadow-op-palette lg:hidden"
+            className="op-shell fixed inset-y-0 left-0 z-50 w-[min(86vw,300px)] overflow-y-auto bg-(--op-viz-surface) px-3 pb-8 pt-3 shadow-op-palette lg:hidden"
           >
             <div className="mb-4 flex items-center justify-between px-1">
               <Dialog.Title className="text-[16px] font-extrabold">Menu</Dialog.Title>

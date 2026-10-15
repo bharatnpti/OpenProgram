@@ -84,9 +84,9 @@
 }
 
 /* The flow view's dark steps: the same hues stepped for a dark surface
-   (validated against #1a1a19: every slot >= 3:1, adjacent CVD dE 8.4). The
-   console itself has no dark theme yet, so these follow a theme set on the
-   document (data-theme="dark"), the hook a console theme will use. */
+   (validated against #1a1a19: every slot >= 3:1, adjacent CVD dE 8.4). They
+   follow a theme set on the document (data-theme="dark"), the one hook the
+   whole console follows (the shell and the report pages, below). */
 :root[data-theme="dark"] {
   --op-flow-surface: #1a1a19;
   --op-flow-ink: #ffffff;
@@ -128,6 +128,7 @@
    chart's grid and axis, and the red hatch a bypassed gate is drawn with (it also
    says "Bypassed"). Text tokens meet 4.5:1 on their surfaces, strokes 3:1. */
 :root {
+  --op-page: #ffffff;
   --op-viz-surface: #ffffff;
   --op-viz-grid: #e7e7e7;
   --op-viz-axis: #b6b6b6;
@@ -136,11 +137,15 @@
   --op-viz-on-red: #ffffff;
 }
 
-/* The same in dark, on the data-theme hook the flow view uses (the console has no
-   dark theme yet), and inside the Overall page (.op-viz) every grey, ink and RAG
-   token remapped, so its cards, chips and charts read as one dark view rather than
-   dark charts on white cards. The stage colours' dark steps are above. */
+/* The same in dark, on the data-theme hook the flow view uses, and inside the shell
+   (.op-shell: the header, the sidebar, the menu and the pickers that open from them,
+   and the page they frame) and the report pages (.op-viz) every grey, ink and RAG
+   token remapped, so cards, chips, charts and the chrome around them read as one dark
+   view rather than dark charts on a white frame. The stage colours' dark steps are
+   above. --op-page is what the pages sit on: the shell's backdrop and the body's. */
 :root[data-theme="dark"] {
+  color-scheme: dark;
+  --op-page: #0d0d0d;
   --op-viz-surface: #1a1a19;
   --op-viz-grid: #2c2c2a;
   --op-viz-axis: #5c5b56;
@@ -151,11 +156,13 @@
   margin: -16px;
   padding: 16px;
   border-radius: 28px;
-  background: #0d0d0d;
+  background: var(--op-page);
 }
-/* The tokens, for the Overall page and for a report visual on another page (a
-   Delivery panel's timeline card, .op-viz-card), so it reads as one dark card. */
-:root[data-theme="dark"] :is(.op-viz, .op-viz-card) {
+/* The tokens, for the console's shell (.op-shell, set on the frame in Layout and on
+   each menu or picker it opens in a portal, which sits outside the frame), for the
+   Overall page and for a report visual on another page (a Delivery panel's timeline
+   card, .op-viz-card), so each reads as one dark surface. */
+:root[data-theme="dark"] :is(.op-shell, .op-viz, .op-viz-card) {
   color-scheme: dark;
   color: #ffffff;
   --op-black: #ffffff;
@@ -201,15 +208,20 @@
   --color-rag-info: var(--op-info);
   --color-rag-info-bg: var(--op-info-bg);
 }
-/* The console's white cards (Panel, pickers) inside the Project page take the viz
-   surface in dark, so their remapped ink never sits on white. */
-:root[data-theme="dark"] .op-viz .bg-white {
+/* The console's white cards (Panel, pickers) inside the shell or a report page take
+   the viz surface in dark, so their remapped ink never sits on white. */
+:root[data-theme="dark"] :is(.op-shell, .op-viz) .bg-white {
   background-color: var(--op-viz-surface);
 }
 /* An ink button (bg-ink text-white) turns light in dark: its text takes the dark
    surface, so it never reads white on white (Today's and Check-in's asks, too). */
-:root[data-theme="dark"] .op-viz .bg-ink.text-white {
+:root[data-theme="dark"] :is(.op-shell, .op-viz) .bg-ink.text-white {
   color: var(--op-viz-surface);
+}
+/* What the shell does not cover: the page behind it, and the overscroll. */
+:root[data-theme="dark"] body {
+  background: var(--op-page);
+  color: #ffffff;
 }
 
 @theme {
