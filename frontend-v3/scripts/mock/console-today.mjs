@@ -13,6 +13,11 @@
 
 const TODAY = "2026-10-06";
 const has = (roles, ...wanted) => roles.some((role) => wanted.includes(role));
+// A refusal is an answer too: true, so the dispatcher sends nothing after it.
+const refuse = (deny) => {
+  deny();
+  return true;
+};
 const reply = (send, status, body) => {
   send(status, body);
   return true;
@@ -192,7 +197,7 @@ export function api(req, url, roles, userId, send, deny) {
   }
   const asks = /^\/projects\/([^/]+)\/asks$/.exec(p);
   if (asks) {
-    if (!has(roles, "po", "mgr", "exec", "admin", "sm")) return deny();
+    if (!has(roles, "po", "mgr", "exec", "admin", "sm")) return refuse(deny);
     const executive = has(roles, "exec") && !has(roles, "admin", "mgr", "po", "sm");
     return reply(send, 200, {
       project_id: decodeURIComponent(asks[1]),
@@ -203,7 +208,7 @@ export function api(req, url, roles, userId, send, deny) {
     });
   }
   if (p === "/me/today-counts") {
-    if (!has(roles, "sm", "po", "mgr", "exec", "admin")) return deny();
+    if (!has(roles, "sm", "po", "mgr", "exec", "admin")) return refuse(deny);
     const portfolio = has(roles, "mgr", "exec", "admin");
     return reply(send, 200, {
       as_of: TODAY,
