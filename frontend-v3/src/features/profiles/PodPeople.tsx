@@ -26,9 +26,16 @@ import { usePodProfiles, useProfileReview } from "./useProfiles";
  * A pod's people: each one's role in the pod and the profile they bring to it. Whoever reads
  * the pod's panel reads this; only the people who set profiles here (an admin, the scrum
  * master who runs the pod: the server's `can_edit`) get Change and the review of the profiles
- * nobody checked yet.
+ * nobody checked yet. `schedule` adds each person's check-in time and time zone, where the
+ * reader is sent them (features/profiles/schedule.ts).
  */
-export function PodPeoplePanel({ podId }: { podId: string }) {
+export function PodPeoplePanel({
+  podId,
+  schedule = null,
+}: {
+  podId: string;
+  schedule?: ReadonlyMap<string, string> | null;
+}) {
   const people = usePodProfiles(podId);
   const canEdit = people.data?.can_edit === true;
   const review = useProfileReview(podId, canEdit);
@@ -128,6 +135,11 @@ export function PodPeoplePanel({ podId }: { podId: string }) {
                 <p className="mt-0.5 text-[12px] text-grey-secondary">
                   {isChecked(member) ? sourceWords(member, formatDay) : "From their pod role."}
                 </p>
+                {schedule?.get(member.member_id) ? (
+                  <p className="mt-0.5 text-[12px] text-grey-body">
+                    {schedule.get(member.member_id)}
+                  </p>
+                ) : null}
                 {canEdit && suggestion && suggestion.profile !== member.profile ? (
                   <p className="mt-0.5 text-[12px] text-grey-body">{suggestionLine(suggestion)}</p>
                 ) : null}

@@ -16,6 +16,7 @@ import { cn } from "../../lib/utils";
 import { currentZoneName, deviceTimezone } from "../../lib/zones";
 import { adminSendWords, daysLabel } from "../checkin/schedule";
 import { AdminDialog, Problems, hintClass, inputClass, labelClass } from "./AdminBits";
+import { AskNow } from "./AskNow";
 import { errorText, minutesLabel } from "./adminWords";
 import { FillDayCard } from "./FillDayCard";
 import {
@@ -88,7 +89,8 @@ function timeZones(): string[] {
  * Who is asked to check in, on which days and in which time zone, how long the
  * bot waits before a nudge and before giving up, and each member's write-back
  * consent. A value follows the team default until it is set for the member,
- * and can be put back to the default from the Change dialog.
+ * and can be put back to the default from the Change dialog. Ask now asks one
+ * member for today's check-in at once, after a yes.
  */
 export function CheckinsTab() {
   const members = useMembers();
@@ -209,7 +211,10 @@ export function CheckinsTab() {
                       )}
                     </td>
                     <td className={`${td} text-right`}>
-                      {p ? <EditMember member={m} pref={p} consent={consent} /> : null}
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <AskNow memberId={m.id} name={m.name} />
+                        {p ? <EditMember member={m} pref={p} consent={consent} /> : null}
+                      </div>
                     </td>
                   </tr>
                 );

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import { Fragment, useId, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { apiClient } from "../api/client";
 import type { CrossPersonRequestResponse } from "../api/schema";
@@ -58,12 +58,23 @@ const SCOPE_WORDS: Record<Exclude<Scope, "all">, string> = {
 };
 
 export function RequestsPage() {
-  const { coordination } = useRole().access;
+  const { coordination, overall } = useRole().access;
   return (
     <div className={PAGE_SURFACE}>
       <SectionHeader
         title="Requests"
         meta="When someone is blocked on a colleague, Ora asks that colleague directly and keeps both sides informed."
+        actions={
+          // Who is told when an ask waits is kept on Admin › Escalation: an admin's link to it.
+          overall.escalationLink ? (
+            <Link
+              to="/admin?tab=escalation"
+              className="text-[13px] font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
+            >
+              Escalation rules →
+            </Link>
+          ) : undefined
+        }
       />
       {coordination.board ? <Board defaultScope={coordination.boardScope} /> : <Counts />}
     </div>
