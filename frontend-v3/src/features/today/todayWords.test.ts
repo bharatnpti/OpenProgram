@@ -14,6 +14,7 @@ import {
   gateWords,
   mergeAsks,
   repliesWords,
+  openWarningsLine,
   warningsWords,
 } from "./todayWords.ts";
 
@@ -78,6 +79,8 @@ test("replies say who replied of how many, and the tracker's fills apart, never 
 test("warnings are a count, and none is said as none", () => {
   assert.equal(warningsWords(6), "6 open");
   assert.equal(warningsWords(0), "None open");
+  assert.equal(openWarningsLine(19, 3), "19 open across 3 projects.");
+  assert.equal(openWarningsLine(0, 1), "None open across 1 project.");
 });
 
 test("a change is named by its issue and what a yes does", () => {

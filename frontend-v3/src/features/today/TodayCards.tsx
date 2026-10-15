@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import { ApiError, apiClient } from "../../api/client";
-import type { TodayCountsResponse } from "../../api/schema";
+import type { PortfolioWarningsResponse, TodayCountsResponse } from "../../api/schema";
 import { useReadOnly } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { Pill } from "../../components/ui/Pill";
@@ -16,7 +16,7 @@ import { isNoCheckin, useMyCheckinPreference } from "../checkin/useMyCheckinPref
 import { VizCard } from "../overall/viz";
 import { checkinProvenance } from "./checkin";
 import { useMyJiraChanges } from "./queries";
-import { checkinStateWords, repliesWords, warningsWords } from "./todayWords";
+import { checkinStateWords, openWarningsLine, repliesWords } from "./todayWords";
 
 /** A count card: a figure, what it counts, one more line, and where to go next. */
 function CountCard({
@@ -199,14 +199,17 @@ export function RepliesCard({
   );
 }
 
-/** Open warnings over the person's part, with the way to read them. */
+/**
+ * Open warnings over the person's projects, from the read All projects' Early
+ * warnings says (blockers people reported included), with the way to read them.
+ */
 export function WarningsCard({
-  counts,
+  view,
   isLoading,
   error,
   link,
 }: {
-  counts: TodayCountsResponse | undefined;
+  view: Pick<PortfolioWarningsResponse, "total" | "projects"> | undefined;
   isLoading: boolean;
   error: unknown;
   link: { to: string; text: string } | null;
@@ -215,11 +218,9 @@ export function WarningsCard({
     <CountCard
       title="Open warnings"
       label="Open warnings"
-      figure={counts ? String(counts.open_warnings) : null}
+      figure={view ? String(view.total) : null}
       lines={[
-        counts
-          ? `${warningsWords(counts.open_warnings)} across ${plural(counts.project_count, "project", "projects")}.`
-          : null,
+        view ? openWarningsLine(view.total, view.projects) : null,
         "What Jira and Git say, whatever anyone reports.",
       ]}
       link={link}

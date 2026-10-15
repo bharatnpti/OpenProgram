@@ -1,7 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
-import { apiClient } from "../../api/client";
 import { useRole } from "../../app/role";
 import { PanelState } from "../../components/PanelState";
 import { TabIntro } from "../../features/hub/TabIntro";
@@ -11,6 +9,7 @@ import { ProgrammePicker } from "../../features/portfolio/ProgrammePicker";
 import { useProgrammes } from "../../features/portfolio/useProgrammes";
 import { warningsCountLine } from "../../features/portfolio/programmeWords";
 import { WarningsByProject } from "../../features/portfolio/WarningsByProject";
+import { usePortfolioWarnings } from "../../features/warnings/queries";
 import { WarningGroup } from "../../features/warnings/WarningGroups";
 import { shownGroups } from "../../features/warnings/warningWords";
 import { formatDay } from "../../lib/format";
@@ -47,10 +46,7 @@ export function PortfolioWarnings() {
   const { programmes } = useProgrammes();
   const askedProgramme = search.get("program");
   const programme = programmes.find((item) => item.id === askedProgramme) ?? programmes[0];
-  const warnings = useQuery({
-    queryKey: ["portfolio", "warnings", ""],
-    queryFn: () => apiClient.portfolioWarnings({}),
-  });
+  const warnings = usePortfolioWarnings();
   const data = warnings.data;
   const seenSince = data?.seen_since;
   const set = (key: string, value: string | null) =>

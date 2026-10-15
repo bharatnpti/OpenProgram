@@ -18,6 +18,7 @@ import { usePortfolioIndex } from "../hub/useHub";
 import { VizCard } from "../overall/viz";
 import { verdictPill } from "../portfolio/portfolioWords";
 import { useProjectOptions } from "../project/useProjectOptions";
+import { usePortfolioWarnings } from "../warnings/queries";
 import { ageWords, itemLine, ownerWords } from "../warnings/warningWords";
 import { issueKey, taskRows } from "./taskUpdate";
 import {
@@ -126,10 +127,7 @@ export function NewestBrief() {
  * project's Early warnings; the count and every warning are on Early warnings.
  */
 export function OldestWarnings() {
-  const read = useQuery({
-    queryKey: ["portfolio", "warnings", ""],
-    queryFn: () => apiClient.portfolioWarnings({}),
-  });
+  const read = usePortfolioWarnings();
   const view = read.data;
   const items = view ? oldestWarnings(view) : [];
   return (

@@ -51,6 +51,11 @@ export function warningsWords(count: number): string {
   return count === 0 ? "None open" : `${count} open`;
 }
 
+/** "19 open across 3 projects.": the count card's line, as Early warnings counts it. */
+export function openWarningsLine(total: number, projects: number): string {
+  return `${warningsWords(total)} across ${projects} ${projects === 1 ? "project" : "projects"}.`;
+}
+
 /** The change one row asks for: "CHK-4: move to Done", "CHK-5: due date". */
 export function changeTitle(item: Pick<JiraChangeDto, "kind" | "issue_key" | "target_label">) {
   if (item.kind === "due_date") return `${item.issue_key}: due date`;

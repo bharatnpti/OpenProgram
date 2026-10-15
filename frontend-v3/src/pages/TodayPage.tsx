@@ -28,6 +28,7 @@ import { taskRows } from "../features/today/taskUpdate";
 import { footerLine } from "../features/today/todayWords";
 import { WhoMustAct } from "../features/today/WhoMustAct";
 import { YourAsks } from "../features/today/YourAsks";
+import { usePortfolioWarnings } from "../features/warnings/queries";
 
 /**
  * Today: the landing page for every role, with what needs them now and
@@ -51,6 +52,7 @@ export function TodayPage() {
   const subject = useTodaySubject();
   const developer = role === "dev";
   const counts = useTodayCounts(!developer);
+  const warnings = usePortfolioWarnings(!developer && access.hub.bulk);
   const changes = useMyJiraChanges(!readOnly);
   const focus = useQuery({
     queryKey: ["me", "focus"],
@@ -100,10 +102,10 @@ export function TodayPage() {
                 />
               )}
               <WarningsCard
-                counts={counts.data}
-                isLoading={counts.isLoading}
-                error={counts.error}
-                link={warningsLink(access.hub.portfolioHealth, subject)}
+                view={warnings.data}
+                isLoading={warnings.isLoading}
+                error={warnings.error}
+                link={warningsLink(access.hub.bulk, subject)}
               />
             </div>
             {role === "po" ? <ScopeActions /> : null}
