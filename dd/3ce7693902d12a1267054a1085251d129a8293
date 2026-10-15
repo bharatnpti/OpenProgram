@@ -1,0 +1,35 @@
+frontend-v3/src/features/today/todayMore.test.ts
+  s_5f08a60d42019a::t_f0211ae247fc89 53-54
+frontend-v3/src/features/warnings/warningLinks.ts
+  s_5f08a60d42019a::t_380ba33b414772 1-14
+frontend-v3/src/features/portfolio/byProject.ts
+  s_5f08a60d42019a::t_d1d8597141cbc0 8,28
+frontend-v3/src/features/portfolio/byProject.test.ts
+  s_5f08a60d42019a::t_1ee10527e6a481 5,23-24
+  s_5f08a60d42019a::t_2ad4f76bd70e41 87-110
+frontend-v3/src/features/warnings/WarningGroups.tsx
+  s_5f08a60d42019a::t_a4637cf317f3a5 5,136,145-167,173
+  s_5f08a60d42019a::t_380ba33b414772 8
+  s_5f08a60d42019a::t_1ee10527e6a481 34
+frontend-v3/src/features/portfolio/WarningsByProject.tsx
+  s_5f08a60d42019a::t_d1d8597141cbc0 129,133
+  s_5f08a60d42019a::t_380ba33b414772 8-9
+frontend-v3/src/features/portfolio/programmeWords.test.ts
+  s_5f08a60d42019a::t_f0211ae247fc89 77-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dd3ce7693902d12a1267054a1085251d129a8293",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
