@@ -40,6 +40,7 @@ import * as hygieneMock from "./mock/hygiene.mjs";
 import * as timelineMock from "./mock/timeline.mjs";
 import * as consoleToday from "./mock/console-today.mjs";
 import * as portfolioMock from "./mock/portfolio.mjs";
+import * as podLevel from "./mock/pod-level.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
@@ -265,6 +266,7 @@ function api(req, res, url) {
     return can.aggregate(roles) ? send(200, risks) : deny();
   const userId = req.headers["x-openprogram-dev-user"] ?? "U1001";
   // Before the lane mocks: it answers scoped reads they refuse (a person's own part of the tree).
+  if (podLevel.api(req, url, roles, userId, send, deny)) return;
   if (requestsPods.api(req, url, roles, userId, send, deny)) return;
   if (scopedDelivery.api(req, url, roles, userId, send, deny)) return;
   if (portfolioMock.api(req, url, roles, userId, send, deny)) return;
