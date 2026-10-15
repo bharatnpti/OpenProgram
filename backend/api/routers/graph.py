@@ -10,7 +10,7 @@ from api.dtos import GraphTreeDto
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.graph_queries import GraphQueryService
 from core.domain.auth import Principal
-from core.domain.errors import AuthorizationDenied
+from core.domain.errors import AuthorizationDenied, GraphNotFound
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
@@ -29,5 +29,10 @@ async def program_tree(
         AuthorizationPolicy().ensure(principal, Capability.READ_TEAM_AGGREGATE)
     except AuthorizationDenied as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-    tree = await graph_service.program_tree(principal.tenant_id, program_id, as_of)
+    # A program the tenant does not have (or does not have on that day) is a 404,
+    # not an uncaught GraphNotFound that escapes as a 500 with a traceback.
+    try:
+        tree = await graph_service.program_tree(principal.tenant_id, program_id, as_of)
+    except GraphNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return GraphTreeDto.from_domain(tree)
