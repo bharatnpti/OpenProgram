@@ -1,0 +1,40 @@
+backend/tests/unit/test_delivery_watchdog_rules.py
+  s_ffb121d03b175e::t_84d904beadf826 36,364-395
+backend/core/application/delivery_watchdog_service.py
+  s_ffb121d03b175e::t_e9e8aaaaa782f0 64,77-78,450,460,468,480,498,516,533,538-539
+backend/core/domain/delivery_watchdog.py
+  s_ffb121d03b175e::t_e9e8aaaaa782f0 19-22,155-156,160-163,310-311,518,521,593-607,649-651,705
+backend/core/ports/delivery_watchdog.py
+  s_ffb121d03b175e::t_e9e8aaaaa782f0 38-41
+backend/tests/unit/test_delivery_loop_service.py
+  s_ffb121d03b175e::t_23d93d23775270 955-956
+backend/infra/persistence/migrations/versions/0044_delivery_watchdog_wake_reason.py
+  s_ffb121d03b175e::t_e56c6926428ccc 1-24
+backend/infra/persistence/postgres_delivery_watchdog.py
+  s_ffb121d03b175e::t_e56c6926428ccc 1,26,71,201
+backend/tests/contract/test_delivery_watchdog_adapter.py
+  s_ffb121d03b175e::t_84d904beadf826 20,318-332
+backend/tests/integration/test_delivery_watchdog_repository.py
+  s_ffb121d03b175e::t_84d904beadf826 58
+backend/tests/unit/test_delivery_watchdog_service.py
+  s_ffb121d03b175e::t_23d93d23775270 67-69,95-96,211,213-214,223,250,283,308,392,567,603,632
+  s_ffb121d03b175e::t_9e2f9ac08b71ce 225-237
+backend/infra/adapters/executor/paperclip_watch.py
+  s_ffb121d03b175e::t_e56c6926428ccc 27-31,60-64,172,175-176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0bde13e4187a89959a7374f76685ac4a72e28737",
+  "prompts": {},
+  "sessions": {
+    "s_ffb121d03b175e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c477dff-be70-49c3-a1ef-74a1480be97e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
