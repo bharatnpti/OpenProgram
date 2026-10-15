@@ -1,0 +1,85 @@
+frontend-v3/src/features/portfolio/momentum.ts
+  s_5f08a60d42019a::t_6f62b4dc318419 1-41
+frontend-v3/src/features/portfolio/useProgrammes.ts
+  s_5f08a60d42019a::t_a6b2d9cb8bdba5 23-25
+  s_5f08a60d42019a::t_d37b965d00cd31 1-22,26-38
+frontend-v3/src/features/portfolio/ProgrammeLine.tsx
+  s_5f08a60d42019a::t_83de809541b248 5,14-16,27-28,32,41,43,47-48,53
+  s_5f08a60d42019a::t_88a0af35877fa1 1-4,6-7,9-13,17-26,29-31,33-40,42,44-46,49-52,54-60
+  s_5f08a60d42019a::t_0ea12ba74705f8 8
+frontend-v3/src/features/portfolio/byProject.test.ts
+  s_5f08a60d42019a::t_88a0af35877fa1 1-105
+frontend-v3/src/features/portfolio/programmeWords.test.ts
+  s_5f08a60d42019a::t_a6b2d9cb8bdba5 30-32
+  s_5f08a60d42019a::t_626c0ecf10f9e3 5-27
+  s_5f08a60d42019a::t_88a0af35877fa1 1-4,28-29,33-104,106-108,110-119
+  s_5f08a60d42019a::t_5fa9b981522b1c 105,109
+frontend-v3/src/pages/hub/PortfolioWarnings.tsx
+  s_5f08a60d42019a::t_a6b2d9cb8bdba5 113
+  s_5f08a60d42019a::t_7bca9f86299653 2,5,8-13,15,17-25,29-38,41-49,54-66,68,81-95,97-112,114-132
+  s_5f08a60d42019a::t_5fa9b981522b1c 74
+frontend-v3/src/features/portfolio/ProgrammeHealth.tsx
+  s_5f08a60d42019a::t_88a0af35877fa1 1-16,18-36,39-64,66-101,106-127
+  s_5f08a60d42019a::t_d80c3a94871571 37-38
+  s_5f08a60d42019a::t_cc67e89e9b9f44 17
+  s_5f08a60d42019a::t_2cca9e57765c8f 65
+  s_5f08a60d42019a::t_a6b2d9cb8bdba5 102-105
+frontend-v3/src/features/portfolio/byProject.ts
+  s_5f08a60d42019a::t_88a0af35877fa1 1-4,6-42,49-109
+  s_5f08a60d42019a::t_a6b2d9cb8bdba5 5,43-48
+frontend-v3/src/features/portfolio/heat.test.ts
+  s_5f08a60d42019a::t_7750dbbc144ae4 329-333
+  s_5f08a60d42019a::t_88a0af35877fa1 1-328,334
+frontend-v3/src/features/portfolio/ProjectCard.tsx
+  s_5f08a60d42019a::t_2647475f80fc5a 4
+  s_5f08a60d42019a::t_40f18db3a8a607 20-22,29,35-36
+  s_5f08a60d42019a::t_a9a28ba56e6092 93-99
+  s_5f08a60d42019a::t_12d5df2f63caca 114-120
+  s_5f08a60d42019a::t_fb7354c9e49d06 142-148
+frontend-v3/src/features/portfolio/programmeWords.ts
+  s_5f08a60d42019a::t_88a0af35877fa1 1-3,5,25-72,74-76,79
+  s_5f08a60d42019a::t_778d1a514fda2c 73,77-78
+  s_5f08a60d42019a::t_3378325317b04a 4,6-24
+frontend-v3/src/features/portfolio/useHeatmap.ts
+  s_5f08a60d42019a::t_95ad2381815993 1-16
+frontend-v3/src/pages/hub/PortfolioDate.tsx
+  s_5f08a60d42019a::t_a50b0c3d4056ba 5
+  s_5f08a60d42019a::t_f2fa040cdbb513 90-97
+  s_5f08a60d42019a::t_09b3a112505e34 47-49
+  s_5f08a60d42019a::t_fdd4c38332878f 124-135
+  s_5f08a60d42019a::t_86219bd0ae3d59 171,179
+  s_5f08a60d42019a::t_b2c80553f9be06 15-16,18
+frontend-v3/src/features/portfolio/HeatView.tsx
+  s_5f08a60d42019a::t_a122fa24c5948c 57-59,66,69-74,86,88-90,92-93
+  s_5f08a60d42019a::t_d80c3a94871571 48-49
+  s_5f08a60d42019a::t_62282b90e92861 25
+  s_5f08a60d42019a::t_88a0af35877fa1 1-4,6-11,13-24,26-47,50-56,60-65,67-68,75-85,87,91,94-278
+  s_5f08a60d42019a::t_24e1c61aeaf7b6 5,12
+frontend-v3/src/features/portfolio/WarningsByProject.tsx
+  s_5f08a60d42019a::t_61d4387ae6974c 7
+  s_5f08a60d42019a::t_2fb75b73312c26 66
+  s_5f08a60d42019a::t_88a0af35877fa1 1-6,8-65,67-141
+frontend-v3/src/features/portfolio/momentum.test.ts
+  s_5f08a60d42019a::t_f39787dcf531e3 1-52
+frontend-v3/src/features/portfolio/heat.ts
+  s_5f08a60d42019a::t_88a0af35877fa1 1-120,129-249
+  s_5f08a60d42019a::t_fc3f2b69590e9c 121-128
+frontend-v3/src/features/portfolio/ProgrammePicker.tsx
+  s_5f08a60d42019a::t_88b409786e02c0 1-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f2f314d0131bf22984b6d2efeaee6c1e499917a1",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
