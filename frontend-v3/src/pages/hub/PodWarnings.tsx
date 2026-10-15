@@ -133,16 +133,19 @@ export function PodWarnings({ projectId, podId }: { projectId: string; podId: st
       ),
     });
   }
-  if ((full && rollup.data) || reads.trend) {
+  // Why its colour, beyond the blockers said above: the panel draws two reasons or more.
+  const reasons = full && rollup.data ? colourReasons(rollup.data.factors) : [];
+  const why = reasons.length >= 2;
+  if (why || reads.trend) {
     sections.push({
       id: "why",
-      label: full ? "Why this colour" : "Health, 30 days",
+      label: why ? "Why this colour" : "Health, 30 days",
       element: (
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-          {full && rollup.data ? (
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
+          {why && rollup.data ? (
             <FactorsPanel
               title="Why this colour"
-              factors={colourReasons(rollup.data.factors)}
+              factors={reasons}
               names={rollup.data.source_names}
             />
           ) : null}
