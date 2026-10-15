@@ -53,7 +53,7 @@ export function NeedsAttention({ projectId }: { projectId: string }) {
               <Panel title="Progress">
                 <ProgressSummary progress={p} />
               </Panel>
-              <Panel title="Needs your attention" note={attentionNote(attention.length)}>
+              <Panel title="Needs attention" note={attentionNote(attention.length)}>
                 {attention.length === 0 ? (
                   <p className="text-[14px] text-grey-secondary">Every task is green.</p>
                 ) : (

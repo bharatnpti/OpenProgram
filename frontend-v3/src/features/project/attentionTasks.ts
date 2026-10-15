@@ -5,7 +5,7 @@ import { plural } from "../../lib/words.ts";
 
 type Task = ProjectProgressResponse["tasks"][number];
 
-/** The tasks "Needs your attention" lists before "Show all". */
+/** The tasks "Needs attention" lists before "Show all". */
 export const ATTENTION_SHOWN = 8;
 
 const SEVERITY: Record<Rag, number> = { red: 3, amber: 2, unknown: 1, green: 0 };
