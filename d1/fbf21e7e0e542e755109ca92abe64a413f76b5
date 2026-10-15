@@ -1,0 +1,85 @@
+backend/infra/persistence/in_memory_delivery_watchdog.py
+  s_ffb121d03b175e::t_70c351c3b2f85a 1-89
+  s_ffb121d03b175e::t_b59c6314fe16a7 90-94
+backend/core/domain/delivery_watchdog.py
+  s_ffb121d03b175e::t_e0bd85204ed696 1-673
+  s_ffb121d03b175e::t_bed214210c02d9 674-685
+backend/core/ports/delivery_watchdog.py
+  s_ffb121d03b175e::t_a4d5b256271d87 1-82
+backend/tests/integration/test_delivery_watchdog_repository.py
+  s_ffb121d03b175e::t_a7e3918a7527d3 1-128
+  s_ffb121d03b175e::t_6a17cf05fe8eac 129-139
+backend/tests/unit/test_delivery_watchdog_service.py
+  s_ffb121d03b175e::t_1dd7a8b69d1e82 1-738
+  s_ffb121d03b175e::t_6181d984e104d4 739-757
+backend/tests/contract/test_delivery_watchdog_adapter.py
+  s_ffb121d03b175e::t_d5dea6f0d0e848 1-310
+  s_ffb121d03b175e::t_800bb6bfa458f7 311-316
+backend/tests/unit/test_delivery_watchdog_rules.py
+  s_ffb121d03b175e::t_107cd93bb0e594 1-360
+  s_ffb121d03b175e::t_236c7fd21f6bf9 361-362
+backend/infra/adapters/executor/paperclip_watch.py
+  s_ffb121d03b175e::t_6804402d03fb1c 1-278
+backend/tests/unit/test_delivery_watchdog_api.py
+  s_ffb121d03b175e::t_c50a6024d37a84 1-150
+  s_ffb121d03b175e::t_f1ca6eadfb1097 151-154
+backend/core/application/delivery_watchdog_service.py
+  s_ffb121d03b175e::t_40da3f2f89a59b 1-647
+  s_ffb121d03b175e::t_588a824fba15a7 648-656
+backend/api/delivery_watchdog_dtos.py
+  s_ffb121d03b175e::t_6365021832ca2c 1-131
+  s_ffb121d03b175e::t_1d517a8ed09bf2 132-135
+backend/api/routers/delivery_watchdog.py
+  s_ffb121d03b175e::t_8618b7454d79cd 1-70
+backend/infra/persistence/postgres_delivery_watchdog.py
+  s_ffb121d03b175e::t_fe7262c7cf03d6 1-230
+  s_ffb121d03b175e::t_3100a9498dafa7 231-238
+backend/infra/persistence/migrations/versions/0043_delivery_watchdog.py
+  s_ffb121d03b175e::t_22644522ec7547 1-100
+backend/api/dependencies.py
+  s_ffb121d03b175e::t_ce5e751f5aff43 22,224-228
+backend/api/main.py
+  s_ffb121d03b175e::t_703e1e94f90858 24,151
+backend/config/settings.py
+  s_ffb121d03b175e::t_74767a5e34b392 195-200
+backend/core/application/delivery_loop_service.py
+  s_ffb121d03b175e::t_caf1002fe784a7 20-22,37,177,180,208-211
+backend/infra/adapters/delivery_loop.py
+  s_ffb121d03b175e::t_5ce6903e8ac451 17,37-38,58-60,66,120
+backend/infra/adapters/executor/paperclip.py
+  s_ffb121d03b175e::t_b67ab5049dc59a 32-38,71,73,106-107,348-400
+backend/infra/adapters/executor/unconfigured.py
+  s_ffb121d03b175e::t_e77452d2088ca8 24,69-80
+backend/infra/registry.py
+  s_ffb121d03b175e::t_a54e03a06416b3 25,48,71,144,170,294-297,585-611,615,626
+backend/tests/unit/test_delivery_loop_service.py
+  s_ffb121d03b175e::t_ec87edd3d1f099 13,37-44,51,240,293,902-959
+frontend-v2/src/api/generated.ts
+  s_ffb121d03b175e::t_694e311f90cb5b 1314-1347,4375-4451,7765-7802,11616-11683
+frontend-v2/src/api/openapi.json
+  s_ffb121d03b175e::t_22576bb02e33d2 5965-6084,16008-16256,24861-24899
+frontend-v3/src/api/generated.ts
+  s_ffb121d03b175e::t_9ffee25ea697c7 1314-1347,4375-4451,7765-7802,11616-11683
+frontend-v3/src/api/openapi.json
+  s_ffb121d03b175e::t_2beaa57ac44cf7 5965-6084,16008-16256,24861-24899
+frontend/src/api/generated.ts
+  s_ffb121d03b175e::t_c031512b48b327 1314-1347,4388-4464,7778-7815,11629-11696
+frontend/src/api/openapi.json
+  s_ffb121d03b175e::t_c30e739723cb55 5965-6084,16008-16256,24861-24899
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d1fbf21e7e0e542e755109ca92abe64a413f76b5",
+  "prompts": {},
+  "sessions": {
+    "s_ffb121d03b175e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c477dff-be70-49c3-a1ef-74a1480be97e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
