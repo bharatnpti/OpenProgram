@@ -20,7 +20,7 @@ import {
   type TreeRow,
   type VerdictChip,
 } from "../hub/switcherTree";
-import { usePortfolioIndex } from "../hub/useHub";
+import { usePodOpens, usePortfolioIndex } from "../hub/useHub";
 import { VerdictDot } from "../hub/VerdictDot";
 import { visibleRange } from "../portfolio/windowing";
 import { useProjectOptions } from "./useProjectOptions";
@@ -92,6 +92,7 @@ function useTreeProjects(): {
   const { access } = useRole();
   const choice = useProjectOptions();
   const index = usePortfolioIndex();
+  const opens = usePodOpens();
   const pods = usePods();
   const tree = useOwnTree();
   const workstreams = useWorkstreams();
@@ -109,7 +110,7 @@ function useTreeProjects(): {
       const row = rows.get(option.id);
       const podList = access.hub.bulk
         ? podChoices(
-            row?.pods ?? null,
+            row ? row.pods.filter((pod) => opens(pod.id)) : null,
             (pods.data ?? []).filter((pod) => pod.project_ids.includes(option.id)),
             ownPods,
             access.hub.countsOnly,
@@ -133,6 +134,7 @@ function useTreeProjects(): {
     choice.options,
     index.data,
     memberId,
+    opens,
     pods.data,
     tree.data,
     workstreams.data,

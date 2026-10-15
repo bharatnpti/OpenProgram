@@ -15,6 +15,7 @@ import { podReads } from "../pods/podLevel";
 import { useScopeRead, useWarnings } from "../warnings/queries";
 import {
   badgeScope,
+  opensPodLevel,
   podChoices,
   reportsBadge,
   scopeBadgeAt,
@@ -81,6 +82,28 @@ export function useHubProject(projectId: string) {
 }
 
 /**
+ * Whether a pod's own level opens for the person, by id: for every reader but
+ * one who sees counts only (an executive), whose pods under five are counted
+ * with their project: the server leaves them out of the bulk read and refuses
+ * their pod-level reads, so no link, chip or tile offers them.
+ */
+export function usePodOpens(): (podId: string) => boolean {
+  const { access } = useRole();
+  const index = usePortfolioIndex(access.hub.podMinPeople > 0);
+  const pods = usePods();
+  const min = access.hub.podMinPeople;
+  return useMemo(() => {
+    if (min <= 0) return () => true;
+    const listed = new Set(
+      (index.data?.projects ?? []).flatMap((project) => project.pods.map((pod) => pod.id)),
+    );
+    const people = new Map((pods.data ?? []).map((pod) => [pod.id, pod.member_ids.length]));
+    return (podId: string) =>
+      opensPodLevel(min, { listed: listed.has(podId), people: people.get(podId) ?? null });
+  }, [min, index.data, pods.data]);
+}
+
+/**
  * The pods the pod bar lists for one project, and which of them the person
  * may open. A reader of the bulk reads gets the pods the read gives this
  * project, with each one's verdict, and the project's other pods by name; a
@@ -95,6 +118,7 @@ export function usePodChoices(projectId: string, name: string | undefined) {
   const tree = useOwnTree();
   const projects = useProjects();
   const { row, isLoading } = usePortfolioRow(projectId, name);
+  const opens = usePodOpens();
   const choices = useMemo<PodChoice[]>(() => {
     const ownTree = tree.data ? ownProjects(tree.data) : [];
     const ownPods = new Set(
@@ -116,11 +140,13 @@ export function usePodChoices(projectId: string, name: string | undefined) {
     const directory = (pods.data ?? []).filter(
       (pod) => project?.pod_ids.includes(pod.id) || pod.project_ids.includes(projectId),
     );
-    return podChoices(row?.pods ?? null, directory, ownPods, access.hub.countsOnly);
+    const rows = row ? row.pods.filter((pod) => opens(pod.id)) : null;
+    return podChoices(rows, directory, ownPods, access.hub.countsOnly);
   }, [
     access.hub.bulk,
     access.hub.countsOnly,
     memberId,
+    opens,
     pods.data,
     projectId,
     projects.data,

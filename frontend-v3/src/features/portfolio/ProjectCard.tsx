@@ -4,6 +4,7 @@ import type { PortfolioPodDto, PortfolioProjectDto } from "../../api/schema";
 import { podTabPath, projectPath } from "../../app/links";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
+import { usePodOpens } from "../hub/useHub";
 import { ProjectBar } from "./ProjectBar";
 import {
   healthLine,
@@ -118,6 +119,7 @@ export function ProjectCard({
  * pods of five people or more).
  */
 function PodRows({ projectId, pods }: { projectId: string; pods: PortfolioPodDto[] }) {
+  const opens = usePodOpens();
   return (
     <table className="w-full table-fixed border-collapse text-[13px]">
       <caption className="sr-only">Done per pod</caption>
@@ -140,12 +142,16 @@ function PodRows({ projectId, pods }: { projectId: string; pods: PortfolioPodDto
           return (
             <tr key={pod.id} className="border-t border-grey-border">
               <td className="truncate py-2 pr-2 font-bold" title={pod.name}>
-                <Link
-                  to={podTabPath(projectId, pod.id, "date")}
-                  className="text-ink no-underline hover:underline"
-                >
-                  {pod.name}
-                </Link>
+                {opens(pod.id) ? (
+                  <Link
+                    to={podTabPath(projectId, pod.id, "date")}
+                    className="text-ink no-underline hover:underline"
+                  >
+                    {pod.name}
+                  </Link>
+                ) : (
+                  pod.name
+                )}
               </td>
               <td className="py-2 pr-2">
                 <span className="flex items-center gap-2">

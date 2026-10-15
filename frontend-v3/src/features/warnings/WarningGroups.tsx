@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import type { WarningGroupDto, WarningItemDto } from "../../api/schema";
 import { useRole } from "../../app/role";
+import { usePodOpens } from "../hub/useHub";
 import { RagDot } from "../../components/ui/Bits";
 import { VizPanel } from "../portfolio/VizPanel";
 import { WARNING_LINKS, type WarningLinks } from "./warningLinks";
@@ -171,6 +172,7 @@ export function OwnerSaysFold({ item }: { item: WarningItemDto }) {
  * same pod more often than not, and is then not said twice.
  */
 export function ItemPods({ item, links }: { item: WarningItemDto; links: WarningLinks }) {
+  const opens = usePodOpens();
   const pods = item.pods.filter((pod) => pod.name !== item.owner_team);
   if (pods.length === 0) return null;
   const toPod = links.pod;
@@ -180,9 +182,13 @@ export function ItemPods({ item, links }: { item: WarningItemDto; links: Warning
       {pods.map((pod) => (
         <span key={pod.id}>
           {" · "}
-          <Link to={toPod(item, pod.id)} className="text-grey-secondary">
-            {pod.name}
-          </Link>
+          {opens(pod.id) ? (
+            <Link to={toPod(item, pod.id)} className="text-grey-secondary">
+              {pod.name}
+            </Link>
+          ) : (
+            pod.name
+          )}
         </span>
       ))}
     </>

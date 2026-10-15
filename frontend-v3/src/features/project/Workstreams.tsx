@@ -13,6 +13,7 @@ import { PERSON_KEY_WORDS, plural } from "../../lib/words";
 import { FactorsPanel, Facts } from "../delivery/NodeBits";
 import { ProgressSummary, TaskTable } from "../delivery/ProgressBlock";
 import { metadataFacts } from "../delivery/factors";
+import { usePodOpens } from "../hub/useHub";
 import { byTarget, workstreamLine } from "./workstreamWords";
 
 /**
@@ -125,6 +126,7 @@ function WorkstreamDetail({
   names: boolean;
 }) {
   const pods = usePods();
+  const opens = usePodOpens();
   const progress = useQuery({
     queryKey: ["workstream", item.id, "progress"],
     queryFn: () => apiClient.workstreamProgress(item.id),
@@ -147,15 +149,24 @@ function WorkstreamDetail({
       {itsPods.length > 0 ? (
         <p className="flex flex-wrap items-center gap-2 text-[13px]">
           <span className="font-bold text-grey-secondary">Pods</span>
-          {itsPods.map((pod) => (
-            <Link
-              key={pod.id}
-              to={podTabPath(projectId, pod.id, "date")}
-              className="inline-flex min-h-9 items-center rounded-full border border-grey-border px-3 font-bold text-ink no-underline hover:bg-grey-fill max-sm:min-h-11"
-            >
-              {pod.name}
-            </Link>
-          ))}
+          {itsPods.map((pod) =>
+            opens(pod.id) ? (
+              <Link
+                key={pod.id}
+                to={podTabPath(projectId, pod.id, "date")}
+                className="inline-flex min-h-9 items-center rounded-full border border-grey-border px-3 font-bold text-ink no-underline hover:bg-grey-fill max-sm:min-h-11"
+              >
+                {pod.name}
+              </Link>
+            ) : (
+              <span
+                key={pod.id}
+                className="inline-flex min-h-9 items-center rounded-full border border-grey-border px-3 font-bold text-grey-body max-sm:min-h-11"
+              >
+                {pod.name}
+              </span>
+            ),
+          )}
         </p>
       ) : null}
       <PanelState

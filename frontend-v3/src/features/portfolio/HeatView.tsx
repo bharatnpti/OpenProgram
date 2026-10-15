@@ -9,7 +9,7 @@ import { PanelState } from "../../components/PanelState";
 import { formatDay } from "../../lib/format";
 import { readState } from "../../lib/readState";
 import { cn } from "../../lib/utils";
-import { usePortfolioIndex } from "../hub/useHub";
+import { usePodOpens, usePortfolioIndex } from "../hub/useHub";
 import {
   colourWord,
   heatTiles,
@@ -57,6 +57,7 @@ export function HeatView({ programId, programCount }: { programId: string; progr
   // The committed dates, and the pods each project lists for this reader: the
   // bulk read of kept rows the hub shares (never a live forecast per project).
   const index = usePortfolioIndex();
+  const opens = usePodOpens();
   const directory = readState(projects, workstreams, pods);
   const scoped = scopeToProgram(programId, programCount, {
     projects: projects.data ?? [],
@@ -86,6 +87,7 @@ export function HeatView({ programId, programCount }: { programId: string; progr
     if (kind === "project") return projectTabPath(item.id, "warnings");
     if (kind === "pod") {
       // A counts-only reader opens a pod only on a project whose row lists it.
+      if (!opens(item.id)) return null;
       const projectId = countsOnly ? (listedOn.get(item.id) ?? null) : firstProject(item);
       return projectId ? podTabPath(projectId, item.id, "warnings") : null;
     }

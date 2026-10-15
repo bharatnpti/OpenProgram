@@ -208,6 +208,20 @@ export function podChoices(
   return [...listed, ...rest].sort((a, b) => weight(b) - weight(a) || a.name.localeCompare(b.name));
 }
 
+/**
+ * Whether a pod's own level opens for a reader: always, unless the reader needs
+ * `minPeople` (a counts-only reader, five), when only a pod the bulk read lists
+ * for them and of that many people or more opens. A pod of unknown size stays
+ * closed, as does one the read leaves out: the server refuses both its own reads.
+ */
+export function opensPodLevel(
+  minPeople: number,
+  pod: { listed: boolean; people: number | null },
+): boolean {
+  if (minPeople <= 0) return true;
+  return pod.listed && pod.people !== null && pod.people >= minPeople;
+}
+
 /** A date verdict's tone: a date nobody committed to is red, as its tile is. */
 export function verdictTone(verdict: Verdict | null): BadgeTone {
   if (verdict === "on_track" || verdict === "done") return "success";
