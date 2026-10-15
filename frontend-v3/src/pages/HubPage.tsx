@@ -184,9 +184,11 @@ function Frame({
   const badges = useHubBadges(place);
   const releaseId = release.releaseId;
   const atProject = place.level === "project";
+  // A pod's tabs say a past day once too, at their top; its Reports has no change to turn off.
+  const atPod = place.level === "pod" && tab !== "reports";
   return (
     // A past day is said once, in the paragraph below: no section says it again.
-    <PastDaySaidContext.Provider value={asOf !== null && atProject}>
+    <PastDaySaidContext.Provider value={asOf !== null && (atProject || atPod)}>
       <div className="op-viz">
         <HubHeader place={place} tab={tab} releaseId={releaseId} />
         <HubTabs place={place} tab={tab} badges={badges} />
@@ -209,6 +211,15 @@ function Frame({
             per day: they show how they stand now, for the requirements of that day.
             {readiness ? " Release readiness shows how it stands now." : ""} Go back to today to
             make changes.
+          </p>
+        ) : null}
+        {asOf && atPod ? (
+          <p className="mb-8 rounded-2xl bg-grey-fill px-4 py-3 text-[13px] text-grey-body">
+            You&apos;re viewing {label}.
+            {tab === "scope"
+              ? " Gate sign-offs are not kept per day: they show how they stand now, for the requirements of that day."
+              : ""}{" "}
+            Go back to today to make changes.
           </p>
         ) : null}
         <Suspense fallback={<p className="text-grey-secondary">Loading…</p>}>
