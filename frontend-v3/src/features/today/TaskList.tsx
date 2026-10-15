@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { ApiError, apiClient } from "../../api/client";
 import type { BlockerDetailDto, FocusTaskDto, TaskUpdateRequest } from "../../api/schema";
@@ -46,9 +47,12 @@ import {
  * done stays in the open list with that line, rather than folding away unseen.
  *
  * It reads `/me/focus` under the key the rest of Today uses, so nothing is asked twice.
+ * `?task=` (Today's next tasks link here) lands on that task with its update open.
  */
 export function TaskList() {
   const shownDay = useShownDay();
+  const [search] = useSearchParams();
+  const asked = search.get("task");
   const focus = useQuery({ queryKey: ["me", "focus"], queryFn: () => apiClient.focus() });
   const [showDone, setShowDone] = useState(false);
   const [saved, setSaved] = useState<Record<string, Outcome>>({});
@@ -60,6 +64,7 @@ export function TaskList() {
     <TaskItem
       key={row.task.id}
       row={row}
+      asked={asked === row.task.id}
       writeBack={focus.data?.write_back ?? "off"}
       today={focus.data?.as_of ?? ""}
       outcome={saved[row.task.id] ?? null}
@@ -119,12 +124,15 @@ type Outcome = { text: string; tone: "success" | "warning" };
 
 function TaskItem({
   row,
+  asked = false,
   writeBack,
   today,
   outcome,
   onOutcome,
 }: {
   row: TaskRow;
+  /** The link named this task: it opens with its update, scrolled to. */
+  asked?: boolean;
   writeBack: WriteBack;
   today: string;
   /** What the last save of this task did, said on the row. */
@@ -133,7 +141,11 @@ function TaskItem({
 }) {
   const { task, blockers, group, late, etaLate } = row;
   const { readOnly, reason } = useReadOnly();
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(asked && !readOnly);
+  const anchor = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (asked) anchor.current?.scrollIntoView({ block: "center" });
+  }, [asked]);
   const key = issueKey(task);
   const meta = [key, task.tracker_status].filter(Boolean).join(" · ");
   const said = lastSaidLine(task.last_update, formatDay);
@@ -163,6 +175,7 @@ function TaskItem({
         )
       }
     >
+      <span ref={anchor} aria-hidden className="block scroll-mt-28" />
       <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
         {task.deadline ? (
           <DueDate prefix="Due " deadline={task.deadline} trackerStatus={task.tracker_status} />

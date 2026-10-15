@@ -15,6 +15,15 @@ import {
 } from "../features/today/queries";
 import { CheckinAction, RepliesCard, WarningsCard } from "../features/today/TodayCards";
 import { TodayAnswer } from "../features/today/TodayAnswer";
+import {
+  FollowUpFlag,
+  NewestBrief,
+  NextTasks,
+  OldestWarnings,
+  OtherPods,
+  OtherProjects,
+  ScopeActions,
+} from "../features/today/TodayBlocks";
 import { taskRows } from "../features/today/taskUpdate";
 import { footerLine } from "../features/today/todayWords";
 import { WhoMustAct } from "../features/today/WhoMustAct";
@@ -25,9 +34,15 @@ import { YourAsks } from "../features/today/YourAsks";
  * nothing that lives in full elsewhere. It leads with one answer: the worst
  * project for an executive, a manager and an admin; the worst of their own for
  * a product owner; the worst pod they run for a scrum master; their own
- * check-in for a developer. Then the action cards: their check-in, the replies
- * and warnings of the day (not for a developer, who reads no aggregate), the
- * Jira changes waiting for their yes, who must act, and their asks.
+ * check-in for a developer. Under it, one line each for a scrum master's other
+ * pods and a product owner's other projects, and every project's verdict in a
+ * line for the readers of programmes. Then the action cards: their check-in
+ * (Confirm when nothing changed), the replies (with a scrum master's
+ * follow-up flag) and warnings of the day (not for a developer, who reads no
+ * aggregate); what a product owner's plans and Jira hygiene ask of them; the
+ * oldest warnings and the newest executive brief for the readers of
+ * programmes; a developer's next three tasks; the Jira changes waiting for
+ * their yes, who must act, and their asks.
  */
 export function TodayPage() {
   const { role, roleLabel, greetingName, access } = useRole();
@@ -53,18 +68,25 @@ export function TodayPage() {
       />
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
         {developer ? (
-          <CheckinAction
-            tasks={
-              focus.data
-                ? taskRows(focus.data.tasks, focus.data.blocker_details, shownDay).filter(
-                    (row) => row.group !== "done",
-                  ).length
-                : null
-            }
-          />
+          <>
+            <CheckinAction
+              tasks={
+                focus.data
+                  ? taskRows(focus.data.tasks, focus.data.blocker_details, shownDay).filter(
+                      (row) => row.group !== "done",
+                    ).length
+                  : null
+              }
+            />
+            <NextTasks />
+          </>
         ) : (
           <>
             <TodayAnswer subject={subject} />
+            {subject.kind === "pod" ? <OtherPods lead={subject.pod} /> : null}
+            {role === "po" && subject.kind === "project" ? (
+              <OtherProjects leadId={subject.projectId} />
+            ) : null}
             <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-3">
               <CheckinAction />
               {counts.data?.replies === null ? null : (
@@ -74,6 +96,7 @@ export function TodayPage() {
                   isLoading={counts.isLoading}
                   error={counts.error}
                   tracker={changes.data?.tracker}
+                  flag={subject.kind === "pod" ? <FollowUpFlag lead={subject.pod} /> : null}
                 />
               )}
               <WarningsCard
@@ -83,6 +106,13 @@ export function TodayPage() {
                 link={warningsLink(access.hub.portfolioHealth, subject)}
               />
             </div>
+            {role === "po" ? <ScopeActions /> : null}
+            {access.hub.portfolioHealth ? (
+              <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-2">
+                <OldestWarnings />
+                <NewestBrief />
+              </div>
+            ) : null}
           </>
         )}
         {readOnly ? null : <JiraChanges />}

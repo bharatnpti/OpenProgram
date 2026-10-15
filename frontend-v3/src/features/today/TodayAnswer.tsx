@@ -12,6 +12,7 @@ import { ProjectAnswer } from "../overall/AnswerCard";
 import { answerChip, answerEdge, answerMeta, scopeAnswer } from "../overall/answerWords";
 import { VizCard } from "../overall/viz";
 import type { TodaySubject } from "./queries";
+import { PortfolioLine } from "./TodayBlocks";
 
 /** Today's first block, for every role but the developer, whose check-in leads instead. */
 export function TodayAnswer({ subject }: { subject: TodaySubject }) {
@@ -27,7 +28,9 @@ export function TodayAnswer({ subject }: { subject: TodaySubject }) {
           >
             See {subject.name}&apos;s timeline and causes →
           </Link>
-          {access.hub.tabs.all.includes("date") && subject.scope === "portfolio" ? (
+          {access.hub.tabs.all.includes("date") &&
+          subject.scope === "portfolio" &&
+          !access.hub.portfolioHealth ? (
             <Link
               to={portfolioPath("date")}
               className="inline-flex min-h-11 items-center font-bold sm:min-h-0"
@@ -36,6 +39,8 @@ export function TodayAnswer({ subject }: { subject: TodaySubject }) {
             </Link>
           ) : null}
         </p>
+        {/* The readers of programmes: every project's verdict in one line, and the way to them. */}
+        {access.hub.portfolioHealth && subject.scope === "portfolio" ? <PortfolioLine /> : null}
       </div>
     );
   }
