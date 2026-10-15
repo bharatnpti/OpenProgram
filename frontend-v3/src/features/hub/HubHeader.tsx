@@ -57,8 +57,8 @@ function AllHeader({ tab }: { tab: HubTab }) {
       <ProjectSwitcher place={{ level: "all" }} tab={tab} title={ALL_PROJECTS} />
       <p className="text-[13.5px] text-grey-body">
         {access.hub.allScope === "own"
-          ? "The projects your pods work on. Pick one, or one of its pods, above."
-          : "Every project you read. Pick one, or one of its pods, above."}
+          ? "The projects your pods work on. The title opens any one of them, or one of its pods."
+          : "Every project you read. The title opens any one of them, or one of its pods."}
       </p>
     </header>
   );
