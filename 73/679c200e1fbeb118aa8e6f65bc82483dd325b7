@@ -1,0 +1,35 @@
+frontend-v3/src/features/pods/PodWarnings.tsx
+  s_5f08a60d42019a::t_3cfea1202536d2 18
+  s_5f08a60d42019a::t_f24a4ffa82c019 1-17,19-146
+frontend-v3/scripts/mock-api.mjs
+  s_5f08a60d42019a::t_c0153f7b687f9b 43,269
+frontend-v3/src/features/pods/PodDate.tsx
+  s_5f08a60d42019a::t_27be16107e3b00 1,33-36
+  s_5f08a60d42019a::t_ceff985f15caa8 2-9,11-32,37-59
+  s_5f08a60d42019a::t_b869f5decf3df1 10
+frontend-v3/src/features/pods/PodScope.tsx
+  s_5f08a60d42019a::t_d3caeaed8e8076 1-38,40-118
+  s_5f08a60d42019a::t_33a12b535f5dfd 39
+frontend-v3/scripts/mock/pod-level.mjs
+  s_5f08a60d42019a::t_f65be1bd71e7b2 1-70,74-75,79-246
+  s_5f08a60d42019a::t_1bbd04ee66c13f 71-73,76-78
+frontend-v3/src/features/pods/NotOnProject.tsx
+  s_5f08a60d42019a::t_3dc5e0ecc79d50 1-3,11-62
+  s_5f08a60d42019a::t_fc0db59f28e081 4-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "73679c200e1fbeb118aa8e6f65bc82483dd325b7",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
