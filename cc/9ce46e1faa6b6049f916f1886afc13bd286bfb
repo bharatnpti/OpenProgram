@@ -1,0 +1,19 @@
+frontend-v3/src/pages/hub/PodWarnings.tsx
+  s_5f08a60d42019a::t_b6a5553c4e034c 136-139,142,144-145,148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cc9ce46e1faa6b6049f916f1886afc13bd286bfb",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
