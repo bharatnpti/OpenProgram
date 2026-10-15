@@ -1,0 +1,112 @@
+backend/core/domain/delivery_handoffs.py
+  s_ffb121d03b175e::t_6f9f1032b1b8c0 400-418,429-435
+  s_ffb121d03b175e::t_b029204f070d78 1-399,419-428,436-494,497-504,506,532,534-585,589-837,839-993,995-997,999-1173,1175,1180,1182-1271,1274-1275
+  s_ffb121d03b175e::t_6098ed92b75243 994,998,1174,1176-1179,1181,1272-1273
+  s_ffb121d03b175e::t_59b7f2c029bbf2 495-496,505,507-531,533,586-588,838
+backend/infra/persistence/postgres_delivery_handoffs.py
+  s_ffb121d03b175e::t_40af05f129e613 1-125
+frontend-v3/src/api/openapi.json
+  s_ffb121d03b175e::t_6563c1d3a7183d 6085-6140,14871-14952,15485-15665,15694-15783,18474-18506
+backend/infra/adapters/executor/paperclip_handoffs.py
+  s_ffb121d03b175e::t_3216d29c19e774 1-209
+backend/core/application/delivery_documents.py
+  s_ffb121d03b175e::t_f74cc00cd9dd75 47
+  s_ffb121d03b175e::t_39fb2045007454 1-2,4-6,17-18,32-46,48-59,83-87
+backend/infra/adapters/delivery_loop.py
+  s_ffb121d03b175e::t_e2a1e63403af35 13,17,24,28-32,46-49,66-85,92,98,130-133,157-159
+backend/tests/unit/test_delivery_handoffs_service.py
+  s_ffb121d03b175e::t_e9f3e0b8f41f9e 2-18,20-357,365-529,531-539,541-827,832-845,847-1055,1057-1086,1090-1262
+  s_ffb121d03b175e::t_691c61b277ce76 358-364
+  s_ffb121d03b175e::t_34c126aaf60d69 828-831,846,1087-1089
+  s_ffb121d03b175e::t_3062042a24896f 1,19,540,1056
+  s_ffb121d03b175e::t_c41a5ccfffaf4f 530
+backend/api/delivery_handoffs_dtos.py
+  s_ffb121d03b175e::t_112da8e9439d13 1-211
+frontend-v2/src/api/generated.ts
+  s_ffb121d03b175e::t_6563c1d3a7183d 1348-1364,3985-4013,4194-4247,4266-4301,5244-5275,11852-11873,11876-11879,11881-11884
+  s_ffb121d03b175e::t_c7d90347a0027f 11874-11875,11880
+backend/infra/adapters/gitlab/delivery_repos.py
+  s_ffb121d03b175e::t_34ce1ca6dd2f09 1,7-9,154-242
+  s_ffb121d03b175e::t_e015e2646d9150 10-13
+  s_ffb121d03b175e::t_4225606efab33b 243-244
+frontend-v3/src/api/generated.ts
+  s_ffb121d03b175e::t_6563c1d3a7183d 1348-1364,3985-4013,4194-4247,4266-4301,5244-5275,11852-11873,11876-11879,11881-11884
+  s_ffb121d03b175e::t_b9f72ce8750c17 11874-11875,11880
+backend/tests/contract/test_delivery_handoffs_adapter.py
+  s_ffb121d03b175e::t_439844d390435a 1-437
+backend/core/application/delivery_handoffs_service.py
+  s_ffb121d03b175e::t_34ce1ca6dd2f09 1072-1073
+  s_ffb121d03b175e::t_bc6caa79ce174e 1-422,428-442,450-513,517-522,524-623,626-651,653-918,920-1021,1023-1028,1031-1071,1074-1363,1368-1375,1379-1416,1419-1425,1427-1525,1527-1541,1543-1553
+  s_ffb121d03b175e::t_48c3c2e258f129 423-427,443-449,514-516,523,624-625
+  s_ffb121d03b175e::t_deb08397d3cb48 919,1542
+  s_ffb121d03b175e::t_ff891c6bbd75ac 652,1022,1029-1030,1364-1367,1376-1378,1417-1418,1426,1526
+backend/config/settings.py
+  s_ffb121d03b175e::t_e2a1e63403af35 201-212
+backend/api/main.py
+  s_ffb121d03b175e::t_112da8e9439d13 23,153
+backend/api/routers/delivery_handoffs.py
+  s_ffb121d03b175e::t_112da8e9439d13 1-28,30-41
+  s_ffb121d03b175e::t_8bb3cc8e898ad7 29
+backend/infra/delivery_loop_cli.py
+  s_ffb121d03b175e::t_688d546dd2c06f 4,10-14,21,23,94-118,133-139,142-145
+backend/tests/unit/test_delivery_loop_service.py
+  s_ffb121d03b175e::t_e474892cb661da 974
+  s_ffb121d03b175e::t_782c6bb4d260e4 61-63,247,301,969-971,997-1017
+  s_ffb121d03b175e::t_64cfd4efe9384e 12,16,52,972-973,975-996,1018-1021
+frontend/src/api/openapi.json
+  s_ffb121d03b175e::t_6563c1d3a7183d 6085-6140,14871-14952,15485-15665,15694-15783,18474-18506
+backend/infra/adapters/executor/unconfigured.py
+  s_ffb121d03b175e::t_64a72c91331743 13-19,88-111,119-130
+  s_ffb121d03b175e::t_34ce1ca6dd2f09 132-134
+  s_ffb121d03b175e::t_9bfbf1190b270c 131,135
+backend/infra/persistence/migrations/versions/0045_delivery_handoffs.py
+  s_ffb121d03b175e::t_40af05f129e613 1-50
+frontend-v2/src/api/openapi.json
+  s_ffb121d03b175e::t_6563c1d3a7183d 6085-6140,14871-14952,15485-15665,15694-15783,18474-18506
+backend/core/ports/delivery_handoffs.py
+  s_ffb121d03b175e::t_34ce1ca6dd2f09 70-73
+  s_ffb121d03b175e::t_72cdc273137b99 1-69,74-82,84
+  s_ffb121d03b175e::t_3216d29c19e774 83
+frontend/src/api/generated.ts
+  s_ffb121d03b175e::t_6563c1d3a7183d 1348-1364,3993-4021,4202-4255,4274-4309,5257-5288,11865-11886,11889-11892,11894-11897
+  s_ffb121d03b175e::t_cfc5388f2d160f 11887-11888,11893
+backend/tests/unit/test_delivery_handoffs_api.py
+  s_ffb121d03b175e::t_63e92fb59fc764 1-225
+backend/infra/adapters/executor/paperclip.py
+  s_ffb121d03b175e::t_b3bced6e72a160 38-44,61-67,86,414-479,912-917,920-929
+backend/infra/registry.py
+  s_ffb121d03b175e::t_a0c412e0c0fae4 23,49,72,146,173,303
+  s_ffb121d03b175e::t_f37302d6d0b3fb 304,619-642,658
+backend/tests/unit/test_delivery_handoffs_rules.py
+  s_ffb121d03b175e::t_6bcf1ad598fff3 1-366,368-519,522-585
+  s_ffb121d03b175e::t_6df82f835b837d 367,520-521
+backend/api/dependencies.py
+  s_ffb121d03b175e::t_8bb3cc8e898ad7 19,231
+  s_ffb121d03b175e::t_112da8e9439d13 230,232
+  s_ffb121d03b175e::t_c9ad656da42b75 233-234
+backend/infra/persistence/in_memory_delivery_handoffs.py
+  s_ffb121d03b175e::t_34c126aaf60d69 24
+  s_ffb121d03b175e::t_40af05f129e613 1-23,25-28
+backend/tests/integration/test_delivery_handoffs_repository.py
+  s_ffb121d03b175e::t_cde42a1d2e5db6 1-120
+backend/core/application/delivery_loop_service.py
+  s_ffb121d03b175e::t_d72e8e090632be 20-24,41,183,187,215-218,340,380-383
+backend/core/domain/delivery_loop.py
+  s_ffb121d03b175e::t_00e02f616597d7 363-371,374-390,412,423,460-462
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "35f2cacb0b1ff6eea9b0cc12ec932c79e1800f38",
+  "prompts": {},
+  "sessions": {
+    "s_ffb121d03b175e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c477dff-be70-49c3-a1ef-74a1480be97e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
