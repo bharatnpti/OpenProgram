@@ -120,7 +120,7 @@ export function ReadinessSection({
         emptyText="Nothing checked yet. The check runs every hour after the Jira sync."
       >
         {data ? (
-          <Board
+          <ReadinessBoard
             data={data}
             projectId={projectId}
             answered={answered}
@@ -132,7 +132,8 @@ export function ReadinessSection({
   );
 }
 
-function Board({
+/** The board itself: its answer line, release chips, criteria by group and footer. */
+export function ReadinessBoard({
   data,
   projectId,
   answered,

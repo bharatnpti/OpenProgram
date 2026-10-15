@@ -51,20 +51,25 @@ function useRefresh(projectId: string) {
  * first; one row per rule with its counts; a row folds out its issues, each with
  * what is wrong, who is asked, the suggested fix and the actions the server says
  * this person has. An executive reads the counts and never who. A filter keeps
- * one pod or release. A tenant that has not switched the scan on gets no section.
+ * one pod or release; at a pod's level (`podId`) the pod is fixed and the filter
+ * is not drawn. A tenant that has not switched the scan on gets no section.
  * Nothing here writes to Jira.
  */
 export function HygieneSection({
   projectId,
   releaseId = "",
+  podId: fixedPod = "",
 }: {
   projectId: string;
   releaseId?: string;
+  /** One pod's part, fixed: the section's own pod filter is not drawn. */
+  podId?: string;
 }) {
   const { access } = useRole();
   const { readOnly } = useReadOnly();
   const pastDay = usePastDayLine();
-  const [podId, setPodId] = useState("");
+  const [picked, setPodId] = useState("");
+  const podId = fixedPod || picked;
   const { readable, query } = useHygiene(projectId, releaseId || undefined, podId || undefined);
   const refresh = useRefresh(projectId);
   const run = useMutation({
@@ -95,7 +100,7 @@ export function HygieneSection({
       <SectionHeader
         id="hygiene-h"
         title="Jira hygiene"
-        meta={`What is missing or wrong on ${releaseId ? "this release's" : "the project's"} Jira issues, by the rules your admin set. Checked every hour; nothing is written to Jira.`}
+        meta={`What is missing or wrong on ${fixedPod ? "the pod's" : releaseId ? "this release's" : "the project's"} Jira issues, by the rules your admin set. Checked every hour; nothing is written to Jira.`}
         actions={
           data?.can_run && !readOnly ? (
             <Pill size="sm" variant="ghost" disabled={run.isPending} onClick={() => run.mutate()}>
@@ -118,7 +123,7 @@ export function HygieneSection({
             data={data}
             projectId={projectId}
             podId={podId}
-            onPod={setPodId}
+            onPod={fixedPod ? undefined : setPodId}
             canAct={access.hygiene.act && !readOnly}
           />
         ) : null}
@@ -137,7 +142,8 @@ function Board({
   data: HygieneBoardResponse;
   projectId: string;
   podId: string;
-  onPod: (podId: string) => void;
+  /** Left out at a pod's level, where the pod is fixed. */
+  onPod?: (podId: string) => void;
   canAct: boolean;
 }) {
   return (
@@ -146,7 +152,7 @@ function Board({
         <h3 className="min-w-0 text-[17px] font-extrabold leading-snug text-balance">
           {answerLine(data)}
         </h3>
-        {data.pods.length > 1 && !data.counts_only ? (
+        {onPod && data.pods.length > 1 && !data.counts_only ? (
           <label className="flex items-center gap-2 text-[13px] font-bold">
             <span>Pod</span>
             <select

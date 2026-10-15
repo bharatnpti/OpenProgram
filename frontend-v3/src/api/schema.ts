@@ -436,6 +436,8 @@ export type ScopeRuleCountDto = components["schemas"]["ScopeRuleCountDto"];
 export type PortfolioWarningsResponse = components["schemas"]["PortfolioWarningsResponse"];
 export type WarningGroupDto = components["schemas"]["WarningGroupDto"];
 export type WarningItemDto = components["schemas"]["WarningItemDto"];
+export type WarningPodDto = components["schemas"]["WarningPodDto"];
+export type OwnerSaysDto = components["schemas"]["OwnerSaysDto"];
 export type WarningKind = components["schemas"]["WarningKind"];
 
 // Requests and pods: a request's trail, the board as counts, a pod's ladder.

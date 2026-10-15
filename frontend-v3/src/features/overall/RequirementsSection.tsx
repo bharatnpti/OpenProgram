@@ -28,11 +28,14 @@ import { SVG_TEXT } from "./vizStyles";
 export function RequirementsSection({
   projectId,
   releaseId = "",
+  podId = "",
 }: {
   projectId: string;
   releaseId?: string;
+  /** One pod's part: the requirements below the pod. */
+  podId?: string;
 }) {
-  const { query } = useRequirements(projectId, releaseId || undefined);
+  const { query } = useRequirements(projectId, releaseId || undefined, podId || undefined);
   const { asOf, label } = useViewingDate();
   const data = query.data;
 
@@ -51,7 +54,7 @@ export function RequirementsSection({
         }
         meta={
           data
-            ? `${data.total} requirements · ${data.live ? "read live today" : `as of ${formatDay(data.as_of)}`}`
+            ? `${data.total} requirements${data.pod_name ? ` of ${data.pod_name}` : ""} · ${data.live ? "read live today" : `as of ${formatDay(data.as_of)}`}`
             : undefined
         }
       />
@@ -202,9 +205,10 @@ function Flow({ data }: { data: RequirementsResponse }) {
                 <title>{band.title}</title>
               </polygon>
             ))}
-            {g.edges.map((points) => (
+            {/* Two empty stages draw the same edge, so the place, not the points, is the key. */}
+            {g.edges.map((points, index) => (
               <polyline
-                key={points.slice(-40)}
+                key={index}
                 points={points}
                 fill="none"
                 stroke="var(--op-viz-surface)"

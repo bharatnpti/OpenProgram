@@ -22,15 +22,17 @@ export const SLIP_DAYS = 30;
 /**
  * The requirements read leaves its days to the server: 30, or the forecast's
  * window when the tenant's minimum needs more, so the flow can reach that
- * minimum whenever the forecast can (`timeline_days` says which).
+ * minimum whenever the forecast can (`timeline_days` says which). A pod's part
+ * (`podId`, the requirements below the pod) is its own entry.
  */
-export function useRequirements(projectId: string, releaseId?: string) {
+export function useRequirements(projectId: string, releaseId?: string, podId?: string) {
   const { canReadProjectProgress } = useRole();
   return {
     readable: canReadProjectProgress,
     query: useQuery({
-      queryKey: ["requirements", projectId, releaseId ?? ""],
-      queryFn: () => apiClient.projectRequirements(projectId, undefined, undefined, releaseId),
+      queryKey: ["requirements", projectId, releaseId ?? "", podId ?? ""],
+      queryFn: () =>
+        apiClient.projectRequirements(projectId, undefined, undefined, releaseId, podId),
       enabled: canReadProjectProgress && projectId !== "",
     }),
   };
@@ -193,13 +195,16 @@ export function usePodDeliveries(podIds: string[]) {
   });
 }
 
-/** Gates open to project-progress readers and to everyone who may edit gates (all but exec). */
-export function useGateBoard(projectId: string, releaseId?: string) {
+/**
+ * Gates open to project-progress readers and to everyone who may edit gates (all
+ * but exec). A pod's part (`podId`, the requirements below the pod) is its own entry.
+ */
+export function useGateBoard(projectId: string, releaseId?: string, podId?: string) {
   return {
     readable: true,
     query: useQuery({
-      queryKey: ["gates", projectId, releaseId ?? ""],
-      queryFn: () => apiClient.gateBoard(projectId, undefined, releaseId),
+      queryKey: ["gates", projectId, releaseId ?? "", podId ?? ""],
+      queryFn: () => apiClient.gateBoard(projectId, undefined, releaseId, podId),
       enabled: projectId !== "",
     }),
   };

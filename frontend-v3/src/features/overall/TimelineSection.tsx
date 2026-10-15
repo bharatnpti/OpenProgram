@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
@@ -27,14 +27,19 @@ import { VizCard } from "./viz";
  * its period chips; then, folded, how the likely date moved day by day. The
  * server words every row for the reader: a scrum master gets the pods only,
  * their own whole and the others' dates. `?row=` picks the row explained.
+ * `rows` keeps some rows only (a pod's own, at the pod's level), and the first
+ * of those that opens is explained.
  */
 export function TimelineSection({
   projectId,
   releaseId,
+  rows: keep,
   between,
 }: {
   projectId: string;
   releaseId: string;
+  /** The rows to draw; left out, every row the server gives this reader. */
+  rows?: (row: Row) => boolean;
   /**
    * Drawn between the drawing and Why the date moved, for the row picked and the
    * impact read it explains (the Project page's What changed). With it, the
@@ -54,7 +59,11 @@ export function TimelineSection({
   const [editing, setEditing] = useState<Row | null>(null);
   const [planning, setPlanning] = useState(false);
   const section = useRef<HTMLElement>(null);
-  const data = timeline.query.data;
+  const read = timeline.query.data;
+  const data = useMemo(
+    () => (read && keep ? { ...read, rows: read.rows.filter(keep) } : read),
+    [read, keep],
+  );
   const rows = data?.rows ?? [];
   const asked = search.get("row");
   const selected =

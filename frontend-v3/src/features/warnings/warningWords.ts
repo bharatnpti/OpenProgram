@@ -4,7 +4,9 @@
 // the team. Type imports, and runtime imports by their .ts path, so `node --test`
 // runs it as written.
 import type {
+  OwnerSaysDto,
   PortfolioWarningsResponse,
+  StatusSource,
   WarningGroupDto,
   WarningItemDto,
   WarningKind,
@@ -27,11 +29,61 @@ export function shownGroups(view: PortfolioWarningsResponse): WarningGroupDto[] 
   return view.groups.filter((group) => ALWAYS.includes(group.kind) || group.count > 0);
 }
 
-/** "19 open across 3 projects", the header's count line. */
-export function countLine(view: Pick<PortfolioWarningsResponse, "total" | "projects">): string {
+/**
+ * "19 open across 3 projects", the header's count line. At one project's or one
+ * pod's level the scope is the page's, so it says "8 open".
+ */
+export function countLine(
+  view: Pick<PortfolioWarningsResponse, "total" | "projects">,
+  scoped = false,
+): string {
   if (view.total === 0) return "Nothing open: Jira and Git agree with what was reported.";
+  if (scoped) return `${view.total} open.`;
   const projects = `${view.projects} ${view.projects === 1 ? "project" : "projects"}`;
   return `${view.total} open across ${projects}.`;
+}
+
+/** Where a pod's blockers are, when its morning lists them above its warnings. */
+export function blockersAboveWords(count: number): string {
+  return count === 1
+    ? "1 of them is the blocker above."
+    : `${count} of them are the blockers above.`;
+}
+
+/** The pods an item sits in: "Atlas Core", "Atlas Core and Atlas Edge"; "" with none. */
+export function podNames(item: Pick<WarningItemDto, "pods">): string {
+  const names = item.pods.map((pod) => pod.name);
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** Where an owner's words came from, as the fold says it. */
+const SAYS_SOURCE: Record<StatusSource, string> = {
+  confirmed: "in their check-in",
+  partial: "in a partial check-in",
+  inferred: "inferred from Jira and Git, not said",
+  stale: "carried from an earlier check-in",
+  unknown: "source not known",
+};
+
+/**
+ * What the owner last said, folded under the item: "What Ben says", their words,
+ * and where and when they came from. Null where the reader sees the team, or the
+ * owner said nothing.
+ */
+export function ownerSays(
+  item: Pick<WarningItemDto, "owner" | "owner_is_you" | "owner_says">,
+): { title: string; text: string; meta: string } | null {
+  const says: OwnerSaysDto | null | undefined = item.owner_says;
+  if (!says || !says.text.trim()) return null;
+  if (!item.owner && !item.owner_is_you) return null;
+  const first = item.owner?.trim().split(/\s+/)[0];
+  const title = item.owner_is_you ? "What you said" : `What ${first ?? "the owner"} says`;
+  return {
+    title,
+    text: says.text,
+    meta: `${SAYS_SOURCE[says.source]}, ${formatDay(says.on)}`,
+  };
 }
 
 /**

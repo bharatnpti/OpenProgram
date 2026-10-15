@@ -2,23 +2,52 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import type { WarningGroupDto, WarningItemDto } from "../../api/schema";
-import { projectPath } from "../../app/links";
+import { podTabPath, projectTabPath } from "../../app/links";
 import { RagDot } from "../../components/ui/Bits";
 import { VizPanel } from "../portfolio/VizPanel";
-import { ageWords, emptyWords, itemLine, ownerWords, SHOWN } from "./warningWords";
+import {
+  ageWords,
+  emptyWords,
+  itemLine,
+  ownerSays,
+  ownerWords,
+  podNames,
+  SHOWN,
+} from "./warningWords";
+
+/** The level a list of warnings is read at: what each row leaves out as said already. */
+export type WarningScope = "all" | "project" | "pod";
+
+/** Where an item's project, and its pod, open: their own early warnings. */
+export type WarningLinks = {
+  project: (item: WarningItemDto) => string;
+  /** Left out: the pods are named, not linked. */
+  pod?: (item: WarningItemDto, podId: string) => string;
+};
+
+const DEFAULT_LINKS: WarningLinks = {
+  project: (item) => projectTabPath(item.project_id, "warnings"),
+  pod: (item, podId) => podTabPath(item.project_id, podId, "warnings"),
+};
 
 /**
  * One kind of warning: its count, and its items oldest first, five then all.
- * Each item is the work item's key, how old it is, one line, and who acts on
- * it. Colour is spent only on the severity dot. A group the reader reads only
- * as a count says the count.
+ * Each item is the work item's key, how old it is, one line, who acts on it and
+ * the pods it sits in, with what its owner last said folded under it where the
+ * reader sees the owner. Colour is spent only on the severity dot. A group the
+ * reader reads only as a count says the count. `scope` leaves out what the page
+ * already says: the project at a project's level, the pod too at a pod's.
  */
 export function WarningGroup({
   group,
   seenSince,
+  scope = "all",
+  links = DEFAULT_LINKS,
 }: {
   group: WarningGroupDto;
   seenSince: string | null | undefined;
+  scope?: WarningScope;
+  links?: WarningLinks;
 }) {
   const [all, setAll] = useState(false);
   const items = all ? group.items : group.items.slice(0, SHOWN);
@@ -40,12 +69,21 @@ export function WarningGroup({
         <>
           <ul aria-labelledby={headingId}>
             {items.map((item) => (
-              <WarningRow key={item.id} item={item} group={group} seenSince={seenSince} />
+              <WarningRow
+                key={item.id}
+                item={item}
+                group={group}
+                seenSince={seenSince}
+                scope={scope}
+                links={links}
+              />
             ))}
           </ul>
           {group.count > group.items.length ? (
             <p className="mt-2 text-[12px] text-grey-secondary">
-              And {group.count - group.items.length} more in other pods.
+              {scope === "pod"
+                ? `And ${group.count - group.items.length} more, counted only.`
+                : `And ${group.count - group.items.length} more in other pods.`}
             </p>
           ) : null}
           {group.items.length > SHOWN ? (
@@ -68,11 +106,16 @@ function WarningRow({
   item,
   group,
   seenSince,
+  scope,
+  links,
 }: {
   item: WarningItemDto;
   group: WarningGroupDto;
   seenSince: string | null | undefined;
+  scope: WarningScope;
+  links: WarningLinks;
 }) {
+  const says = ownerSays(item);
   return (
     <li className="flex min-w-0 items-start gap-3 border-t border-grey-border py-3 first:border-t-0">
       <RagDot rag={item.severity} className="mt-1.5" />
@@ -90,16 +133,57 @@ function WarningRow({
           <span className="min-w-0 text-grey-body break-words">{itemLine(item)}</span>
         </p>
         <p className="mt-0.5 text-[12px] text-grey-secondary">
-          {ownerWords(item, group.kind)} ·{" "}
-          <Link to={projectPath(item.project_id, "warnings")} className="text-grey-secondary">
-            {item.project_name}
-          </Link>
+          {ownerWords(item, group.kind)}
+          {scope !== "pod" ? <ItemPods item={item} links={links} /> : null}
+          {scope === "all" ? (
+            <>
+              {" · "}
+              <Link to={links.project(item)} className="text-grey-secondary">
+                {item.project_name}
+              </Link>
+            </>
+          ) : null}
           {item.watermelon ? " · owner says on track" : ""}
         </p>
+        {says ? (
+          <details className="mt-0.5">
+            <summary className="cursor-pointer list-none text-[12.5px] font-bold text-grey-body underline underline-offset-2 max-sm:inline-flex max-sm:min-h-11 max-sm:items-center [&::-webkit-details-marker]:hidden">
+              {says.title}
+            </summary>
+            <p className="mt-1.5 rounded-xl bg-grey-fill px-2.5 py-2 text-[12.5px] text-grey-body break-words">
+              {says.text}
+              <span className="mt-1 block text-[11.5px] text-grey-secondary">{says.meta}</span>
+            </p>
+          </details>
+        ) : null}
       </div>
       <span className="flex-none text-right text-[12px] font-bold text-grey-secondary tabular-nums">
         {ageWords(item, seenSince)}
       </span>
     </li>
+  );
+}
+
+/**
+ * The pods an item sits in, after who acts on it: each a link to the pod's own
+ * warnings where the page offers one, else its name. The owner's team is the
+ * same pod more often than not, and is then not said twice.
+ */
+function ItemPods({ item, links }: { item: WarningItemDto; links: WarningLinks }) {
+  const pods = item.pods.filter((pod) => pod.name !== item.owner_team);
+  if (pods.length === 0) return null;
+  const toPod = links.pod;
+  if (!toPod) return <>{` · ${podNames({ pods })}`}</>;
+  return (
+    <>
+      {pods.map((pod) => (
+        <span key={pod.id}>
+          {" · "}
+          <Link to={toPod(item, pod.id)} className="text-grey-secondary">
+            {pod.name}
+          </Link>
+        </span>
+      ))}
+    </>
   );
 }

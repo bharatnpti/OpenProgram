@@ -15,10 +15,10 @@ import { etaAfterDue, startState, statementWords, viaWords } from "../today/task
 
 /**
  * Today's status: each task the pod's people hold within its remit, blocked
- * first, as Ticket · Who · Jira today · What they said · ETA or blocker. What
- * Jira says is never anyone's word; a colour worked out from Jira and Git is
- * marked inferred, and is never green on its own. The Delivery pod panel's
- * task table, in the prototype's columns.
+ * first, as Ticket · Who · Jira today · What they said · ETA or blocker · Due.
+ * The due date has its own column, so a blocked task still shows when it is
+ * due. What Jira says is never anyone's word; a colour worked out from Jira and
+ * Git is marked inferred, and is never green on its own.
  */
 export function TodayStatus({ podId, day }: { podId: string; day: string }) {
   const tasks = useQuery({
@@ -42,7 +42,7 @@ export function TodayStatus({ podId, day }: { podId: string; day: string }) {
       >
         <StackedTable
           caption="Today's status of the pod's tasks"
-          columns={["Ticket", "Who", "Jira today", "What they said", "ETA or blocker"]}
+          columns={["Ticket", "Who", "Jira today", "What they said", "ETA or blocker", "Due"]}
         >
           {sorted.map((task) => (
             <tr
@@ -76,6 +76,14 @@ export function TodayStatus({ podId, day }: { podId: string; day: string }) {
               <td className={stackCell}>
                 <CellLabel>ETA or blocker</CellLabel>
                 <EtaOrBlocker task={task} />
+              </td>
+              <td className={cn(stackCell, "whitespace-nowrap")}>
+                <CellLabel>Due</CellLabel>
+                {task.deadline ? (
+                  <DueDate deadline={task.deadline} trackerStatus={task.tracker_status} />
+                ) : (
+                  <span className="text-grey-secondary">—</span>
+                )}
               </td>
             </tr>
           ))}
@@ -128,7 +136,7 @@ function Said({ task }: { task: PodTaskDto }) {
   );
 }
 
-/** The open blockers on it; else the owners' own ETA (late against the due date says so); else the due date. */
+/** The open blockers on it; else the owners' own ETA, which says so when it is after the due date. */
 function EtaOrBlocker({ task }: { task: PodTaskDto }) {
   if (task.open_blockers.length > 0) {
     return (
@@ -160,11 +168,5 @@ function EtaOrBlocker({ task }: { task: PodTaskDto }) {
       </span>
     );
   }
-  return task.deadline ? (
-    <span className="whitespace-nowrap">
-      Due <DueDate deadline={task.deadline} trackerStatus={task.tracker_status} />
-    </span>
-  ) : (
-    <span className="text-grey-secondary">No ETA or due date</span>
-  );
+  return <span className="text-grey-secondary">No ETA given</span>;
 }
