@@ -7,6 +7,7 @@ import { useRole } from "../app/role";
 import { PanelState, SectionHeader } from "../components/PanelState";
 import { Panel, Row } from "../components/ui/Bits";
 import { fullPodIds } from "../features/delivery/ownTree";
+import { PodTeam, WhatEachRoleSees } from "../features/people/PeopleSections";
 import { noPodTiles } from "../features/portfolio/heat";
 import { useHeatmap } from "../features/portfolio/useHeatmap";
 import { PodPeoplePanel } from "../features/profiles/PodPeople";
@@ -24,16 +25,22 @@ const NO_POD = "none";
  * (`?pod=`); for a manager and an admin also the people in no pod
  * (`?pod=none`), whom no team's colour counts. Each person's time zone and
  * check-in time show for an admin and for the pod's own scrum master: the
- * server sends them only to those (`reads_schedule`).
+ * server sends them only to those (`reads_schedule`). A reader who reads the
+ * team but no pod's check-ins (a product owner) gets the pods of their own
+ * projects, each with its people from the team graph, read only. Then, for
+ * everyone, what each role sees.
  */
 export function PeoplePage() {
   const { access, canReadPortfolio, canReadPodDetail } = useRole();
   const own = access.deliveryScope === "own";
+  // A product owner: their own projects' pods, by the team graph; no pod's panel.
+  const teamOnly = own && !canReadPodDetail;
   // A manager and an admin: the readers of every pod's people who read the heat map with names.
   const noPodOffered = canReadPortfolio && !access.hub.countsOnly;
   const pods = usePods();
   const tree = useOwnTree(own);
-  const full = own && tree.data ? fullPodIds(tree.data) : null;
+  const full =
+    own && tree.data ? (teamOnly ? listedPodIds(tree.data) : fullPodIds(tree.data)) : null;
   const readable = [...(pods.data ?? [])]
     .filter((pod) => !own || full?.has(pod.id))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -47,7 +54,11 @@ export function PeoplePage() {
     <div className="op-viz">
       <SectionHeader
         title="People & roles"
-        meta="Who is in which pod, with which role and profile. A profile is what someone brings to a pod, never a rating."
+        meta={
+          teamOnly
+            ? "Who is in each pod of your projects, with their title and their roles in the console."
+            : "Who is in which pod, with which role and profile. A profile is what someone brings to a pod, never a rating."
+        }
       />
       <PanelState
         isLoading={pods.isLoading || (own && tree.isLoading)}
@@ -87,11 +98,23 @@ export function PeoplePage() {
         {noPod ? (
           <NotInAnyPod />
         ) : pod ? (
-          <PodPeople key={pod.id} podId={pod.id} readsBoard={canReadPodDetail} />
+          teamOnly ? (
+            <PodTeam key={pod.id} podId={pod.id} podName={pod.name} />
+          ) : (
+            <PodPeople key={pod.id} podId={pod.id} readsBoard={canReadPodDetail} />
+          )
         ) : null}
       </PanelState>
+      <div className="mt-8">
+        <WhatEachRoleSees />
+      </div>
     </div>
   );
+}
+
+/** The pods of the person's own part that open beyond their name: their projects' pods. */
+function listedPodIds(tree: NonNullable<ReturnType<typeof useOwnTree>["data"]>): Set<string> {
+  return new Set(tree.pods.filter((pod) => pod.access !== "name").map((pod) => pod.id));
 }
 
 /**
