@@ -1,0 +1,21 @@
+frontend-v3/src/features/project/NeedsAttention.tsx
+  s_5f08a60d42019a::t_71cc4f36da594d 56
+frontend-v3/src/features/project/attentionTasks.ts
+  s_5f08a60d42019a::t_71cc4f36da594d 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "481c792b9bfaef0250b00deaa4ecb966a63bfb33",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
