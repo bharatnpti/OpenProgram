@@ -1,0 +1,21 @@
+backend/api/routers/graph.py
+  s_5f08a60d42019a::t_6a6ac4519748ec 13,32-37
+backend/tests/unit/test_graph_api.py
+  s_5f08a60d42019a::t_13e95261e26c99 41-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f046dac1e6324ea7d5ccf6882bfa4189bf6a174b",
+  "prompts": {},
+  "sessions": {
+    "s_5f08a60d42019a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfa6bf6-5cda-41d4-a5f1-146ee57a07b7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
