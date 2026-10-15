@@ -97,7 +97,12 @@ export function usePodOpens(): (podId: string) => boolean {
     const listed = new Set(
       (index.data?.projects ?? []).flatMap((project) => project.pods.map((pod) => pod.id)),
     );
-    const people = new Map((pods.data ?? []).map((pod) => [pod.id, pod.member_ids.length]));
+    // An empty list is a size the reader is not sent, not a pod of nobody.
+    const people = new Map(
+      (pods.data ?? []).flatMap((pod) =>
+        pod.member_ids.length > 0 ? [[pod.id, pod.member_ids.length] as const] : [],
+      ),
+    );
     return (podId: string) =>
       opensPodLevel(min, { listed: listed.has(podId), people: people.get(podId) ?? null });
   }, [min, index.data, pods.data]);
@@ -232,7 +237,7 @@ export function useReleaseChoice(projectId: string) {
  * planning and the open hygiene findings (`/portfolio/scope?project_id=&pod_id=`),
  * and when today's day report went out (`/reports?project_id=`). At a pod the
  * two reads are the pod's part, cached as its tabs read them, and made only for
- * a reader of that tab there.
+ * a reader of that tab there, on a pod they may open.
  */
 export function useHubBadges(place: HubPlace): Partial<Record<HubTab, Badge | null>> {
   const { access, lens } = useRole();
@@ -242,6 +247,9 @@ export function useHubBadges(place: HubPlace): Partial<Record<HubTab, Badge | nu
   const atPod = podId !== null;
   const podAccess = usePodAccess(podId ?? "");
   const reads = podReads(lens, podAccess.full);
+  // A pod a counts-only reader may not open is read with its project, never on its own.
+  const opens = usePodOpens();
+  const podOpen = atPod && opens(podId);
   const warnings = useQuery({
     queryKey: ["portfolio", "warnings", projectId ?? ""],
     queryFn: () => apiClient.portfolioWarnings({ projectId }),
@@ -252,8 +260,8 @@ export function useHubBadges(place: HubPlace): Partial<Record<HubTab, Badge | nu
     queryFn: () => apiClient.portfolioScope(),
     enabled: bulk && !atPod,
   });
-  const podWarnings = useWarnings({ projectId, podId }, atPod && reads.warnings);
-  const podScope = useScopeRead({ projectId, podId }, atPod && bulk && reads.scope);
+  const podWarnings = useWarnings({ projectId, podId }, podOpen && reads.warnings);
+  const podScope = useScopeRead({ projectId, podId }, podOpen && bulk && reads.scope);
   const reports = useQuery({
     queryKey: ["day-reports", "project", projectId ?? ""],
     queryFn: () => apiClient.dayReports(projectId ?? undefined),

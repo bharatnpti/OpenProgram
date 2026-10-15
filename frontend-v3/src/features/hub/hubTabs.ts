@@ -211,15 +211,17 @@ export function podChoices(
 /**
  * Whether a pod's own level opens for a reader: always, unless the reader needs
  * `minPeople` (a counts-only reader, five), when only a pod the bulk read lists
- * for them and of that many people or more opens. A pod of unknown size stays
- * closed, as does one the read leaves out: the server refuses both its own reads.
+ * for them opens, and of that many people or more where its size is known. The
+ * bulk read already leaves out a pod under five for that reader, and the
+ * directory sends them no member ids, so an unknown size defers to the read.
  */
 export function opensPodLevel(
   minPeople: number,
   pod: { listed: boolean; people: number | null },
 ): boolean {
   if (minPeople <= 0) return true;
-  return pod.listed && pod.people !== null && pod.people >= minPeople;
+  if (!pod.listed) return false;
+  return pod.people === null || pod.people >= minPeople;
 }
 
 /** A date verdict's tone: a date nobody committed to is red, as its tile is. */

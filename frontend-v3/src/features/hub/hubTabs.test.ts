@@ -211,11 +211,13 @@ test("the scope badge sums every project at All, and reads the place's row below
   assert.equal(scopeBadgeAt("p", undefined), null);
 });
 
-test("a counts-only reader opens a pod's level only for a listed pod of five or more", () => {
+test("a counts-only reader opens a pod's level only for a pod the read lists, of five or more where known", () => {
   assert.equal(opensPodLevel(0, { listed: false, people: null }), true);
   assert.equal(opensPodLevel(0, { listed: true, people: 2 }), true);
   assert.equal(opensPodLevel(5, { listed: true, people: 5 }), true);
   assert.equal(opensPodLevel(5, { listed: true, people: 4 }), false);
   assert.equal(opensPodLevel(5, { listed: false, people: 9 }), false);
-  assert.equal(opensPodLevel(5, { listed: true, people: null }), false);
+  // Size not sent (an executive's directory has no member ids): the bulk read decides.
+  assert.equal(opensPodLevel(5, { listed: true, people: null }), true);
+  assert.equal(opensPodLevel(5, { listed: false, people: null }), false);
 });

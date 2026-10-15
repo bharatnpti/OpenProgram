@@ -140,11 +140,11 @@ function ProjectFrame({
       );
     }
     // A counts-only reader opens only the pods the bulk read gives them (five people or more).
-    if (
-      access.hub.countsOnly &&
-      !pods.isLoading &&
-      !pods.choices.some((choice) => choice.id === place.podId)
-    ) {
+    // Nothing of the pod is drawn or read until that is known: its reads are refused otherwise.
+    if (access.hub.countsOnly && pods.isLoading) {
+      return <p className="text-grey-secondary">Loading…</p>;
+    }
+    if (access.hub.countsOnly && !pods.choices.some((choice) => choice.id === place.podId)) {
       return (
         <Navigate
           to={hubHref(
