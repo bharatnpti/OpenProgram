@@ -173,8 +173,9 @@ product decision. "Remaining work" is the numbered list further down.
   which replays the forecast for each day: about 1.3 s for 30 days on a month of
   demo snapshots, in its own query, so nothing else waits on it. Faster means
   keeping each day's 50% and 85% dates with the snapshot, which is a migration.
-- Dark is the `data-theme="dark"` hook only: the console has no theme switch,
-  and the shell stays light around a dark Daily or Overall page.
+- Dark is the `data-theme="dark"` hook only: the console has no theme switch.
+  The shell (header, sidebar, menus, pickers) and the pages follow it together
+  through `.op-shell` and `.op-viz` in `index.css`.
 - On the demo seed the pods hold no requirements (they reach workstreams by
   `assigned_to`, the forecast counts `contains`), so Dates by pod says "Nothing
   in scope" for each pod.

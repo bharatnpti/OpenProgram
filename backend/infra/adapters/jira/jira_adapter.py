@@ -15,7 +15,10 @@ from core.domain.connections import ConnectionValues
 from core.domain.errors import IssueCreateFailed, ProviderUnavailable
 from core.domain.graph import JsonScalar
 from core.domain.integrations import (
+    VALUELESS_CHANGE_FIELDS,
     Issue,
+    IssueChange,
+    IssueChangeField,
     IssueComment,
     IssueCreateFailure,
     IssueState,
@@ -31,13 +34,18 @@ from core.ports.connections import ConnectionResolver
 _tracer = trace.get_tracer("openprogram.adapters.issue_tracker.jira")
 _ISSUE_FIELDS = (
     "summary,status,assignee,updated,project,issuetype,parent,"
-    "duedate,fixVersions,labels,priority,created,resolutiondate"
+    "duedate,fixVersions,labels,priority,created,resolutiondate,"
+    "reporter,creator,components"
 )
 # JQL dates have minute precision and are read in the API user's profile timezone,
 # so the incremental filter is a relative window, widened by this much to absorb
 # rounding and clock skew; issues the cursor already covers are dropped afterwards.
 _CURSOR_OVERLAP = timedelta(minutes=2)
 _PAGE_SIZE = 100
+# Cloud's changelog endpoint returns at most 100 histories a page. An issue
+# with more than this many pages of history is read only that far.
+_CHANGELOG_PAGE_SIZE = 100
+_CHANGELOG_MAX_PAGES = 50
 
 #: Jira Cloud. Searches use the enhanced /rest/api/3/search/jql endpoint.
 DEPLOYMENT_CLOUD = "cloud"
@@ -60,6 +68,7 @@ class JiraCredentials:
     token: str
     deployment: str = DEPLOYMENT_CLOUD
     story_points_field: str | None = None
+    severity_field: str | None = None
 
     @property
     def api(self) -> str:
@@ -95,6 +104,7 @@ def credentials_from_connection(values: ConnectionValues) -> JiraCredentials:
         token=token,
         deployment=deployment,
         story_points_field=values.get("story_points_field"),
+        severity_field=values.get("severity_field"),
     )
 
 
@@ -113,9 +123,15 @@ class JiraIssueTrackerAdapter:
     api_token: str | None = None
     deployment: str = DEPLOYMENT_CLOUD
     story_points_field: str | None = None
+    severity_field: str | None = None
     connections: ConnectionResolver | None = None
     timeout_seconds: float = 10.0
     clock: Callable[[], datetime] = field(default=_utc_now)
+    # (base URL, field id) -> the field's name, read once from /field: Data
+    # Center's history names a custom field by name only.
+    _field_names: dict[tuple[str, str], str] = field(
+        default_factory=dict, compare=False, repr=False
+    )
 
     async def list_projects(self, tenant_id: str) -> list[Project]:
         with _tracer.start_as_current_span("jira.list_projects"):
@@ -158,7 +174,7 @@ class JiraIssueTrackerAdapter:
                 f"{credentials.api}/issue/{key}",
                 params={"fields": _fields(credentials)},
             )
-            return _map_issue(tenant_id, payload, credentials.story_points_field)
+            return _map_issue(tenant_id, payload, credentials)
 
     async def get_issue_text(self, tenant_id: str, key: str) -> IssueText:
         """The description and comments as plain text, from Cloud's ADF or DC's wiki markup."""
@@ -204,6 +220,101 @@ class JiraIssueTrackerAdapter:
                     "AND statusCategory != Done ORDER BY updated DESC"
                 ),
             )
+
+    async def list_issue_changes(
+        self, tenant_id: str, key: str, since: datetime | None
+    ) -> list[IssueChange]:
+        """The issue's history, kept fields only: Cloud's paged changelog, DC's expanded issue.
+
+        A history item names its field by id on Cloud and, on Data Center, by
+        name only; a configured custom field (story points, severity) is then
+        matched by the name Jira's field list gives it, read once.
+        """
+        with _tracer.start_as_current_span("jira.list_issue_changes"):
+            credentials = await self._credentials(tenant_id)
+            if credentials.data_center:
+                payload = await self._get(
+                    tenant_id,
+                    f"{credentials.api}/issue/{key}",
+                    params={"expand": "changelog", "fields": "updated"},
+                )
+                histories = _items(_optional_mapping(payload, "changelog") or {}, "histories")
+            else:
+                histories = await self._cloud_histories(tenant_id, credentials, key)
+            names = await self._custom_field_names(tenant_id, credentials, histories)
+            matcher = _ChangeFieldMatcher(
+                story_points_field=credentials.story_points_field,
+                severity_field=credentials.severity_field,
+                custom_names=names,
+            )
+            changes: list[IssueChange] = []
+            for history in histories:
+                at = _datetime_field(history, "created")
+                if at is None or (since is not None and at <= since):
+                    continue
+                changes.extend(_history_changes(tenant_id, history, at, matcher))
+            return sorted(changes, key=lambda change: (change.at, change.history_id, change.field))
+
+    async def _cloud_histories(
+        self, tenant_id: str, credentials: JiraCredentials, key: str
+    ) -> list[Mapping[str, object]]:
+        histories: list[Mapping[str, object]] = []
+        start_at = 0
+        for _page in range(_CHANGELOG_MAX_PAGES):
+            payload = await self._get(
+                tenant_id,
+                f"{credentials.api}/issue/{key}/changelog",
+                params={"startAt": str(start_at), "maxResults": str(_CHANGELOG_PAGE_SIZE)},
+            )
+            page = _items(payload, "values")
+            histories.extend(page)
+            start_at += len(page)
+            total = payload.get("total")
+            last = payload.get("isLast")
+            if not page or last is True or (isinstance(total, int) and start_at >= total):
+                break
+            if last is None and not isinstance(total, int) and len(page) < _CHANGELOG_PAGE_SIZE:
+                break
+        return histories
+
+    async def _custom_field_names(
+        self,
+        tenant_id: str,
+        credentials: JiraCredentials,
+        histories: Sequence[Mapping[str, object]],
+    ) -> Mapping[str, IssueChangeField]:
+        """Casefolded custom field name -> kept field, for history items without a field id."""
+        wanted = {
+            field_id: kept
+            for field_id, kept in (
+                (credentials.story_points_field, IssueChangeField.STORY_POINTS),
+                (credentials.severity_field, IssueChangeField.SEVERITY),
+            )
+            if field_id and field_id.startswith("customfield_")
+        }
+        needs_names = any(
+            _optional_string(item, "fieldId") is None and item.get("fieldtype") == "custom"
+            for history in histories
+            for item in _items(history, "items")
+        )
+        if not wanted or not needs_names:
+            return {}
+        missing = [
+            field_id
+            for field_id in wanted
+            if (credentials.base_url, field_id) not in self._field_names
+        ]
+        if missing:
+            for item in _list_items(await self._get_json(tenant_id, f"{credentials.api}/field")):
+                field_id = _optional_string(item, "id")
+                name = _optional_string(item, "name")
+                if field_id in wanted and name:
+                    self._field_names[(credentials.base_url, field_id)] = name
+        return {
+            name.casefold(): kept
+            for field_id, kept in wanted.items()
+            if (name := self._field_names.get((credentials.base_url, field_id)))
+        }
 
     async def transition(self, tenant_id: str, key: str, to_state: str) -> None:
         with _tracer.start_as_current_span("jira.transition"):
@@ -417,8 +528,7 @@ class JiraIssueTrackerAdapter:
                 params=params,
             )
             issues.extend(
-                _map_issue(tenant_id, item, credentials.story_points_field)
-                for item in _items(payload, "issues")
+                _map_issue(tenant_id, item, credentials) for item in _items(payload, "issues")
             )
             next_page_token = _optional_string(payload, "nextPageToken")
             if next_page_token is None:
@@ -442,9 +552,7 @@ class JiraIssueTrackerAdapter:
                 },
             )
             page = _items(payload, "issues")
-            issues.extend(
-                _map_issue(tenant_id, item, credentials.story_points_field) for item in page
-            )
+            issues.extend(_map_issue(tenant_id, item, credentials) for item in page)
             start_at += len(page)
             total = payload.get("total")
             if not page or not isinstance(total, int) or start_at >= total:
@@ -463,13 +571,17 @@ class JiraIssueTrackerAdapter:
             token=self.api_token,
             deployment=self.deployment,
             story_points_field=self.story_points_field,
+            severity_field=self.severity_field,
         )
 
 
 def _fields(credentials: JiraCredentials) -> str:
-    if credentials.story_points_field:
-        return f"{_ISSUE_FIELDS},{credentials.story_points_field}"
-    return _ISSUE_FIELDS
+    extra = [
+        name
+        for name in (credentials.story_points_field, credentials.severity_field)
+        if name and name not in _ISSUE_FIELDS.split(",")
+    ]
+    return ",".join((_ISSUE_FIELDS, *dict.fromkeys(extra)))
 
 
 def _map_project(tenant_id: str, payload: Mapping[str, object]) -> Project:
@@ -503,8 +615,10 @@ def _map_sprint(tenant_id: str, board_id: str, payload: Mapping[str, object]) ->
 def _map_issue(
     tenant_id: str,
     payload: Mapping[str, object],
-    story_points_field: str | None = None,
+    credentials: JiraCredentials | None = None,
 ) -> Issue:
+    story_points_field = credentials.story_points_field if credentials else None
+    severity_field = credentials.severity_field if credentials else None
     fields = _mapping_field(payload, "fields")
     status = _mapping_field(fields, "status")
     assignee_payload = _optional_mapping(fields, "assignee")
@@ -542,6 +656,13 @@ def _map_issue(
                 "story_points": (
                     _number(fields.get(story_points_field)) if story_points_field else None
                 ),
+                # Who filed and who created it, as tracker account ids, never names.
+                "reporter_id": _user_id(_optional_mapping(fields, "reporter")),
+                "creator_id": _user_id(_optional_mapping(fields, "creator")),
+                "components": _joined(
+                    _optional_string(item, "name") for item in _items(fields, "components")
+                ),
+                "severity": _field_text(fields.get(severity_field)) if severity_field else None,
             }
         ),
     )
@@ -584,6 +705,37 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
 
 
+def _user_id(payload: Mapping[str, object] | None) -> str | None:
+    """A user's tracker id, picked the way ``_map_user`` picks it; None when there is none."""
+    if payload is None:
+        return None
+    return (
+        _optional_string(payload, "accountId")
+        or _optional_string(payload, "name")
+        or _optional_string(payload, "emailAddress")
+    )
+
+
+def _field_text(value: object) -> str | None:
+    """A select, text or number field's value as text: an option's value, a list joined."""
+    if isinstance(value, str):
+        return value.strip() or None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return _number_text(float(value))
+    if isinstance(value, Mapping):
+        option = cast(Mapping[str, object], value)
+        return _optional_string(option, "value") or _optional_string(option, "name")
+    if isinstance(value, Sequence) and not isinstance(value, bytes):
+        return _joined(_field_text(item) for item in value)
+    return None
+
+
+def _number_text(value: float) -> str:
+    return str(int(value)) if value.is_integer() else str(value)
+
+
 def _map_user(tenant_id: str, payload: Mapping[str, object]) -> UserRef:
     external_id = (
         _optional_string(payload, "accountId")
@@ -624,6 +776,187 @@ def _single_user_for_email(tenant_id: str, payload: object, email: str) -> UserR
     if len(people) == 1 and not _optional_string(people[0], "emailAddress"):
         return _map_user(tenant_id, people[0])
     return None
+
+
+# A history item's field, by the id Cloud gives it.
+_CHANGE_FIELD_IDS: Mapping[str, IssueChangeField] = {
+    "status": IssueChangeField.STATUS,
+    "resolution": IssueChangeField.RESOLUTION,
+    "assignee": IssueChangeField.ASSIGNEE,
+    "duedate": IssueChangeField.DUE_DATE,
+    "fixVersions": IssueChangeField.FIX_VERSION,
+    "labels": IssueChangeField.LABELS,
+    "issuetype": IssueChangeField.ISSUE_TYPE,
+    "parent": IssueChangeField.PARENT,
+    "priority": IssueChangeField.PRIORITY,
+    "components": IssueChangeField.COMPONENTS,
+    "summary": IssueChangeField.SUMMARY,
+    "description": IssueChangeField.DESCRIPTION,
+}
+# A system field by the name its history item carries (Data Center has no id).
+_SYSTEM_CHANGE_FIELD_NAMES: Mapping[str, IssueChangeField] = {
+    "status": IssueChangeField.STATUS,
+    "resolution": IssueChangeField.RESOLUTION,
+    "assignee": IssueChangeField.ASSIGNEE,
+    "duedate": IssueChangeField.DUE_DATE,
+    "fix version": IssueChangeField.FIX_VERSION,
+    "labels": IssueChangeField.LABELS,
+    "issuetype": IssueChangeField.ISSUE_TYPE,
+    "parent": IssueChangeField.PARENT,
+    "issueparentassociation": IssueChangeField.PARENT,
+    "priority": IssueChangeField.PRIORITY,
+    "component": IssueChangeField.COMPONENTS,
+    "summary": IssueChangeField.SUMMARY,
+    "description": IssueChangeField.DESCRIPTION,
+}
+# Custom fields every Jira names the same way, whatever their id.
+_CUSTOM_CHANGE_FIELD_NAMES: Mapping[str, IssueChangeField] = {
+    "sprint": IssueChangeField.SPRINT,
+    "epic link": IssueChangeField.PARENT,
+    "parent link": IssueChangeField.PARENT,
+}
+# Fields holding a set: a change lists what left the set and what joined it.
+_SET_FIELDS = frozenset(
+    {
+        IssueChangeField.FIX_VERSION,
+        IssueChangeField.LABELS,
+        IssueChangeField.COMPONENTS,
+        IssueChangeField.SPRINT,
+    }
+)
+_ISSUE_KEY = re.compile(r"\b[A-Z][A-Z0-9_]+-\d+\b")
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}")
+
+
+@dataclass(frozen=True)
+class _ChangeFieldMatcher:
+    story_points_field: str | None
+    severity_field: str | None
+    #: Casefolded custom field name -> kept field, for items without an id.
+    custom_names: Mapping[str, IssueChangeField]
+
+    def match(self, item: Mapping[str, object]) -> IssueChangeField | None:
+        field_id = _optional_string(item, "fieldId")
+        name = (_optional_string(item, "field") or "").strip().casefold()
+        custom = item.get("fieldtype") == "custom"
+        if field_id is not None:
+            if field_id == self.story_points_field:
+                return IssueChangeField.STORY_POINTS
+            if field_id == self.severity_field:
+                return IssueChangeField.SEVERITY
+            if field_id in _CHANGE_FIELD_IDS:
+                return _CHANGE_FIELD_IDS[field_id]
+            if field_id.startswith("customfield_"):
+                return _CUSTOM_CHANGE_FIELD_NAMES.get(name)
+            return None
+        if custom:
+            return self.custom_names.get(name) or _CUSTOM_CHANGE_FIELD_NAMES.get(name)
+        return _SYSTEM_CHANGE_FIELD_NAMES.get(name)
+
+
+def _history_changes(
+    tenant_id: str,
+    history: Mapping[str, object],
+    at: datetime,
+    matcher: _ChangeFieldMatcher,
+) -> list[IssueChange]:
+    """One change per kept field of a history, several items of one field merged."""
+    history_id = _optional_string(history, "id")
+    if history_id is None:
+        return []
+    author_payload = _optional_mapping(history, "author")
+    author_id = _user_id(author_payload)
+    author = (
+        UserRef(
+            tenant_id=tenant_id,
+            external_id=author_id,
+            display_name=_optional_string(author_payload, "displayName"),
+        )
+        if author_payload is not None and author_id is not None
+        else None
+    )
+    grouped: dict[IssueChangeField, list[Mapping[str, object]]] = {}
+    for item in _items(history, "items"):
+        kept = matcher.match(item)
+        if kept is not None:
+            grouped.setdefault(kept, []).append(item)
+    changes: list[IssueChange] = []
+    for kept, items in grouped.items():
+        values = _change_values(kept, items)
+        if values is None:
+            continue
+        changes.append(
+            IssueChange(
+                history_id=history_id,
+                author=author,
+                at=at,
+                field=kept,
+                from_value=values[0],
+                to_value=values[1],
+            )
+        )
+    return changes
+
+
+def _change_values(
+    kept: IssueChangeField, items: Sequence[Mapping[str, object]]
+) -> tuple[str | None, str | None] | None:
+    """From and to for one field, or None when nothing really changed."""
+    if kept in VALUELESS_CHANGE_FIELDS:
+        return None, None
+    if kept in _SET_FIELDS:
+        before: set[str] = set()
+        after: set[str] = set()
+        for item in items:
+            before.update(_set_values(kept, _optional_string(item, "fromString")))
+            after.update(_set_values(kept, _optional_string(item, "toString")))
+        removed, added = before - after, after - before
+        if not removed and not added:
+            return None
+        return _joined(sorted(removed)), _joined(sorted(added))
+    first, last = items[0], items[-1]
+    from_value = _single_value(kept, first, "from")
+    to_value = _single_value(kept, last, "to")
+    if from_value == to_value:
+        return None
+    return from_value, to_value
+
+
+def _set_values(kept: IssueChangeField, text: str | None) -> list[str]:
+    if not text:
+        return []
+    if kept is IssueChangeField.LABELS:
+        return text.split()
+    if kept is IssueChangeField.SPRINT:
+        return [part.strip() for part in text.split(",") if part.strip()]
+    return [text.strip()] if text.strip() else []
+
+
+def _single_value(kept: IssueChangeField, item: Mapping[str, object], side: str) -> str | None:
+    """One side of a single-valued change: names, ids, dates or numbers, never free text."""
+    raw = _optional_string(item, side)
+    text = _optional_string(item, f"{side}String")
+    if kept is IssueChangeField.ASSIGNEE:
+        # The account id (Cloud) or user name (Data Center); the name is dropped.
+        return raw
+    if kept is IssueChangeField.DUE_DATE:
+        for value in (raw, text):
+            if value and _ISO_DATE.match(value):
+                return value[:10]
+        return None
+    if kept is IssueChangeField.STORY_POINTS:
+        for value in (text, raw):
+            if not value:
+                continue
+            try:
+                return _number_text(float(value))
+            except ValueError:
+                continue
+        return None
+    if kept is IssueChangeField.PARENT:
+        found = _ISSUE_KEY.search(text or "")
+        return found.group(0) if found else None
+    return text.strip() if text and text.strip() else None
 
 
 def _issue_state(status: Mapping[str, object]) -> IssueState:

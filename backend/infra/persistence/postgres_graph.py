@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
-from contextlib import AbstractAsyncContextManager
+from collections.abc import AsyncIterator, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import date, datetime
 from typing import Protocol
 
@@ -26,6 +26,8 @@ from core.domain.identity import IdentityLink
 from core.domain.writeback import WriteBackAudit, WriteBackStatus
 
 _tracer = trace.get_tracer("openprogram.persistence.graph")
+# How long a write-back answer waits for another answer of its correlation.
+_ANSWER_LOCK_TIMEOUT = "30s"
 
 # Cypher relationship labels cannot be bound as parameters, so the AGE sync
 # interpolates them. Keeping the mapping here makes it explicit that the only
@@ -597,6 +599,28 @@ class PostgresGraphRepository:
                 (tenant_id, audit_id),
             )
         return _writeback_audit_from_row(rows[0]) if rows else None
+
+    @asynccontextmanager
+    async def exclusive_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> AsyncIterator[None]:
+        """A transaction-scoped advisory lock on (tenant, correlation) for one answer.
+
+        Taken on a connection of its own and held while the answer reads the
+        proposal pending and writes on others: a second answer of the same
+        correlation, from the chat or the console, in this process or another,
+        waits for the first to finish, then reads its row. The lock goes with
+        the transaction, so an answer that fails never leaves it held. No table
+        or migration: the key is the tenant and the correlation.
+        """
+        with _tracer.start_as_current_span("postgres.graph.exclusive_correlation"):
+            async with self._executor.transaction() as session:
+                await session.execute(f"SET LOCAL lock_timeout = '{_ANSWER_LOCK_TIMEOUT}'")
+                await session.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                    (f"openprogram:writeback:{tenant_id}:{correlation_id}",),
+                )
+                yield
 
     async def count_applied_writebacks(self, tenant_id: str, since: datetime | None = None) -> int:
         with _tracer.start_as_current_span("postgres.graph.count_applied_writebacks"):

@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from api.baseline_dtos import ForecastReconstructionRequest
 from api.dependencies import get_config_service, get_current_principal, get_registry
 from api.dtos import (
     CalendarSyncDispatchRequest,
@@ -38,9 +39,9 @@ async def dispatch_checkin(
             developer_id=request.developer_id,
             developer_name=request.developer_name,
             chat_external_id=request.chat_external_id,
-            checkin_date=request.checkin_date.isoformat()
-            if request.checkin_date is not None
-            else None,
+            # Left out, the tenant's today, the day the console reads check-ins
+            # on, not the UTC date the workflow would give it.
+            checkin_date=(request.checkin_date or registry.tenant_today()).isoformat(),
         )
     )
     return WorkflowDispatchResponse(workflow_id=workflow_id)
@@ -111,6 +112,26 @@ async def dispatch_calendar_sync(
             connector="calendar",
             scope=f"user:{request.user_id}",
             payload=payload,
+        )
+    )
+    return WorkflowDispatchResponse(workflow_id=workflow_id)
+
+
+@router.post("/forecast-days/reconstruct", response_model=WorkflowDispatchResponse)
+async def dispatch_forecast_reconstruction(
+    request: ForecastReconstructionRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    registry: Annotated[ServiceRegistry, Depends(get_registry)],
+) -> WorkflowDispatchResponse:
+    """Rebuild the forecast of the days before today from the stored snapshots, for the
+    principal's tenant: the snapshot run, with reconstruct_days. Days the hourly run kept stay."""
+    _ensure_admin_dispatch(principal)
+    workflow_id = await registry.workflow_scheduler().dispatch_sync(
+        SyncDispatchInput(
+            tenant_id=principal.tenant_id,
+            connector="delivery_snapshot",
+            scope="forecast-days",
+            payload={"reconstruct_days": request.days},
         )
     )
     return WorkflowDispatchResponse(workflow_id=workflow_id)

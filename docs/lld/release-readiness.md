@@ -109,7 +109,9 @@ decides, the first of:
 4. a manager from the pods' escalation contacts.
 
 Several people at one step: the first by name. "Nobody named yet" only when all
-four are empty. The ask climbs the project's matrix from the day the gap
+four are empty. A criterion naming an `owner_profile` also gets a fix ask to
+that profile's holder in the scope's pods (`docs/lld/profiles.md`); the
+decision ask stays as above. The ask climbs the project's matrix from the day the gap
 entered its window, from the pod its decider was found on (else the gap's pod,
 or the project's first pod by name); a manager's ask climbs only to a level
 that names a member. With the agent off or no criteria the report is unchanged

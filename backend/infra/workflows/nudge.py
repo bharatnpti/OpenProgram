@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
+from core.domain.checkin_rungs import RUNG_SENT, rung_fact
 from core.domain.escalation import (
     EscalationContact,
     EscalationTarget,
@@ -176,6 +177,14 @@ async def send_checkin_nudge_activity(payload: NudgeInput) -> NudgeResult:
             developer_name=payload.developer_name,
             chat_external_id=payload.chat_external_id,
         )
+        await _record_rung(
+            registry,
+            checkin,
+            as_of=payload.as_of,
+            nudge_number=1,
+            target=EscalationTarget.DEVELOPER,
+            action=RUNG_SENT,
+        )
         return NudgeResult(
             tenant_id=payload.tenant_id,
             developer_id=checkin.developer_id,
@@ -240,6 +249,14 @@ async def send_escalation_step_activity(payload: EscalationStepInput) -> NudgeRe
         if delivery.action != "send":
             if delivery.action == SUPPRESSED_REPLIED:
                 _log_suppressed_for_reply(payload, checkin, target)
+            await _record_rung(
+                registry,
+                checkin,
+                as_of=payload.as_of,
+                nudge_number=payload.nudge_number,
+                target=target,
+                action=delivery.action,
+            )
             return NudgeResult(
                 tenant_id=payload.tenant_id,
                 developer_id=checkin.developer_id,
@@ -257,6 +274,14 @@ async def send_escalation_step_activity(payload: EscalationStepInput) -> NudgeRe
             recipient_chat_external_id=delivery.recipient_chat_external_id,
             recipient_display_name=delivery.recipient_display_name,
         )
+        await _record_rung(
+            registry,
+            checkin,
+            as_of=payload.as_of,
+            nudge_number=payload.nudge_number,
+            target=target,
+            action=RUNG_SENT,
+        )
         return NudgeResult(
             tenant_id=payload.tenant_id,
             developer_id=checkin.developer_id,
@@ -266,6 +291,64 @@ async def send_escalation_step_activity(payload: EscalationStepInput) -> NudgeRe
         )
     finally:
         await registry.close()
+
+
+async def _record_rung(
+    registry: ServiceRegistry,
+    checkin: CheckIn,
+    *,
+    as_of: str,
+    nudge_number: int,
+    target: EscalationTarget,
+    action: str,
+) -> None:
+    """Keep the rung's outcome, whom it was for and what happened, for the pod's readers.
+
+    ``checkin_nudges`` keeps a sent rung by its number only; this says which
+    rung it was, and why one did not go out. Best effort: a failed write never
+    stops the ladder, and the pod page then reads the rung against today's
+    ladder. Kept on the person's first pod; someone in no pod is on no pod page.
+    """
+    import structlog
+
+    log = structlog.get_logger(__name__)
+    try:
+        graph = registry.graph_repository()
+        day = date.fromisoformat(as_of)
+        pod_id: str | None = None
+        for edge in await graph.active_developer_memberships(
+            checkin.tenant_id, checkin.developer_id, day
+        ):
+            candidate = (
+                edge.to_node_id if edge.from_node_id == checkin.developer_id else edge.from_node_id
+            )
+            node = await graph.get_node(checkin.tenant_id, candidate)
+            if node is not None and node.kind is NodeKind.POD:
+                pod_id = node.id
+                break
+        if pod_id is None:
+            return
+        await registry.time_series_repository().append_fact_once(
+            rung_fact(
+                tenant_id=checkin.tenant_id,
+                pod_id=pod_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+                checkin_date=as_of,
+                nudge_number=nudge_number,
+                target=target,
+                action=action,
+                observed_at=datetime.now(tz=UTC),
+            )
+        )
+    except Exception as error:
+        log.warning(
+            "checkin_rung_fact_failed",
+            tenant_id=checkin.tenant_id,
+            correlation_id=checkin.correlation_id,
+            nudge_number=nudge_number,
+            error=type(error).__name__,
+        )
 
 
 async def _developer_has_replied(

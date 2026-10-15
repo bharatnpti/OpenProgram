@@ -25,31 +25,46 @@ export function currentViewingAsOf(): string | null {
  * that adds or drops `as_of` fails the tests until the list follows.
  */
 export const DATED_READS = [
+  "/cross-person-requests/counts",
+  "/cross-person-requests/resolved",
+  "/cross-person-requests/{request_id}/trail",
   "/graph/programs/{program_id}/tree",
   "/me/delivery-tree",
   "/me/focus",
+  "/me/profiles",
   "/me/status",
+  "/me/today-counts",
   "/persona/{level}/{entity_id}/trend",
   "/pods",
   "/pods/{pod_id}/blockers",
   "/pods/{pod_id}/checkins",
   "/pods/{pod_id}/delivery",
+  "/pods/{pod_id}/profiles",
   "/pods/{pod_id}/rollup",
   "/pods/{pod_id}/tasks",
+  "/pods/{pod_id}/timeline",
   "/portfolio/attention",
+  "/portfolio/delivery",
   "/portfolio/flow",
   "/portfolio/heatmap",
   "/portfolio/pr-flow",
   "/portfolio/risks",
+  "/portfolio/scope",
+  "/portfolio/warnings",
   "/programs",
   "/programs/{program_id}/tree",
   "/projects",
+  "/projects/{project_id}/asks",
+  "/projects/{project_id}/baselines",
+  "/projects/{project_id}/checkin-coverage",
   "/projects/{project_id}/delivery",
   "/projects/{project_id}/delivery/history",
+  "/projects/{project_id}/delivery/impact",
   "/projects/{project_id}/gates",
   "/projects/{project_id}/progress",
   "/projects/{project_id}/requirements",
   "/projects/{project_id}/risks",
+  "/projects/{project_id}/timeline",
   "/projects/{project_id}/workstreams",
   "/workstreams",
   "/workstreams/{workstream_id}",
@@ -86,11 +101,11 @@ export function withViewingAsOf(
 
 /**
  * The day the backend reads as today, or null until it has said. A dated read
- * sent without `as_of` answers for the server's `date.today()` and echoes that
- * day, so the console learns it from the answers it gets anyway. Counting by
- * it keeps the console and the API on one calendar: a UTC browser and an IST
- * server otherwise disagree from 00:00 to 05:30, and the day before cannot be
- * picked.
+ * sent without `as_of` answers for the tenant's today (in the tenant's time
+ * zone, `as_of_or_tenant_today`) and echoes that day, so the console learns it
+ * from the answers it gets anyway. Counting by it keeps the console and the API
+ * on one calendar: a browser in another zone otherwise disagrees with the
+ * tenant for part of every day, and the day before cannot be picked.
  */
 let serverToday: string | null = null;
 const serverTodayListeners = new Set<() => void>();

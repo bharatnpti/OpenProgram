@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from datetime import time as time_of_day
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -36,6 +37,10 @@ from core.ports.llm import LlmProvider
 from infra.registry import ServiceRegistry
 from tests.contract.fakes import FakeIssueTracker
 from tests.fixtures.demo_graph import populate_demo_graph
+
+# A container-mode registry opens its Postgres pool on first use. These tests give it an
+# address nothing listens on: the settings' own default is the developer stack's database.
+UNREACHABLE_DATABASE_URL = "postgresql://x:x@127.0.0.1:1/x"
 
 
 def test_health_and_graph_routes(settings: Settings) -> None:
@@ -449,6 +454,7 @@ def test_admin_directory_sync_missing_slack_token_returns_424(settings: Settings
         settings=settings.model_copy(
             update={
                 "runtime_mode": "container",
+                "database_url": UNREACHABLE_DATABASE_URL,
                 "slack_bot_token": None,
             }
         )
@@ -1027,14 +1033,23 @@ def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
     assert tree.json()["root_id"] == "program-platform"
     assert heatmap.status_code == 200
     # An exec's heat tile opens the project it names: progress is aggregate, and
-    # its factors are the ones the program tree already gives the exec.
+    # its factors are the ones the program tree gives, with nobody in them:
+    # no person's own status, and a blocker without its owner's words.
     assert project.status_code == 200
     assert project.json()["total_tasks"] == 4
     tree_project = next(
         node for node in tree.json()["nodes"] if node["id"] == "project-foundations"
     )
-    assert project.json()["factors"]
-    assert project.json()["factors"] == tree_project["factors"]
+
+    def person_status(factor: dict[str, Any]) -> bool:
+        return factor["kind"] == "status" and factor["source_ref"]["kind"] == "developer"
+
+    factors = project.json()["factors"]
+    assert not any(person_status(factor) for factor in factors)
+    assert [(f["kind"], f["source_ref"]) for f in factors] == [
+        (f["kind"], f["source_ref"]) for f in tree_project["factors"] if not person_status(f)
+    ]
+    assert all(f["description"] == "Open blocker." for f in factors if f["kind"] == "blocker")
     assert workstream.status_code == 200
     assert workstream.json()["workstream_id"] == "workstream-runtime-config-admin"
     # Pod check-ins and blockers are per-person and stay with SM and manager.
@@ -1757,7 +1772,8 @@ def test_admin_config_crud_populates_directory_and_dashboards(settings: Settings
             }
         )
     )
-    as_of = date.today().isoformat()
+    # The config API makes links on the tenant's today, so the reads ask for that day.
+    as_of = app.state.registry.tenant_today().isoformat()
     with TestClient(app) as client:
         empty_programs = client.get("/programs")
         program = client.post(
@@ -1915,8 +1931,9 @@ def test_directory_names_workstream_people_for_every_role_that_opens_delivery(
 ) -> None:
     """The member list is admin-only, so the directory carries the names.
 
-    Delivery shows a workstream's owner, TPM and SM to every role that opens it.
-    Without names in the directory response those roles could only show ids.
+    Delivery shows a workstream's owner, TPM and SM to every role that opens it
+    but an executive, who reads no person: theirs lists none, and names
+    no owner, TPM or scrum master in its metadata either.
     """
     app = create_app(settings=settings.model_copy(update={"demo_mode": True}))
     with TestClient(app) as client:
@@ -1955,6 +1972,11 @@ def test_directory_names_workstream_people_for_every_role_that_opens_delivery(
     for role, (members_status, listing, detail) in by_role.items():
         assert members_status == 403, role
         assert listing.status_code == 200, role
+        if role == "exec":
+            assert listing.json()[0]["people"] == [], role
+            assert detail.json()["people"] == [], role
+            assert not {"owner_id", "tpm_id", "sm_id"} & set(listing.json()[0]["metadata"]), role
+            continue
         assert listing.json()[0]["people"] == expected, role
         assert detail.json()["people"] == expected, role
         # The stored ids are untouched, so the admin form still round-trips them.
@@ -2141,6 +2163,7 @@ def _container_slack_settings(settings: Settings) -> Settings:
     return settings.model_copy(
         update={
             "runtime_mode": "container",
+            "database_url": UNREACHABLE_DATABASE_URL,
             "chat_provider": "slack",
             "slack_bot_token": "xoxb-test",
             "slack_signing_secret": "signing-secret",

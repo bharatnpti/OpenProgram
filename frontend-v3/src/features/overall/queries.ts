@@ -1,7 +1,8 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../../api/client";
-import { readsReadiness } from "../../app/access";
+import type { Measure, PeriodKind } from "../../api/schema";
+import { readsHygiene, readsReadiness } from "../../app/access";
 import { useOwnTree } from "../../app/directory";
 import { sameOnEveryDay } from "../../app/queryCache";
 import { useRole } from "../../app/role";
@@ -21,15 +22,17 @@ export const SLIP_DAYS = 30;
 /**
  * The requirements read leaves its days to the server: 30, or the forecast's
  * window when the tenant's minimum needs more, so the flow can reach that
- * minimum whenever the forecast can (`timeline_days` says which).
+ * minimum whenever the forecast can (`timeline_days` says which). A pod's part
+ * (`podId`, the requirements below the pod) is its own entry.
  */
-export function useRequirements(projectId: string, releaseId?: string) {
+export function useRequirements(projectId: string, releaseId?: string, podId?: string) {
   const { canReadProjectProgress } = useRole();
   return {
     readable: canReadProjectProgress,
     query: useQuery({
-      queryKey: ["requirements", projectId, releaseId ?? ""],
-      queryFn: () => apiClient.projectRequirements(projectId, undefined, undefined, releaseId),
+      queryKey: ["requirements", projectId, releaseId ?? "", podId ?? ""],
+      queryFn: () =>
+        apiClient.projectRequirements(projectId, undefined, undefined, releaseId, podId),
       enabled: canReadProjectProgress && projectId !== "",
     }),
   };
@@ -67,6 +70,87 @@ export function useForecastHistory(projectId: string, releaseId?: string) {
       queryKey: ["delivery-history", projectId, releaseId ?? ""],
       queryFn: () => apiClient.projectForecastHistory(projectId, undefined, releaseId, SLIP_DAYS),
       enabled: canReadProjectProgress && projectId !== "",
+    }),
+  };
+}
+
+/**
+ * The planning baselines of the project or one release, read with the project's
+ * progress (product owner, manager, executive, admin), as the forecast is.
+ */
+export function useBaselines(projectId: string, releaseId?: string) {
+  const { canReadProjectProgress } = useRole();
+  return {
+    readable: canReadProjectProgress,
+    query: useQuery({
+      queryKey: ["baselines", projectId, releaseId ?? ""],
+      queryFn: () => apiClient.projectBaselines(projectId, releaseId),
+      enabled: canReadProjectProgress && projectId !== "",
+    }),
+  };
+}
+
+/**
+ * The project's (or one release's) timeline: its row, its releases and its pods,
+ * each worded by the server for the reader (a scrum master gets the pods only).
+ * Read by the forecast's readers and by whoever sets a pod's date; `readable`
+ * says this reader may read this one project where the role decides otherwise.
+ */
+export function useTimeline(projectId: string, releaseId?: string, readable?: boolean) {
+  const { access } = useRole();
+  const can = readable ?? access.overall.timeline;
+  return {
+    readable: can,
+    query: useQuery({
+      queryKey: ["timeline", "project", projectId, releaseId ?? ""],
+      queryFn: () => apiClient.projectTimeline(projectId, releaseId),
+      enabled: can && projectId !== "",
+    }),
+  };
+}
+
+/** A pod's own row, for each project it works on, under the pod's dates' gate. */
+export function usePodTimeline(podId: string, readable: boolean) {
+  return {
+    readable,
+    query: useQuery({
+      queryKey: ["timeline", "pod", podId],
+      queryFn: () => apiClient.podTimeline(podId),
+      enabled: readable && podId !== "",
+    }),
+  };
+}
+
+/**
+ * Why one row's date moved over a period (GET /projects/{id}/delivery/impact):
+ * the project's, a release's or a pod's, on the 85% or the 50% date.
+ */
+export function useImpact(
+  projectId: string,
+  row: { scope_kind: string; scope_id: string } | null,
+  period: PeriodKind,
+  measure: Measure,
+  readable: boolean,
+) {
+  return {
+    readable,
+    query: useQuery({
+      queryKey: [
+        "delivery-impact",
+        projectId,
+        row?.scope_kind ?? "",
+        row?.scope_id ?? "",
+        period,
+        measure,
+      ],
+      queryFn: () =>
+        apiClient.deliveryImpact(projectId, {
+          period,
+          measure,
+          releaseId: row?.scope_kind === "release" ? row.scope_id : undefined,
+          podId: row?.scope_kind === "pod" ? row.scope_id : undefined,
+        }),
+      enabled: readable && projectId !== "" && row !== null,
     }),
   };
 }
@@ -111,13 +195,16 @@ export function usePodDeliveries(podIds: string[]) {
   });
 }
 
-/** Gates open to project-progress readers and to everyone who may edit gates (all but exec). */
-export function useGateBoard(projectId: string, releaseId?: string) {
+/**
+ * Gates open to project-progress readers and to everyone who may edit gates (all
+ * but exec). A pod's part (`podId`, the requirements below the pod) is its own entry.
+ */
+export function useGateBoard(projectId: string, releaseId?: string, podId?: string) {
   return {
     readable: true,
     query: useQuery({
-      queryKey: ["gates", projectId, releaseId ?? ""],
-      queryFn: () => apiClient.gateBoard(projectId, undefined, releaseId),
+      queryKey: ["gates", projectId, releaseId ?? "", podId ?? ""],
+      queryFn: () => apiClient.gateBoard(projectId, undefined, releaseId, podId),
       enabled: projectId !== "",
     }),
   };
@@ -147,6 +234,26 @@ export function useReadiness(projectId: string, releaseId?: string) {
     query: useQuery({
       queryKey: ["readiness", projectId, releaseId ?? ""],
       queryFn: () => apiClient.projectReadiness(projectId, releaseId),
+      enabled: readable && projectId !== "",
+      ...sameOnEveryDay,
+    }),
+  };
+}
+
+/**
+ * Jira hygiene: read as it stands now whatever day is viewed (the scan keeps no
+ * history), by the readiness board's readers only (`readsHygiene`). The release
+ * and the pod a filter picks are part of the key.
+ */
+export function useHygiene(projectId: string, releaseId?: string, podId?: string) {
+  const { access } = useRole();
+  const tree = useOwnTree(access.hygiene.board && !access.hygiene.everyProject);
+  const readable = readsHygiene(access, projectId, tree.data);
+  return {
+    readable,
+    query: useQuery({
+      queryKey: ["hygiene", projectId, releaseId ?? "", podId ?? ""],
+      queryFn: () => apiClient.projectHygiene(projectId, { releaseId, podId }),
       enabled: readable && projectId !== "",
       ...sameOnEveryDay,
     }),

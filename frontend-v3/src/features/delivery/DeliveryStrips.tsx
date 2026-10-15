@@ -12,7 +12,6 @@ import { useDelivery } from "../overall/queries";
 import { DeliveryDateDialog } from "../reports/DeliveryDateDialog";
 import { Locked } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
-import { DateHistory } from "./DateHistory";
 
 /*
  * The DateStrip wherever a project or pod is shown, each reading its own
@@ -197,9 +196,7 @@ export function PodDateStrips({
                     ) : null}
                   </>
                 }
-              >
-                <DateHistory changes={item.pod.commitment.changes} />
-              </DateStrip>
+              />
             );
           })}
         </div>

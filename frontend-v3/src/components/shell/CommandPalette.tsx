@@ -15,6 +15,7 @@ import { RagDot } from "../ui/Bits";
 import {
   askRow,
   directoryRows,
+  hubTabRows,
   matchRows,
   noPodNote,
   ownRows,
@@ -90,7 +91,7 @@ export function CommandPalette({
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30" />
         <Dialog.Content
           aria-describedby={undefined}
-          className="fixed left-1/2 top-[10vh] z-50 w-[min(92vw,620px)] -translate-x-1/2 overflow-hidden rounded-3xl bg-white shadow-op-palette animate-op-pop"
+          className="op-shell fixed left-1/2 top-[10vh] z-50 w-[min(92vw,620px)] -translate-x-1/2 overflow-hidden rounded-3xl bg-(--op-viz-surface) shadow-op-palette animate-op-pop"
           onOpenAutoFocus={() => {
             const focused = document.activeElement;
             returnTo.current = focused instanceof HTMLElement ? focused : null;
@@ -141,7 +142,15 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
 
   const assistant = useAssistantControl();
   const asks = roleState.access.assistant && assistant !== null;
-  const targets = useMemo(() => paletteTargets(roleState.access), [roleState.access]);
+  // A workstream opens in its first project's Work section.
+  const targets = useMemo(
+    () =>
+      paletteTargets(
+        roleState.access,
+        (id) => directory.workstreams.find((item) => item.id === id)?.project_ids ?? [],
+      ),
+    [directory.workstreams, roleState.access],
+  );
   // Under the `own` scope the palette lists what that person's Delivery lists, and
   // people only in the pods whose whole panel (their check-ins) is theirs to open.
   const own = roleState.access.deliveryScope === "own";
@@ -159,6 +168,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
     const found = matchRows(
       [
         ...screenRows(shownNav(roleState.access)),
+        ...hubTabRows(roleState.access.hub.tabs.all),
         ...(asks && ask.key === "ask" ? [ask] : []),
         ...nodes,
         ...(own && !tree.data ? [] : peopleRows(named, peoplePods, targets.person)),

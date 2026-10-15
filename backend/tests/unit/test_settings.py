@@ -75,6 +75,16 @@ def test_settings_reject_invalid_auth_cookie_and_role_map_config() -> None:
         _settings(secret_key=SECRET_KEY, oidc_role_map_json='{"group":"unknown"}')
 
 
+def test_the_jira_history_read_is_bounded_and_can_be_switched_off() -> None:
+    settings = _settings(secret_key=SECRET_KEY)
+    assert (settings.jira_changes_per_tick, settings.jira_changes_backfill_days) == (200, 120)
+    assert _settings(secret_key=SECRET_KEY, jira_changes_per_tick=0).jira_changes_per_tick == 0
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, jira_changes_per_tick=-1)
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, jira_changes_backfill_days=0)
+
+
 def test_settings_validate_safe_auth_return_url() -> None:
     settings = _settings(
         secret_key=SECRET_KEY,

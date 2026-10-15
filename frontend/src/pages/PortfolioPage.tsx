@@ -266,16 +266,19 @@ export function PortfolioPage() {
                           {data.items.length} events
                         </div>
                         <div className="divide-y divide-border rounded-md border border-border">
-                          {data.items.map((item) => (
+                          {data.items.map((item, index) => (
                             <div
-                              key={`${item.source}:${item.entity_ref.kind}:${item.entity_ref.id}:${item.observed_at}`}
+                              key={`${item.source}:${item.entity_ref?.kind ?? index}:${item.entity_ref?.id ?? ""}:${item.observed_at}`}
                               className="px-3 py-2"
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <div className="truncate text-sm font-medium">{item.summary}</div>
                                   <div className="mt-0.5 text-xs text-muted-foreground">
-                                    {item.entity_ref.kind}:{item.entity_ref.id} · {item.source}
+                                    {item.entity_ref
+                                      ? `${item.entity_ref.kind}:${item.entity_ref.id}`
+                                      : "a person"}{" "}
+                                    · {item.source}
                                   </div>
                                 </div>
                                 <div className="shrink-0 text-xs text-muted-foreground">

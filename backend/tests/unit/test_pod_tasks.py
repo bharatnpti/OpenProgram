@@ -13,15 +13,24 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from config.settings import Settings
 from core.application.ask_service import PodBlockersTool
-from core.application.persona_views import PersonaViewService
+from core.application.blocker_resolution import BlockerResolutionService
+from core.application.persona_views import (
+    BlockerPodView,
+    BlockerView,
+    PersonaViewService,
+    confirmed_with_listed_blockers,
+)
+from core.application.rollup_service import CONFIRMED_NO_BLOCKERS_REASON, RollupService
 from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
     Developer,
     EdgeKind,
+    EntityRef,
     FactEvent,
     GraphEdge,
     GraphNode,
+    NodeKind,
     Pod,
     Project,
     Task,
@@ -259,6 +268,107 @@ async def test_a_blocker_listed_where_it_does_not_count_changes_no_rollup_or_col
     assert rollups["pod-platform"].rag not in {Rag.AMBER, Rag.RED}
 
 
+async def test_a_green_pods_reason_names_the_blocker_its_list_holds_and_where_it_counts() -> None:
+    """The Platform Pod read "All child statuses are confirmed with no blockers." over
+    "1 open blocker": Omar's IDP-6 blocker, listed there and counted in the Identity Pod.
+
+    The reason now says what the list holds and where it counts. The colour, the
+    line's own colour and the stored rollup stay as they were, and the blocker still
+    counts only in the Identity Pod.
+    """
+    store = await _idp6_store()
+    service = _service(store)
+    computed = await service.pod_rollup("demo", "pod-platform", AS_OF)
+    platform_ref = EntityRef(tenant_id="demo", kind=NodeKind.POD, id="pod-platform")
+    tree = await store.get_program_tree("demo", "pod-platform", AS_OF)
+    stored = next(
+        status
+        for status in await RollupService(
+            store, store, BlockerResolutionService(store, store)
+        ).compute(tree, AS_OF)
+        if status.entity_ref == platform_ref
+    )
+    await store.record_node_status(stored)
+
+    view = await service.pod_rollup("demo", "pod-platform", AS_OF)
+    blockers = await service.pod_blockers("demo", "pod-platform", AS_OF)
+
+    assert len(blockers.blockers) == 1
+    (reason,) = view.factors
+    assert reason.description == (
+        "All child statuses are confirmed; 1 open blocker (IDP-6, Omar, 4 days), "
+        "counted in Identity Pod."
+    )
+    assert (reason.kind, reason.contributes) == (FactorKind.AGGREGATE, Rag.GREEN)
+    assert view.rag is Rag.GREEN
+    assert computed.factors == view.factors
+    # Only the read's words: the stored row keeps its line.
+    recorded = await store.latest_node_status("demo", platform_ref, AS_OF)
+    assert recorded is not None
+    assert [factor.description for factor in recorded.factors] == [CONFIRMED_NO_BLOCKERS_REASON]
+    identity = await service.pod_rollup("demo", "pod-identity", AS_OF)
+    assert [factor.kind for factor in identity.factors] == [FactorKind.BLOCKER]
+    assert identity.rag is Rag.AMBER
+
+
+async def test_a_green_pod_with_nothing_on_its_blocker_list_keeps_its_no_blockers_line() -> None:
+    store = InMemoryGraphStore()
+    pod = Pod(tenant_id="demo", id="pod-quiet", name="Quiet Pod")
+    lea = Developer(tenant_id="demo", id="dev-lea", name="Lea")
+    await _add(store, pod, lea)
+    await _edge(store, pod.id, lea.id)
+    await store.record_developer_status_with_blockers(_status(lea.id), ())
+
+    view = await _service(store).pod_rollup("demo", "pod-quiet", AS_OF)
+
+    assert [factor.description for factor in view.factors] == [CONFIRMED_NO_BLOCKERS_REASON]
+    assert view.rag is Rag.GREEN
+
+
+def _listed(work: str | None, owner: str, age: int, *, counted_in: str | None) -> BlockerView:
+    ref = EntityRef(tenant_id="demo", kind=NodeKind.TASK, id=work) if work else None
+    return BlockerView(
+        id=f"blk-{owner}-{age}",
+        blocker_id=f"blk-{owner}-{age}",
+        description="waiting",
+        age_days=age,
+        owner_id=f"dev-{owner}",
+        owner_name=owner,
+        source=StatusSource.CONFIRMED,
+        status_as_of=AS_OF,
+        source_ref=ref or EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id=owner),
+        work_item_ref=ref,
+        pod_ref=None,
+        unattributed=False,
+        first_seen_on=AS_OF - timedelta(days=age),
+        counted_here=counted_in is None,
+        counted_in=(BlockerPodView(id="pod-x", name=counted_in),) if counted_in else (),
+    )
+
+
+def test_the_reason_names_a_few_blockers_oldest_first_and_says_where_they_count() -> None:
+    two = confirmed_with_listed_blockers(
+        [
+            _listed("IDP-6", "Omar Haddad", 5, counted_in="Identity Pod"),
+            _listed(None, "Lea Novak", 1, counted_in=None),
+        ]
+    )
+    five = confirmed_with_listed_blockers(
+        [_listed(f"IDP-{n}", "Omar Haddad", n, counted_in="Identity Pod") for n in (9, 8, 7, 6)]
+        + [_listed("IDP-1", "Omar Haddad", 0, counted_in="Payments Pod")]
+    )
+
+    assert two == (
+        "All child statuses are confirmed; 2 open blockers (IDP-6, Omar Haddad, 5 days; "
+        "Lea Novak, 1 day), 1 counted in Identity Pod."
+    )
+    assert five == (
+        "All child statuses are confirmed; 5 open blockers (IDP-9, Omar Haddad, 9 days; "
+        "IDP-8, Omar Haddad, 8 days; IDP-7, Omar Haddad, 7 days; and 2 more), "
+        "counted in Identity Pod and Payments Pod."
+    )
+
+
 async def test_a_members_blocker_on_work_the_pod_does_not_list_stays_off_its_list() -> None:
     """Sam's blocker counts in pod-b on pod-b's work; pod-a lists no task it marks."""
     store = InMemoryGraphStore()
@@ -331,12 +441,19 @@ def test_the_pod_blockers_route_says_where_a_listed_blocker_counts(settings: Set
 
         asyncio.run(seed())
         response = client.get(f"/pods/pod-platform/blockers?as_of={AS_OF.isoformat()}")
+        rollup = client.get(f"/pods/pod-platform/rollup?as_of={AS_OF.isoformat()}")
 
     assert response.status_code == 200, response.text
     (blocker,) = response.json()["blockers"]
     assert blocker["work_item_ref"]["id"] == "IDP-6"
     assert blocker["counted_here"] is False
     assert blocker["counted_in"] == [{"id": "pod-identity", "name": "Identity Pod"}]
+    # The pod's reason, read by the same panel, agrees with that list.
+    assert rollup.status_code == 200, rollup.text
+    assert [factor["description"] for factor in rollup.json()["factors"]] == [
+        "All child statuses are confirmed; 1 open blocker (IDP-6, Omar, 4 days), "
+        "counted in Identity Pod."
+    ]
 
 
 async def test_pod_tasks_include_another_projects_workstream_the_pod_serves() -> None:

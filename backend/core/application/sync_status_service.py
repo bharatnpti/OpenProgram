@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from core.application.directory_sync_service import (
     DIRECTORY_SYNC_CONNECTOR,
@@ -78,6 +78,7 @@ class SyncStatusService:
         time_series_repository: TimeSeriesRepository,
         config: SyncStatusConfig,
         provider_overrides: Callable[[str], Awaitable[Mapping[SyncSource, str]]] | None = None,
+        today: Callable[[], date] = date.today,
     ) -> None:
         self._graph_repository = graph_repository
         self._cursor_repository = cursor_repository
@@ -86,6 +87,8 @@ class SyncStatusService:
         # The provider a tenant's own connection switched on, per source; it
         # wins over the server's choice in ``config``.
         self._provider_overrides = provider_overrides
+        # The day the sync targets are resolved on, as the runtime sync resolves them.
+        self._today = today
 
     async def status(self, tenant_id: str, *, now: datetime | None = None) -> SyncStatusReport:
         generated_at = _aware(now or datetime.now(tz=UTC))
@@ -179,7 +182,9 @@ class SyncStatusService:
         self, tenant_id: str
     ) -> tuple[RuntimeSyncTargets | None, str | None]:
         try:
-            targets = await RuntimeSyncTargetResolver(self._graph_repository).resolve(tenant_id)
+            targets = await RuntimeSyncTargetResolver(
+                self._graph_repository, today=self._today
+            ).resolve(tenant_id)
         except SyncTargetValidationError as exc:
             # The message names the admin's own pod and repo ids, never provider
             # content. The runtime sync fails the same way, for both connectors.

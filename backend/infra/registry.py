@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from cryptography.fernet import Fernet
 from redis.asyncio import Redis
@@ -12,6 +13,7 @@ from redis.asyncio import Redis
 from config.settings import Settings
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.availability import AvailabilityService
+from core.application.baseline_service import BaselineService
 from core.application.blocker_lifecycle import BlockerLifecycleService
 from core.application.blocker_resolution import BlockerResolutionService
 from core.application.blocker_settlement import BlockerSettlement
@@ -20,14 +22,21 @@ from core.application.cross_person_service import CrossPersonRequestService
 from core.application.day_report_builder import DayReportBuilder
 from core.application.day_report_service import DayReportService
 from core.application.dead_letter_service import DeadLetterService
+from core.application.delivery_scope import DeliveryScopeService
 from core.application.delivery_service import DeliveryService
 from core.application.directory_sync_service import DirectorySyncService
 from core.application.escalation_matrix_service import EscalationMatrixService
+from core.application.fill_day import FillDayPass, FillDaySettingsService
 from core.application.forecast_service import ForecastService
 from core.application.gate_extraction import ModelItemFinder
 from core.application.gate_service import GateService
+from core.application.hygiene_open_findings import OpenFindingKeys
+from core.application.hygiene_service import HygieneService
+from core.application.impact_service import DeliveryImpactService
 from core.application.jira_writes_service import JiraWritesService
+from core.application.observed_day_service import ObservedDayReader
 from core.application.persona_views import PersonaViewService, ProviderNames
+from core.application.profile_service import ProfileService
 from core.application.release_readiness_service import JiraData, ReleaseReadinessService
 from core.application.reply_ingestion import ReplyDrainResult, ReplyIngestionService
 from core.application.risk_service import RiskService
@@ -42,7 +51,9 @@ from core.application.sync_services import (
 )
 from core.application.sync_status_service import SyncStatusService
 from core.application.task_update_service import TaskUpdateService
+from core.application.timeline_service import TimelineService
 from core.application.writeback_service import WriteBackService
+from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestResolution
 from core.domain.errors import GraphNotFound, ProviderUnavailable
 from core.domain.graph import NodeKind
 from core.domain.inbound import InboundChatEvent, conversation_key
@@ -59,6 +70,7 @@ from core.ports.auth import (
     AuthSession,
     CurrentPrincipal,
 )
+from core.ports.baselines import PlanningBaselineRepository
 from core.ports.branding import TenantLogoRepository
 from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
@@ -68,6 +80,7 @@ from core.ports.directory import DirectoryProvider, DirectoryUserRepository
 from core.ports.escalation_matrix import EscalationMatrixRepository
 from core.ports.forecast import (
     CommitmentRepository,
+    ForecastDayRepository,
     ForecastSettingsRepository,
     ReleaseRepository,
 )
@@ -77,9 +90,11 @@ from core.ports.gates import (
     IssueScanRepository,
     QuestionRepository,
 )
+from core.ports.hygiene import HygieneRepository
 from core.ports.investigation import InvestigationEngine
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
+from core.ports.profiles import ProfileRepository
 from core.ports.readiness import ReadinessProbe, ReadinessReport, ReportingReadinessProbe
 from core.ports.release_readiness import ReleaseReadinessRepository
 from core.ports.reply_processing import ReplyProcessingOutcome
@@ -88,6 +103,7 @@ from core.ports.repositories import (
     ConversationRepository,
     CrossPersonRequestRepository,
     DeadLetterRepository,
+    FillDayRepository,
     GraphRepository,
     IdentityLinkRepository,
     InboundChatEventRepository,
@@ -128,6 +144,7 @@ from infra.adapters.secrets.encrypted import (
     InMemoryEncryptedSecretRecordStore,
     PostgresEncryptedSecretRecordStore,
 )
+from infra.persistence.in_memory_baselines import InMemoryPlanningBaselineRepository
 from infra.persistence.in_memory_branding import InMemoryTenantLogoRepository
 from infra.persistence.in_memory_connections import InMemoryConnectionRepository
 from infra.persistence.in_memory_delivery import (
@@ -135,8 +152,10 @@ from infra.persistence.in_memory_delivery import (
     InMemoryRequirementsSnapshotRepository,
 )
 from infra.persistence.in_memory_escalation import InMemoryEscalationMatrixRepository
+from infra.persistence.in_memory_fill_day import InMemoryFillDayRepository
 from infra.persistence.in_memory_forecast import (
     InMemoryCommitmentRepository,
+    InMemoryForecastDayRepository,
     InMemoryForecastSettingsRepository,
     InMemoryReleaseRepository,
 )
@@ -147,9 +166,12 @@ from infra.persistence.in_memory_gates import (
     InMemoryQuestionRepository,
 )
 from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
+from infra.persistence.in_memory_hygiene import InMemoryHygieneRepository
 from infra.persistence.in_memory_jira_writes import InMemoryJiraWritesRepository
+from infra.persistence.in_memory_profiles import InMemoryProfileRepository
 from infra.persistence.in_memory_readiness import InMemoryReleaseReadinessRepository
 from infra.persistence.in_memory_reports import InMemoryDayReportRepository
+from infra.persistence.postgres_baselines import PostgresPlanningBaselineRepository
 from infra.persistence.postgres_branding import PostgresTenantLogoRepository
 from infra.persistence.postgres_connections import PostgresConnectionRepository
 from infra.persistence.postgres_cross_person import PostgresCrossPersonRequestRepository
@@ -160,8 +182,10 @@ from infra.persistence.postgres_delivery import (
 )
 from infra.persistence.postgres_directory import PostgresDirectoryUserRepository
 from infra.persistence.postgres_escalation import PostgresEscalationMatrixRepository
+from infra.persistence.postgres_fill_day import PostgresFillDayRepository
 from infra.persistence.postgres_forecast import (
     PostgresCommitmentRepository,
+    PostgresForecastDayRepository,
     PostgresReleaseRepository,
 )
 from infra.persistence.postgres_gates import (
@@ -175,8 +199,10 @@ from infra.persistence.postgres_graph import (
     PostgresTimeSeriesRepository,
     PostgresVectorStore,
 )
+from infra.persistence.postgres_hygiene import PostgresHygieneRepository
 from infra.persistence.postgres_inbound import PostgresInboundChatEventRepository
 from infra.persistence.postgres_jira_writes import PostgresJiraWritesRepository
+from infra.persistence.postgres_profiles import PostgresProfileRepository
 from infra.persistence.postgres_readiness import PostgresReleaseReadinessRepository
 from infra.persistence.postgres_reports import PostgresDayReportRepository
 from infra.persistence.postgres_status import (
@@ -193,6 +219,7 @@ from infra.persistence.psycopg_executor import (
     close_shared_executors,
     shared_executor,
 )
+from infra.workflows.checkin_fill import apply_checkin_fill_schedule
 from infra.workflows.runtime_sync import legacy_issue_dispatches, legacy_vcs_dispatches
 
 _CHAT_SIMULATOR_PROVIDER = "mock_slack"
@@ -270,6 +297,10 @@ class ServiceRegistry:
     _forecast_settings_repository: ForecastSettingsRepository | None = field(
         default=None, init=False
     )
+    _forecast_day_repository: ForecastDayRepository | None = field(default=None, init=False)
+    _planning_baseline_repository: PlanningBaselineRepository | None = field(
+        default=None, init=False
+    )
     _gate_repositories: (
         tuple[GateTemplateRepository, GateItemRepository, QuestionRepository, IssueScanRepository]
         | None
@@ -278,6 +309,9 @@ class ServiceRegistry:
         default=None, init=False
     )
     _jira_writes_repository: JiraWritesRepository | None = field(default=None, init=False)
+    _hygiene_repository: HygieneRepository | None = field(default=None, init=False)
+    _profile_repository: ProfileRepository | None = field(default=None, init=False)
+    _fill_day_repository: FillDayRepository | None = field(default=None, init=False)
     _connection_resolver: CachedConnectionResolver | None = field(default=None, init=False)
     _redis_provider: RedisClientProvider | None = field(default=None, init=False)
     _issue_tracker: IssueTracker | None = field(default=None, init=False)
@@ -487,6 +521,15 @@ class ServiceRegistry:
             )
         return self._forecast_settings_repository
 
+    def forecast_day_repository(self) -> ForecastDayRepository:
+        if self._forecast_day_repository is None:
+            self._forecast_day_repository = (
+                InMemoryForecastDayRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresForecastDayRepository(self._executor())
+            )
+        return self._forecast_day_repository
+
     def forecast_service(self) -> ForecastService:
         return ForecastService(
             graph_repository=self.graph_repository(),
@@ -495,8 +538,86 @@ class ServiceRegistry:
             release_repository=self.release_repository(),
             time_series_repository=self.time_series_repository(),
             settings_repository=self.forecast_settings_repository(),
+            forecast_day_repository=self.forecast_day_repository(),
             default_min_sample_days=self.settings.forecast_min_history_days,
             today=self._tenant_today,
+            zone=self._tenant_zone(),
+        )
+
+    def planning_baseline_repository(self) -> PlanningBaselineRepository:
+        if self._planning_baseline_repository is None:
+            self._planning_baseline_repository = (
+                InMemoryPlanningBaselineRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresPlanningBaselineRepository(self._executor())
+            )
+        return self._planning_baseline_repository
+
+    def baseline_service(self) -> BaselineService:
+        return BaselineService(
+            graph_repository=self.graph_repository(),
+            delivery_service=self.delivery_service(),
+            release_repository=self.release_repository(),
+            baseline_repository=self.planning_baseline_repository(),
+            time_series_repository=self.time_series_repository(),
+            today=self._tenant_today,
+            zone=self._tenant_zone(),
+        )
+
+    def profile_repository(self) -> ProfileRepository:
+        if self._profile_repository is None:
+            self._profile_repository = (
+                InMemoryProfileRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresProfileRepository(self._executor())
+            )
+        return self._profile_repository
+
+    def profile_service(self) -> ProfileService:
+        """Profiles per pod membership; a scrum master sets them where they run the pod."""
+        return ProfileService(
+            repository=self.profile_repository(),
+            graph_repository=self.graph_repository(),
+            directory_repository=self.directory_user_repository(),
+            time_series_repository=self.time_series_repository(),
+            runs_pod=self.forecast_service().runs_pod,
+            # The day the config routes start a pod membership on (config_service_for),
+            # the tenant's today, so a profile set right after adding someone finds
+            # them in the pod.
+            today=self._tenant_today,
+        )
+
+    def delivery_impact_service(self) -> DeliveryImpactService:
+        """Why the date moved: the forecast_days breakdowns, summed and explained."""
+        return DeliveryImpactService(
+            forecast_service=self.forecast_service(),
+            baseline_service=self.baseline_service(),
+            delivery_scope_service=DeliveryScopeService(
+                self.graph_repository(), self.rollup_repository(), today=self._tenant_today
+            ),
+            commitment_repository=self.commitment_repository(),
+            graph_repository=self.graph_repository(),
+            time_series_repository=self.time_series_repository(),
+            status_repository=self.status_repository(),
+            # The ring on an addition without the change label while hygiene has it open.
+            open_findings=OpenFindingKeys(self.hygiene_repository()),
+            today=self._tenant_today,
+            zone=self._tenant_zone(),
+        )
+
+    def timeline_service(self) -> TimelineService:
+        """The timeline per project and pod: kept forecast rows, dates and markers per row."""
+        return TimelineService(
+            forecast_service=self.forecast_service(),
+            impact_service=self.delivery_impact_service(),
+            baseline_service=self.baseline_service(),
+            delivery_scope_service=DeliveryScopeService(
+                self.graph_repository(), self.rollup_repository(), today=self._tenant_today
+            ),
+            commitment_repository=self.commitment_repository(),
+            graph_repository=self.graph_repository(),
+            today=self._tenant_today,
+            zone=self._tenant_zone(),
         )
 
     def gate_repositories(
@@ -556,6 +677,53 @@ class ServiceRegistry:
             )
         return self._jira_writes_repository
 
+    def fill_day_repository(self) -> FillDayRepository:
+        if self._fill_day_repository is None:
+            self._fill_day_repository = (
+                InMemoryFillDayRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresFillDayRepository(self._executor())
+            )
+        return self._fill_day_repository
+
+    def fill_day_settings_service(self) -> FillDaySettingsService:
+        """The tenant's switch "Fill the day from Jira for people who were not asked".
+
+        Saving it adds or removes the fill's own schedule for the deployment's
+        tenant (never the fan-out's or the reconcile's).
+        """
+
+        async def schedule(tenant_id: str, enabled: bool) -> None:
+            if tenant_id == self.settings.tenant_id:
+                await apply_checkin_fill_schedule(
+                    self.workflow_scheduler(), self.settings, tenant_on=enabled
+                )
+
+        return FillDaySettingsService(self.fill_day_repository(), on_change=schedule)
+
+    def observed_day_reader(self) -> ObservedDayReader:
+        """What moved on a member's work: the facts the day's digest reads."""
+        return ObservedDayReader(
+            graph_repository=self.graph_repository(),
+            time_series_repository=self.time_series_repository(),
+            status_repository=self.status_repository(),
+            delivery_settings_repository=self.delivery_settings_repository(),
+            checkin_defaults=self.settings.checkin_defaults(),
+        )
+
+    def fill_day_pass(self) -> FillDayPass:
+        """The reconcile tick's fill of the day for members the check-in never reached."""
+        return FillDayPass(
+            status_repository=self.status_repository(),
+            graph_repository=self.graph_repository(),
+            filler=self.status_collector(),
+            reader=self.observed_day_reader(),
+            settings=self.fill_day_settings_service(),
+            availability=self.availability_service(),
+            sends_on=self.settings.checkin_fanout_enabled,
+            default_timezone=self.settings.tenant_default_timezone,
+        )
+
     def jira_writes_service(self) -> JiraWritesService:
         """The tenant's Jira write switches: the master, one per kind, and the projects."""
         readiness = self.release_readiness_repository()
@@ -590,6 +758,32 @@ class ServiceRegistry:
             today=self._tenant_today,
         )
 
+    def hygiene_repository(self) -> HygieneRepository:
+        if self._hygiene_repository is None:
+            self._hygiene_repository = (
+                InMemoryHygieneRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresHygieneRepository(self._executor())
+            )
+        return self._hygiene_repository
+
+    def hygiene_service(self) -> HygieneService:
+        """Jira hygiene: per-issue rules over readiness's scope sets, read-only on Jira."""
+        return HygieneService(
+            repository=self.hygiene_repository(),
+            readiness=self.release_readiness_service(),
+            graph_repository=self.graph_repository(),
+            time_series_repository=self.time_series_repository(),
+            forecast_service=self.forecast_service(),
+            jira_health=self._readiness_jira_health,
+            baselines=self.baseline_service(),
+            profiles=self.profile_service(),
+            escalation=self.escalation_matrix_service(),
+            gates=self.gate_service(),
+            today=self._tenant_today,
+            zone=self._tenant_zone(),
+        )
+
     async def _readiness_jira_health(self, tenant_id: str) -> JiraData:
         """How fresh the synced Jira data is: stale while the issue sync fails or lags."""
         try:
@@ -613,15 +807,26 @@ class ServiceRegistry:
             status_repository=self.status_repository(),
             rollup_repository=self.rollup_repository(),
             time_series_repository=self.time_series_repository(),
+            today=self._tenant_today,
         )
         try:
             return [task.id for task in (await views.pod_tasks(tenant_id, pod_id, day)).tasks]
         except GraphNotFound:
             return []
 
+    def tenant_today(self) -> date:
+        """Today in the tenant's timezone: the day that dates and reads graph links."""
+        return self._tenant_today()
+
     def _tenant_today(self) -> date:
-        zone = resolve_timezone(None, self.settings.tenant_default_timezone)
-        return datetime.now(tz=zone).date()
+        return datetime.now(tz=self._tenant_zone()).date()
+
+    def tenant_zone(self) -> ZoneInfo:
+        """The tenant's timezone: an instant's day there is the day tenant_today names."""
+        return self._tenant_zone()
+
+    def _tenant_zone(self) -> ZoneInfo:
+        return resolve_timezone(None, self.settings.tenant_default_timezone)
 
     def day_report_repository(self) -> DayReportRepository:
         if self._day_report_repository is None:
@@ -682,6 +887,9 @@ class ServiceRegistry:
             escalation_service=self.escalation_matrix_service(),
             console_base_url=self.settings.public_console_url,
             readiness_service=self.release_readiness_service(),
+            profile_service=self.profile_service(),
+            impact_service=self.delivery_impact_service(),
+            hygiene_service=self.hygiene_service(),
         )
 
     def day_report_service(self) -> DayReportService:
@@ -1127,26 +1335,13 @@ class ServiceRegistry:
         if checkin is not None and checkin.replied_at is not None:
             return ChatWebhookProcessResult(status="duplicate", message_id=message.message_id)
 
+        # The collector records the reply's cross-person requests the turn they
+        # are stated (its request recorder), before the reply's ack, which
+        # then says who was asked.
         outcome = await collector.handle_reply(
             replace(message, correlation_id=resolved_correlation_id),
             allow_reprocess=allow_reprocess,
         )
-        # A request is recorded the turn it is stated, while the check-in may
-        # still be asking something else, so every outcome can carry some.
-        if outcome.cross_person_requests:
-            assert checkin is not None
-            correlation = await self.status_repository().checkin_correlation_by_id(
-                message.tenant_id,
-                resolved_correlation_id,
-            )
-            await cross_person_service.record_from_checkin(
-                tenant_id=message.tenant_id,
-                requester_id=checkin.developer_id,
-                requester_chat_ref=correlation.chat_user_ref if correlation is not None else None,
-                source_correlation_id=resolved_correlation_id,
-                resolutions=outcome.cross_person_requests,
-                observed_at=message.received_at,
-            )
         return ChatWebhookProcessResult(status=outcome.kind, message_id=message.message_id)
 
     def chat_simulator_available(self) -> bool:
@@ -1390,6 +1585,8 @@ class ServiceRegistry:
             time_series_repository=self.time_series_repository(),
             cursor_repository=self.sync_cursor_repository(),
             identity_link_repository=self.identity_link_repository(),
+            changes_per_tick=self.settings.jira_changes_per_tick,
+            changes_backfill_days=self.settings.jira_changes_backfill_days,
         )
 
     def vcs_read_sync_service(self) -> VcsReadSyncService:
@@ -1437,6 +1634,7 @@ class ServiceRegistry:
             provider_overrides=(
                 self._connected_providers if self._adapter_connections() is not None else None
             ),
+            today=self._tenant_today,
         )
 
     async def _connected_providers(self, tenant_id: str) -> dict[SyncSource, str]:
@@ -1486,7 +1684,10 @@ class ServiceRegistry:
             time_series_repository=self.time_series_repository(),
             llm_provider=self.llm_provider(),
             blocker_settlement=BlockerSettlement(
-                self.status_repository(), rollup_refresher=self.rollup_refresher()
+                self.status_repository(),
+                rollup_refresher=self.rollup_refresher(),
+                today=self._tenant_today,
+                zone=self._tenant_zone(),
             ),
             model=self.settings.litellm_model,
             auto_notify=self.settings.cross_person_auto_notify,
@@ -1523,6 +1724,7 @@ class ServiceRegistry:
             write_back=self.write_back_service(),
             rollups=self.person_rollups(),
             tracker_name=self.provider_names().tracker,
+            today=self._tenant_today,
         )
 
     def person_rollups(self) -> PersonRollups:
@@ -1554,6 +1756,7 @@ class ServiceRegistry:
             graph_repository=self.graph_repository(),
             writeback_enabled_default=self.settings.jira_writeback_enabled,
             kind_switch=self.jira_writes_service().kind_on,
+            today=self._tenant_today,
         )
 
     def status_collector(self) -> StatusCollector:
@@ -1580,6 +1783,7 @@ class ServiceRegistry:
             checkin_max_clarifications=self.settings.checkin_max_clarifications,
             checkin_ack_enabled=self.settings.checkin_ack_enabled,
             tenant_default_timezone=self.settings.tenant_default_timezone,
+            today=self._tenant_today,
             outbound_dm_max_chars=self.settings.outbound_dm_max_chars,
             recent_fact_lookback_days=self.settings.recent_fact_lookback_days,
             # Every tracker but the fake one is the Jira adapter (catalog).
@@ -1588,6 +1792,10 @@ class ServiceRegistry:
                 if self.settings.issue_tracker_provider == "fake"
                 else "Jira"
             ),
+            code_work_by_pod=self.profile_service().code_work_by_pod,
+            vcs_name=self.provider_names().vcs,
+            observed_day_reader=self.observed_day_reader(),
+            request_recorder=_LazyRequestRecorder(self.cross_person_request_service),
         )
 
     def provider_names(self) -> ProviderNames:
@@ -1724,6 +1932,36 @@ def _extract_event_id(payload: Mapping[str, object], message: InboundMessage) ->
     if isinstance(top_level, str) and top_level:
         return top_level
     return message.message_id
+
+
+@dataclass(frozen=True)
+class _LazyRequestRecorder:
+    """The collector's request recorder, building the request service only when used.
+
+    Most collectors (a fan-out, a nudge) never record a request, and the
+    service brings its own blocker settlement and rollup refresher.
+    """
+
+    build: Callable[[], CrossPersonRequestService]
+
+    async def record_from_checkin(
+        self,
+        *,
+        tenant_id: str,
+        requester_id: str,
+        requester_chat_ref: str | None,
+        source_correlation_id: str,
+        resolutions: Iterable[CrossPersonRequestResolution],
+        observed_at: datetime | None = None,
+    ) -> list[CrossPersonRequest]:
+        return await self.build().record_from_checkin(
+            tenant_id=tenant_id,
+            requester_id=requester_id,
+            requester_chat_ref=requester_chat_ref,
+            source_correlation_id=source_correlation_id,
+            resolutions=resolutions,
+            observed_at=observed_at,
+        )
 
 
 @dataclass(frozen=True)

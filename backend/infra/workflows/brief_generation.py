@@ -91,12 +91,14 @@ def _brief_service(registry: ServiceRegistry) -> NarrativeBriefService:
             status_repository=registry.status_repository(),
             rollup_repository=registry.rollup_repository(),
             time_series_repository=time_series_repository,
+            today=registry.tenant_today,
         ),
         graph_repository=registry.graph_repository(),
         brief_repository=registry.narrative_brief_repository(),
         model=registry.settings.default_llm_model,
         status_repository=registry.status_repository(),
         provider_names=registry.provider_names(),
+        zone=registry.tenant_zone(),
     )
 
 

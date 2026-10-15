@@ -463,14 +463,14 @@ async def test_exec_brief_context_counts_status_cells_and_states_tickets_and_blo
     brief = await _scoped_service(store, llm).generate("demo", BriefKind.EXEC, "", as_of=BRIEF_AT)
 
     context = llm.requests[-1].messages[0].content
-    # Only people, pods, projects and the program carry a status of their own;
-    # the people counted are the team members, as the hero counts them.
-    assert "Status of 3 team members, 2 pods, 1 project and the program: 7 green." in context
+    # Only pods, projects and the program carry a status of their own, as an
+    # executive's heat map shows them: no person's cell. The program holds
+    # three people, so nobody is counted at all.
+    assert "Status of 2 pods, 1 project and the program: 4 green." in context
     # The day's headline, from the builder Exec Today's hero uses, without a clock.
-    assert (
-        "The day's headline, as Exec Today shows it: Green: all 3 people confirmed with no "
-        "open blockers."
-    ) in context
+    assert "The day's headline, as Exec Today shows it: Green: no open blockers." in context
+    assert "Checked in during the window" not in context
+    assert "Check-in of" not in context
     assert "unknown" not in context
     # A merged merge request on an open ticket is not a finished issue.
     assert "Issues done in the tracker: SHOP-1 Checkout form; SHOP-4 Payment retries." in context
@@ -489,7 +489,8 @@ async def test_exec_brief_context_counts_status_cells_and_states_tickets_and_blo
         "merge request 7 in web 'SHOP-2 Upgrade HTTP client' opened by Ben Okafor, merged "
         "(who merged it is not recorded)"
     ) in context
-    assert "ETA changes reported: Ben Okafor +1 day (check-in at 06:05 UTC)." in context
+    # A person's own check-in, ETA included, is not counted in a portfolio of three.
+    assert "ETA changes reported" not in context
     # The superseded copy of Cy's ask is bookkeeping, not an event.
     assert "superseded" not in context and "Review of the refund flow" not in context
 
@@ -499,17 +500,20 @@ async def test_exec_brief_context_counts_status_cells_and_states_tickets_and_blo
     # facts, without their clock times.
     structure = brief.structure
     assert structure is not None
-    assert structure.verdict == "Green: all 3 people confirmed with no open blockers."
+    assert structure.verdict == "Green: no open blockers."
     assert structure.bullets == (
         "SHOP-1 (Checkout form) is done in the tracker.",
         "SHOP-2 (Upgrade HTTP client) is merged in merge request 7 in web, ticket still open "
         "(In Progress in the tracker).",
-        "Ada Lind's check-in reported 1 blocker (waiting on Ben Okafor for SHOP-2), cleared. "
+        # The facts name people; the executive brief says each as their team.
+        "Web Pod's check-in reported 1 blocker (waiting on Payments Pod for SHOP-2), cleared. "
         "No blocker is open now.",
         "One team member has an ETA adjustment of +1 day.",
     )
     assert "green" not in " ".join(structure.bullets)
     assert "UTC" not in brief.body
+    assert not any(name in brief.body for name in ("Ada", "Lind", "Ben", "Okafor"))
+    assert not any(source.startswith("developer:") for source in brief.sources)
 
 
 async def test_pod_brief_reads_only_its_own_members_and_issues() -> None:

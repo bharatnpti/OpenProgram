@@ -7,6 +7,7 @@ import pytest
 
 from core.application.availability import AvailabilityService
 from core.application.status_collector import StatusCollector
+from core.domain.checkin_rungs import CHECKIN_RUNG_FACT_SOURCE, sent_rungs
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.directory import DirectoryUser
 from core.domain.escalation import (
@@ -152,6 +153,9 @@ class _EscalationRegistry:
         return self._store
 
     def graph_repository(self) -> InMemoryGraphStore:
+        return self._store
+
+    def time_series_repository(self) -> InMemoryGraphStore:
         return self._store
 
     def identity_link_repository(self) -> InMemoryGraphStore:
@@ -540,6 +544,45 @@ async def test_ladder_still_nudges_and_escalates_someone_who_never_replied(
     # Silence is never read as fine.
     assert closed is not None
     assert closed.terminal_source == "unknown"
+
+
+async def test_each_rung_keeps_whom_it_was_for_and_what_happened_on_the_pod(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, payload = await _open_checkin_in_pod_with_contacts(monkeypatch)
+
+    await _run_ladder(payload)
+
+    facts = await store.list_recent_facts("demo", sources=(CHECKIN_RUNG_FACT_SOURCE,))
+    assert sorted(
+        (fact.payload["nudge_number"], fact.payload["target"], fact.payload["action"])
+        for fact in facts
+    ) == [(1, "developer", "sent"), (2, "scrum_master", "sent"), (3, "manager", "sent")]
+    # Kept on the pod, never on the person, and with no message text.
+    assert {fact.entity_ref.id for fact in facts} == {"pod-1"}
+    assert all("text" not in fact.payload for fact in facts)
+    # The pod's board reads them back with whom each was for, as recorded.
+    day = date(2026, 1, 12)
+    rungs = sent_rungs(await store.checkin_nudges_on_day("demo", day), facts, None, day)
+    assert [(rung.target, rung.recorded) for rung in rungs["U-DEV"]] == [
+        (EscalationTarget.DEVELOPER, True),
+        (EscalationTarget.SCRUM_MASTER, True),
+        (EscalationTarget.MANAGER, True),
+    ]
+
+
+async def test_a_suppressed_rung_is_kept_with_why_it_did_not_go_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, payload = await _open_checkin_in_pod_with_contacts(monkeypatch)
+    await _reply_with_unanswered_clarification(store)
+
+    await _run_ladder(payload)
+
+    facts = await store.list_recent_facts("demo", sources=(CHECKIN_RUNG_FACT_SOURCE,))
+    assert {fact.payload["action"] for fact in facts} == {"suppressed_replied"}
+    # Nothing went out, so the board lists no rung.
+    assert await store.checkin_nudges_on_day("demo", date(2026, 1, 12)) == []
 
 
 @pytest.mark.parametrize(

@@ -4,10 +4,12 @@ import json
 import re
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.ask_conversation import AskContext, AskConversation, context_for
+from core.application.ask_hygiene import HYGIENE_TOOL_GUIDANCE, JiraHygieneTool
+from core.application.ask_people import AskPeopleWords, NamelessTool
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.delivery_scope import DeliveryScopeService, reads_pod_dates, reads_project
 from core.application.flow_metrics_service import (
@@ -16,6 +18,16 @@ from core.application.flow_metrics_service import (
     WorkstreamFlowView,
 )
 from core.application.forecast_service import ForecastService, ScopeDeliveryView
+from core.application.hygiene_service import HygieneService
+from core.application.impact_service import (
+    DeliveryImpactService,
+    ImpactEnd,
+    ImpactItemView,
+    ImpactPeriod,
+    ImpactView,
+    PeriodKind,
+)
+from core.application.people_words import hides_names
 from core.application.persona_views import (
     PersonaViewService,
     PortfolioHeatmapView,
@@ -27,6 +39,8 @@ from core.application.portfolio_feed_service import (
     PortfolioFeedService,
     state_label,
 )
+from core.application.portfolio_privacy import counted_tree, reads_people
+from core.application.profile_service import ProfileService
 from core.application.readiness_access import pod_viewer, project_viewer, reads_some_board
 from core.application.release_readiness_service import (
     BoardView,
@@ -37,9 +51,9 @@ from core.application.risk_service import RiskService
 from core.application.rollup_service import NO_WORK_REASON
 from core.application.status_summaries import NO_REPLY_BLOCKER
 from core.domain.auth import Principal
-from core.domain.delivery import DeliveryStage
+from core.domain.delivery import STAGE_LABELS, DeliveryStage
 from core.domain.errors import AuthorizationDenied, GraphNotFound
-from core.domain.forecast import Release, Verdict
+from core.domain.forecast import CommitmentScope, CommitmentScopeKind, Release, Verdict
 from core.domain.graph import (
     EdgeKind,
     GraphEdge,
@@ -48,7 +62,9 @@ from core.domain.graph import (
     NodeKind,
     workstreams_in_use,
 )
+from core.domain.impact import Measure
 from core.domain.llm import LlmMessage, LlmRequest, LlmToolCall
+from core.domain.profiles import ProfileDefinition
 from core.domain.release_readiness import (
     Severity,
     Urgency,
@@ -111,6 +127,23 @@ ASK_TOOL_GUIDANCE = (
     "How many open requirements have no ETA or due date, and which, is answered from "
     "delivery_forecast's open_without_date and open_without_date_keys, never from release "
     "readiness: a release criterion is not a requirement. "
+    "Why a date moved -- what changed, delayed or impacted a project's, release's or "
+    "pod's timeline, what scope was added since planning -- is answered from "
+    "delivery_impact. Its summary's first line says what is not known (planning not "
+    "marked complete, too little history for a likely date, days with no breakdown): "
+    "begin the answer with that line, word for word, and never drop it. Then its summary "
+    "in its own words -- where the likely date stands, then at most three causes in "
+    "working days (scope added, scope removed, team speed) and the requirements behind "
+    "them -- then the committed date's moves with who and why, and the team's date. Keep "
+    "the three dates apart, as its dates field defines them: the committed date (only a "
+    "person moves it), the likely date (the forecast's, likely_by) and the team's own "
+    "date (the latest finish date the team gave, ETA or due date, across the open "
+    "requirements; say it as 'team's own date'). A team's own date or a likely date that "
+    "moved is never "
+    "'the project's date moved'. Say 'likely by' for the date, never '85%', 'p85', "
+    "'throughput' or 'window'. Never explain a move from colours, briefs or the "
+    "forecast's dates alone, and never add up or rank what people added: an item's "
+    "added_by belongs to that item only. "
     "Whether a project, release or pod is ready for production -- what is still missing "
     "before it can go live, whether it can be released -- is answered from "
     "release_readiness: name each missing or unsure criterion, blocking ones first, with "
@@ -123,15 +156,22 @@ ASK_TOOL_GUIDANCE = (
     "contains what -- live on edges, so call graph_neighbors before reporting that "
     "something has none, and never tell the user their data is missing or needs "
     "updating when you have not traversed its edges. "
-    "What blocks a project or pod is answered from pod_blockers: for each pod it names "
+    "Who is the security, QA, product or other person for a pod or project is answered "
+    "from team_profiles: each member's profile in each pod, and the profiles a project's "
+    "release criteria ask for that none of its pods holds. A profile is a role in that pod, "
+    "never a rating, and grants no rights. "
+    + HYGIENE_TOOL_GUIDANCE
+    + "What blocks a project or pod is answered from pod_blockers: for each pod it names "
     "or works through, or for every pod with pod_id unset. Never say anything has no "
     "blockers, no risks or nothing missing unless a tool you called says so. "
+    "An inferred day in pod_checkins says what moved in Jira and Git (its evidence); it is "
+    "not the person's word, so never say they reported it. "
     "Never mention raw DM/reply content. "
 )
 
 # The rounds a quick answer's tool loop may take before it must answer
 # (OPENPROGRAM_ASK_MAX_TOOL_ITERATIONS). Three ran out on "What is blocking
-# <project>?" in QA round V2: finding the project, its pods and their
+# <project>?" in a QA run: finding the project, its pods and their
 # blockers, with one look at its status first, is four. Five leaves one more
 # for following a blocker to its owner or issue; a round is one model call of
 # a few seconds, so even all five stay far inside the 120-second budget.
@@ -199,6 +239,8 @@ _MAX_SIGNALS = 10
 _MAX_PROJECTS = 20
 # The undated requirements a forecast names; open_without_date still counts them all.
 _MAX_UNDATED_KEYS = 25
+# The projects a pod's delivery_impact covers: one scope's breakdown each.
+_MAX_IMPACT_PROJECTS = 3
 _RAG_ORDER: dict[Rag, int] = {Rag.RED: 0, Rag.AMBER: 1, Rag.UNKNOWN: 2, Rag.GREEN: 3}
 _AS_OF_PARAMETER: Mapping[str, object] = {
     "type": "string",
@@ -327,7 +369,7 @@ _RAN_OUT = re.compile(
 # Claims that something is absent, each with the reads that can show it. One
 # of them stands in an answer written at the cap only when a read of its kind
 # ran and none was left unrun; otherwise the sentence goes. "<Project> has no
-# blockers reported today" came 2 seconds after the cap in QA round V2, with a
+# blockers reported today" came 2 seconds after the cap in a QA run, with a
 # blocker open in one of its pods.
 _ABSENT_QUALIFIERS = r"(?:(?:open|active|current|known|reported|new|other|outstanding)\s+)*"
 _UNREAD_NEGATIVES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
@@ -348,6 +390,17 @@ _UNREAD_NEGATIVES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
         re.compile(
             rf"\bno\s+{_ABSENT_QUALIFIERS}risks?\b|\bnothing\s+(?:is\s+)?at\s+risk\b"
             r"|(?:\bnot|n't)\s+at\s+risk\b|\brisks?\s*[:：]\s*(?:none|0)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        # What moved a date: "no scope was added" stands only on a finished read of it.
+        frozenset({"delivery_impact"}),
+        re.compile(
+            rf"\bno\s+{_ABSENT_QUALIFIERS}(?:scope|requirements?|change\s+requests?|additions?)"
+            r"\s+(?:(?:was|were|has\s+been|have\s+been)\s+)?(?:added|removed)\b"
+            r"|\bnothing\s+(?:was\s+|has\s+been\s+)?(?:added|removed)\b"
+            r"|\bno\s+scope\s+(?:changes?|creep)\b",
             re.IGNORECASE,
         ),
     ),
@@ -376,7 +429,10 @@ _READ_WORDS: Mapping[str, str] = {
     "pod_checkins": "the check-ins",
     "pod_blockers": "the open blockers",
     "delivery_forecast": "the delivery forecast",
+    "delivery_impact": "what moved the date",
     "release_readiness": "the release readiness",
+    "team_profiles": "the profiles",
+    "jira_hygiene": "the Jira hygiene",
 }
 _EVERY_POD_READS = frozenset({"pod_checkins", "pod_blockers"})
 _NODE_ARGUMENTS = ("node_id", "pod_id", "project_id", "workstream_id", "program_root_id")
@@ -923,6 +979,9 @@ class StatusReasonsTool:
     repository: GraphRepository
     as_of: date
     kinds: frozenset[NodeKind]
+    #: The reader counts people only (an executive): the tree as /programs/{id}/tree
+    #: gives it them, nobody's node and no one's own status among the factors.
+    counts_only: bool = False
 
     name: str = "status_reasons"
     description: str = (
@@ -973,6 +1032,8 @@ class StatusReasonsTool:
                 {"error": f"the reasons behind a {node.kind.value}'s status are not available"}
             )
         tree = await self.service.program_tree(self.tenant_id, node_id, as_of)
+        if self.counts_only:
+            tree = counted_tree(tree)
         labels = {
             graph_node.id: node_label(graph_node)
             for graph_node in await self.repository.list_nodes(self.tenant_id, as_of=as_of)
@@ -1030,6 +1091,9 @@ class PortfolioHeatmapTool:
     service: PersonaViewService
     repository: GraphRepository
     as_of: date
+    #: The asker sees no person (an executive): the route's own projection.
+    counts_only: bool = False
+    asker_id: str | None = None
 
     name: str = "portfolio_heatmap"
     description: str = (
@@ -1068,7 +1132,13 @@ class PortfolioHeatmapTool:
         program_root_id = _string_argument(arguments.get("program_root_id"))
         kinds = set(_kinds_argument(arguments.get("kinds")))
         limit = _bounded_int(arguments.get("limit"), default=60, maximum=100)
-        view = await self.service.portfolio_heatmap(self.tenant_id, as_of, program_root_id)
+        view = await self.service.portfolio_heatmap(
+            self.tenant_id,
+            as_of,
+            program_root_id,
+            counts_only=self.counts_only,
+            reader_id=self.asker_id,
+        )
         names = await _node_names(self.repository, self.tenant_id, as_of)
         return json.dumps(
             _portfolio_heatmap_payload(view, names, kinds=kinds, limit=limit),
@@ -1150,7 +1220,10 @@ class PodCheckinsTool:
     description: str = (
         "Who in a pod has checked in today: each developer's state (confirmed, "
         "partial, stale or missing), the day their status was last given and its "
-        "parsed summary -- never the reply itself -- with counts per state. Omit "
+        "parsed summary -- never the reply itself -- with counts per state. An "
+        "inferred day carries evidence: the lines of what moved in the tracker and "
+        "Git it was inferred from, not the person's word. coverage counts how the "
+        "pod's day was captured (replied, inferred, no data and why, waiting). Omit "
         "pod_id to cover every pod."
     )
     parameters: Mapping[str, object] = field(
@@ -1179,6 +1252,13 @@ class PodCheckinsTool:
                         "partial": view.partial,
                         "stale": view.stale,
                         "missing": view.missing,
+                        "coverage": {
+                            "replied": view.coverage.replied,
+                            "inferred": view.coverage.inferred,
+                            "no_data": view.coverage.no_data,
+                            "waiting": view.coverage.waiting,
+                            "no_data_causes": dict(view.coverage.causes),
+                        },
                         "developers": [
                             {
                                 "developer_id": developer.developer_id,
@@ -1187,6 +1267,16 @@ class PodCheckinsTool:
                                 "source": developer.source.value,
                                 "status_as_of": _iso(developer.status_as_of),
                                 "summary": _clip(developer.summary),
+                                **(
+                                    {"evidence": [_clip(line) for line in developer.evidence]}
+                                    if developer.evidence
+                                    else {}
+                                ),
+                                **(
+                                    {"no_data_cause": developer.no_data_cause}
+                                    if developer.no_data_cause
+                                    else {}
+                                ),
                             }
                             for developer in view.developers[:25]
                         ],
@@ -1314,7 +1404,8 @@ class DeliveryForecastTool:
         "today unless as_of names an earlier one: the committed date and how often it "
         "moved, history's 50% and 85% likely finish dates (forecast_p50, forecast_p85), "
         "the verdict against the date and what it rests on, whether there is enough "
-        "history to forecast, the team's latest ETA or due date, the open requirements "
+        "history to forecast, the team's own date (the latest ETA or due date the team gave), "
+        "the open requirements "
         "with no ETA or due date (open_without_date, and their keys in "
         "open_without_date_keys), and the reasons in "
         "Delivery's own words. A project comes with its pods' and releases' verdicts, a "
@@ -1460,6 +1551,150 @@ class DeliveryForecastTool:
 
 
 @dataclass(frozen=True, kw_only=True)
+class DeliveryImpactTool:
+    """What moved a project's, release's or pod's date, and why, as Delivery takes it apart.
+
+    Asked what delayed a project or what changed its timeline, Ask could only
+    say the forecast's dates and verdict. This hands over the forecast's move
+    over a period, taken apart (DeliveryImpactService over forecast_days):
+    each driver in working days with the work items behind it -- pace, scope
+    added by kind (change requests, without the change label, bugs, moved in),
+    scope removed, reopened, re-estimated, throughput -- the committed date's
+    moves with who and why, the team's own date, the late and undated
+    requirements as evidence, and the timeline's markers with the link to its
+    row. The gate is the delivery forecast's own (DeliveryImpactService.access,
+    the rule behind GET /projects/{id}/delivery/impact): a read the route would
+    refuse comes back in its words, never as data; executives get no "added
+    by". Ask is not for developers (may_ask), so they never get here.
+    """
+
+    principal: Principal
+    service: DeliveryImpactService
+    forecasts: ForecastService
+    repository: GraphRepository
+    as_of: date
+
+    name: str = "delivery_impact"
+    description: str = (
+        "Why a project's, release's or pod's delivery date moved over a period, and what "
+        "impacted its timeline: a summary whose first line says what is not known and "
+        "whose next says where the likely date stands and why, "
+        "the likely date then and now, how many working days it moved, and at most three "
+        "causes with their working days and the requirements behind them -- scope added "
+        "(change requests carrying the change label, additions without it, bugs, moved "
+        "in, reopened), scope removed, and team speed (how fast the team finishes) -- plus "
+        "each move of the committed date with who and why, the team's own date and what "
+        "moved it, requirements open past their date and those with no date, and the "
+        "timeline's markers. Use it for 'why did X's date "
+        "move', 'what changed or delayed X since planning', 'what scope was added' and "
+        "'what impacted X's timeline'; search_graph_nodes turns a name into the node_id."
+    )
+    parameters: Mapping[str, object] = field(
+        default_factory=lambda: {
+            "type": "object",
+            "properties": {
+                "node_id": {
+                    "type": "string",
+                    "description": "The project or pod.",
+                },
+                "release_id": {
+                    "type": "string",
+                    "description": "One release of the project, from a project's releases.",
+                },
+                "period": {
+                    "type": "string",
+                    "enum": [kind.value for kind in PeriodKind if kind is not PeriodKind.FROM_DAY],
+                    "description": "The period the move covers: since planning was marked "
+                    "complete (the default), the last 7 or 30 days, or since the committed "
+                    "date last changed. Give from instead for a period from a named day.",
+                },
+                "from": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "The period's first day, when it starts on a named day.",
+                },
+                "measure": {
+                    "type": "string",
+                    "enum": [measure.value for measure in Measure],
+                    "description": "The 85% date (p85, the default, as the verdict reads it) "
+                    "or the 50% date (p50).",
+                },
+                "as_of": _AS_OF_PARAMETER,
+            },
+            "required": ["node_id"],
+            "additionalProperties": False,
+        }
+    )
+
+    async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
+        as_of = _snapshot_date(arguments.get("as_of"), self.as_of)
+        node_id = _required_string(arguments.get("node_id"), "node_id")
+        release_id = _string_argument(arguments.get("release_id"))
+        period = _impact_period(arguments)
+        measure = _measure(arguments.get("measure"))
+        tenant_id = self.principal.tenant_id
+        node = await self.repository.get_node(tenant_id, node_id, as_of=as_of)
+        if node is None:
+            raise GraphNotFound(
+                f"{node_id} not found; search_graph_nodes finds a project or pod by name"
+            )
+        try:
+            if node.kind is NodeKind.PROJECT:
+                scope = (
+                    CommitmentScope(
+                        kind=CommitmentScopeKind.RELEASE, id=release_id, project_id=node.id
+                    )
+                    if release_id
+                    else CommitmentScope(
+                        kind=CommitmentScopeKind.PROJECT, id=node.id, project_id=node.id
+                    )
+                )
+                payload = await self._scope(scope, period, measure, as_of)
+            elif node.kind is NodeKind.POD:
+                payload = {
+                    "pod_id": node.id,
+                    "pod_name": node.name,
+                    "projects": [
+                        await self._scope(
+                            CommitmentScope(
+                                kind=CommitmentScopeKind.POD, id=node.id, project_id=project.id
+                            ),
+                            period,
+                            measure,
+                            as_of,
+                        )
+                        for project in (
+                            await self.forecasts.pod_projects(tenant_id, node.id, as_of)
+                        )[:_MAX_IMPACT_PROJECTS]
+                    ],
+                }
+            else:
+                payload = {
+                    "error": f"{node_id} is a {node.kind.value}; delivery_impact covers a "
+                    "project, one of its releases, or a pod"
+                }
+        except AuthorizationDenied as exc:
+            payload = {"error": str(exc)}
+        if "error" in payload:
+            return json.dumps(payload, ensure_ascii=False)
+        return json.dumps({"as_of": as_of.isoformat(), **payload}, ensure_ascii=False)
+
+    async def _scope(
+        self, scope: CommitmentScope, period: ImpactPeriod, measure: Measure, as_of: date
+    ) -> dict[str, object]:
+        access = await self.service.access(self.principal, scope)
+        view = await self.service.impact(
+            self.principal.tenant_id,
+            scope,
+            period=period,
+            measure=measure,
+            as_of=as_of,
+            access=access,
+        )
+        return _impact_payload(view)
+
+
+@dataclass(frozen=True, kw_only=True)
 class ReleaseReadinessTool:
     """What a project, one of its releases, or a pod still needs before production.
 
@@ -1546,7 +1781,9 @@ class ReleaseReadinessTool:
                 )
         except AuthorizationDenied as exc:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)
-        return json.dumps(_readiness_payload(board, self.as_of), ensure_ascii=False)
+        return json.dumps(
+            _readiness_payload(board, self.as_of, zone=self.forecasts.zone()), ensure_ascii=False
+        )
 
     async def _release(self, project_id: str, release_id: str) -> Release:
         """The project's release, as the route finds it: another project's is no release."""
@@ -1554,6 +1791,144 @@ class ReleaseReadinessTool:
         if release.project_id != project_id:
             raise GraphNotFound(f"{release_id} is no release of {project_id}")
         return release
+
+
+@dataclass(frozen=True, kw_only=True)
+class TeamProfilesTool:
+    """Who brings what to each pod: every member's role in it and their profile there.
+
+    For a project it also names the profiles its switched-on release criteria
+    ask for (``owner_profile``) that none of its pods holds, so "who does the
+    security review for X" can say nobody does yet. Names are directory data;
+    the read is behind Ask's own check (``may_ask``). It writes nothing, and a
+    profile is never a rating: no counts per person, no ranking.
+    """
+
+    tenant_id: str
+    service: ProfileService
+    repository: GraphRepository
+    readiness: ReleaseReadinessService | None
+    as_of: date
+
+    name: str = "team_profiles"
+    description: str = (
+        "Who brings what to each pod: every member with their role in the pod (developer, "
+        "scrum master, product owner, manager) and their profile there (development, QA and "
+        "test, security, product, design, TPM / delivery, ops, ...), whether someone chose it "
+        "(checked) or it only follows the pod role, and for a project the profiles its release "
+        "criteria ask for that none of its pods holds (missing). Give pod_id or project_id, "
+        "and profile to keep one (a profile id or its label, such as security or QA). Use it "
+        "for 'who is the security contact for X', 'who tests in Y', 'is there a QA in Z'."
+    )
+    parameters: Mapping[str, object] = field(
+        default_factory=lambda: {
+            "type": "object",
+            "properties": {
+                "pod_id": {"type": "string"},
+                "project_id": {"type": "string"},
+                "profile": {
+                    "type": "string",
+                    "description": "One profile, by id or label, such as security or QA.",
+                },
+            },
+            "additionalProperties": False,
+        }
+    )
+
+    async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
+        project_id = _string_argument(arguments.get("project_id"))
+        wanted = _string_argument(arguments.get("profile"))
+        catalog = await self.service.catalog(self.tenant_id)
+        slug = _profile_slug(wanted, catalog) if wanted else None
+        if wanted and slug is None:
+            return json.dumps(
+                {
+                    "error": f"no profile {wanted!r}; the profiles are "
+                    + ", ".join(f"{entry.slug} ({entry.label})" for entry in catalog)
+                },
+                ensure_ascii=False,
+            )
+        project: GraphNode | None = None
+        if project_id is not None:
+            project = await self.repository.get_node(self.tenant_id, project_id, as_of=self.as_of)
+            if project is None or project.kind is not NodeKind.PROJECT:
+                return json.dumps(
+                    {
+                        "error": f"project {project_id} not found; search_graph_nodes with "
+                        "kinds ['project'] finds its id"
+                    }
+                )
+            pods: Sequence[GraphNode] | str = await _project_pods(
+                self.repository, self.tenant_id, project.id, self.as_of
+            )
+        else:
+            pods = await _pods(self.repository, self.tenant_id, arguments.get("pod_id"))
+        if isinstance(pods, str):
+            return json.dumps({"error": pods})
+        held: set[str] = set()
+        rows: list[dict[str, object]] = []
+        for pod in pods:
+            view = await self.service.pod_profiles(self.tenant_id, pod.id, self.as_of)
+            held.update(member.profile for member in view.members)
+            rows.append(
+                {
+                    "pod_id": view.pod_id,
+                    "pod_name": view.pod_name,
+                    "members": [
+                        {
+                            "name": member.member_name,
+                            "role_in_pod": member.role,
+                            "profile": member.profile,
+                            "profile_label": member.label,
+                            "checked": member.checked,
+                        }
+                        for member in view.members
+                        if slug is None or member.profile == slug
+                    ][:40],
+                }
+            )
+        payload: dict[str, object] = {"as_of": self.as_of.isoformat(), "pods": rows}
+        if project is not None:
+            payload["project_name"] = project.name
+            asked = await self.readiness.asked_profiles(self.tenant_id) if self.readiness else {}
+            labels = {entry.slug: entry.label for entry in catalog}
+            payload["missing"] = [
+                {
+                    "profile": missing,
+                    "profile_label": labels.get(missing, missing),
+                    "asked_by_criteria": list(criteria),
+                }
+                for missing, criteria in sorted(asked.items())
+                if missing not in held and (slug is None or missing == slug)
+            ]
+        return json.dumps(payload, ensure_ascii=False)
+
+
+def _profile_slug(wanted: str, catalog: Sequence[ProfileDefinition]) -> str | None:
+    """A profile asked for by id or label ("QA", "qa and test"), or None when none matches."""
+    folded = " ".join(wanted.split()).casefold()
+    for entry in catalog:
+        if folded in {entry.slug.casefold(), entry.label.casefold()}:
+            return entry.slug
+    for entry in catalog:
+        if folded and (folded in entry.label.casefold() or folded in entry.title_words):
+            return entry.slug
+    return None
+
+
+async def _project_pods(
+    repository: GraphRepository, tenant_id: str, project_id: str, as_of: date
+) -> Sequence[GraphNode]:
+    pods: list[GraphNode] = []
+    for edge in await repository.list_edges(
+        tenant_id, from_node_id=project_id, kind=EdgeKind.CONTAINS
+    ):
+        if not edge.is_active_on(as_of):
+            continue
+        node = await repository.get_node(tenant_id, edge.to_node_id, as_of=as_of)
+        if node is not None and node.kind is NodeKind.POD:
+            pods.append(node)
+    return sorted(pods, key=lambda pod: (pod.name.casefold(), pod.id))[:_MAX_PODS]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1734,6 +2109,12 @@ def _reads_delivery(principal: Principal) -> bool:
     )
 
 
+def _reads_impact(principal: Principal) -> bool:
+    """Whether /projects/{id}/delivery/impact answers the principal somewhere: the
+    project's readers everywhere, and a scrum master for their own projects and pods."""
+    return reads_project(AuthorizationPolicy(), principal, own=True)
+
+
 def _has(capability: Capability) -> Callable[[Principal], bool]:
     return lambda principal: AuthorizationPolicy().can(principal, capability)
 
@@ -1761,8 +2142,12 @@ class AskService:
         delivery_scope_service: DeliveryScopeService,
         release_readiness_service: ReleaseReadinessService,
         model: str,
+        impact_service: DeliveryImpactService | None = None,
         tool_agent: ToolCallingAgent | None = None,
         max_tool_iterations: int = ASK_MAX_TOOL_ITERATIONS,
+        profile_service: ProfileService | None = None,
+        hygiene_service: HygieneService | None = None,
+        today: Callable[[], date] = date.today,
     ) -> None:
         self._llm_provider = llm_provider
         self._graph_repository = graph_repository
@@ -1773,12 +2158,22 @@ class AskService:
         self._forecast_service = forecast_service
         self._delivery_scope_service = delivery_scope_service
         self._release_readiness_service = release_readiness_service
+        self._profile_service = profile_service
+        self._impact_service = impact_service
+        self._hygiene_service = hygiene_service
         self._model = model
         self._tool_agent = tool_agent or ToolCallingAgent(
             llm_provider=llm_provider,
             max_tool_iterations=max_tool_iterations,
             cap_notice=ASK_CAP_NOTICE,
         )
+        # The day a question with no as_of is asked for; the API passes the
+        # tenant's today, the day the graph links Ask reads are dated on.
+        self._today = today
+
+    def today(self) -> date:
+        """The day a question with no ``as_of`` is answered for."""
+        return self._today()
 
     async def ask(
         self,
@@ -1789,7 +2184,7 @@ class AskService:
         as_of: date | None = None,
         conversation: AskConversation | None = None,
     ) -> AskResponseView:
-        asked_for = as_of or date.today()
+        asked_for = as_of or self._today()
         context = await context_for(
             conversation,
             llm=self._llm_provider,
@@ -1815,17 +2210,36 @@ class AskService:
             RecordedTool(inner=tool, calls=calls) for tool in self.tools_for(principal, asked_for)
         )
         result = await self._tool_agent.run_loop(request, tools)
-        reader = await self.reader(principal.tenant_id, asked_for)
+        reader = await self.reader(
+            principal.tenant_id, asked_for, people=not hides_names(principal)
+        )
         response = result.response
         view = reader.view(response.text, trace_id=response.trace_id, tools_used=calls)
         if result.cap_reached:
             view = reader.cut_short(view, read=calls, unrun=result.unrun)
         return remembered(view, context)
 
-    async def reader(self, tenant_id: str, as_of: date) -> AnswerReader:
-        """What turns a model's reply into an answer for the nodes of ``as_of``."""
+    async def reader(self, tenant_id: str, as_of: date, *, people: bool = True) -> AnswerReader:
+        """What turns a model's reply into an answer for the nodes of ``as_of``.
+
+        ``people`` False is a reader who reads no person's name (an executive):
+        a person's id in an answer, or among its sources, reads as their
+        role or team, and no name in the answer is taken for a person.
+        """
         nodes = await _nodes_by_any_id(self._graph_repository, tenant_id, as_of)
-        return AnswerReader(nodes=nodes, labelled=_nodes_by_label(nodes))
+        if people:
+            return AnswerReader(nodes=nodes, labelled=_nodes_by_label(nodes))
+        words = await AskPeopleWords(
+            repository=self._graph_repository, tenant_id=tenant_id, as_of=as_of
+        ).get()
+        said = {
+            key: replace(node, name=words.label(node.id))
+            if node.kind is NodeKind.DEVELOPER
+            else node
+            for key, node in nodes.items()
+        }
+        teams = {key: node for key, node in said.items() if node.kind is not NodeKind.DEVELOPER}
+        return AnswerReader(nodes=said, labelled=_nodes_by_label(teams))
 
     def tools_for(self, principal: Principal, as_of: date) -> tuple[AgentTool, ...]:
         """The tools this principal may use, each gated as its REST twin is.
@@ -1898,13 +2312,19 @@ class AskService:
                     repository=graph,
                     as_of=as_of,
                     kinds=_reason_kinds(principal),
+                    counts_only=not reads_people(principal),
                 ),
                 lambda asker: bool(_reason_kinds(asker)),
             ),
             # /portfolio/heatmap
             (
                 PortfolioHeatmapTool(
-                    tenant_id=tenant_id, service=personas, repository=graph, as_of=as_of
+                    tenant_id=tenant_id,
+                    service=personas,
+                    repository=graph,
+                    as_of=as_of,
+                    counts_only=not reads_people(principal),
+                    asker_id=principal.subject,
                 ),
                 _has(Capability.READ_PORTFOLIO_HEATMAP),
             ),
@@ -1949,7 +2369,62 @@ class AskService:
                 reads_some_board,
             ),
         )
-        return tuple(tool for tool, allowed in offered if allowed(principal))
+        if self._profile_service is not None and not hides_names(principal):
+            # Names and pod roles are directory data, which every role reads but an
+            # executive (no People & roles for them): behind /ask's own check, as
+            # the graph reads are.
+            offered = (
+                *offered,
+                (
+                    TeamProfilesTool(
+                        tenant_id=tenant_id,
+                        service=self._profile_service,
+                        repository=graph,
+                        readiness=self._release_readiness_service,
+                        as_of=as_of,
+                    ),
+                    may_ask,
+                ),
+            )
+        if self._impact_service is not None:
+            # /projects/{id}/delivery/impact: the delivery forecast's readers, per
+            # project or pod as DeliveryImpactService.access decides.
+            offered += (
+                (
+                    DeliveryImpactTool(
+                        principal=principal,
+                        service=self._impact_service,
+                        forecasts=self._forecast_service,
+                        repository=graph,
+                        as_of=as_of,
+                    ),
+                    _reads_impact,
+                ),
+            )
+        if self._hygiene_service is not None:
+            # /projects/{id}/hygiene and /pods/{id}/hygiene: the readiness board's read
+            # rule (readiness_access), per project or pod; an executive reads counts only.
+            offered = (
+                *offered,
+                (
+                    JiraHygieneTool(
+                        principal=principal,
+                        service=self._hygiene_service,
+                        readiness=self._release_readiness_service,
+                        forecasts=self._forecast_service,
+                        repository=graph,
+                        as_of=as_of,
+                    ),
+                    reads_some_board,
+                ),
+            )
+        tools = tuple(tool for tool, allowed in offered if allowed(principal))
+        if hides_names(principal):
+            # An executive's answers say each person as the Project page does: their
+            # role or team, never a name or an id that leads to one.
+            words = AskPeopleWords(repository=graph, tenant_id=tenant_id, as_of=as_of)
+            tools = tuple(NamelessTool(inner=tool, words=words) for tool in tools)
+        return tools
 
 
 def fact_window(arguments: Mapping[str, JsonScalar], as_of: date) -> DateWindow:
@@ -2879,11 +3354,12 @@ async def _pods(
     return (node,)
 
 
-def _readiness_payload(board: BoardView, as_of: date) -> dict[str, object]:
+def _readiness_payload(board: BoardView, as_of: date, *, zone: tzinfo = UTC) -> dict[str, object]:
     """A readiness board for the model: every criterion's state, evidence and draft, by name.
 
     The counts are the board's own (ReadinessBoardResponse.summary); a person is
     named, never given by id; an empty board says why, so it never reads as ready.
+    ``zone`` is the tenant's: the check's day is its date there.
     """
     states = [view.shown_state for view in board.findings]
     checked = board.last_run.finished_at if board.last_run else None
@@ -2918,9 +3394,10 @@ def _readiness_payload(board: BoardView, as_of: date) -> dict[str, object]:
         ],
         "day_report_lines": list(board.important),
     }
-    if checked is not None and checked.date() > as_of:
+    checked_on = checked.astimezone(zone).date() if checked is not None else None
+    if checked_on is not None and checked_on > as_of:
         payload["history"] = (
-            f"Release readiness keeps no history: this is the check of {checked.date()}, "
+            f"Release readiness keeps no history: this is the check of {checked_on}, "
             f"which may not be how it stood on {as_of.isoformat()}."
         )
     if not board.findings:
@@ -3160,3 +3637,189 @@ def _bounded_int(
 def _metadata_text(node: GraphNode) -> str:
     values = [str(value).lower() for value in node.metadata.values() if value is not None]
     return " ".join([node.id.lower(), node.name.lower(), *values])
+
+
+def _impact_period(arguments: Mapping[str, JsonScalar]) -> ImpactPeriod:
+    """The period delivery_impact covers: a named day, a named period, else since planning."""
+    start = _optional_date(arguments.get("from"))
+    if start is not None:
+        return ImpactPeriod(kind=PeriodKind.FROM_DAY, from_day=start)
+    named = _string_argument(arguments.get("period"))
+    try:
+        kind = PeriodKind(named) if named else PeriodKind.SINCE_BASELINE
+    except ValueError:
+        kind = PeriodKind.SINCE_BASELINE
+    if kind is PeriodKind.FROM_DAY:
+        kind = PeriodKind.SINCE_BASELINE
+    return ImpactPeriod(kind=kind)
+
+
+def _measure(value: JsonScalar) -> Measure:
+    named = _string_argument(value)
+    return Measure.P50 if named == Measure.P50.value else Measure.P85
+
+
+#: The three dates delivery_impact speaks of, kept apart for the model: a team's date
+#: or a likely date that moved is never "the project's date moved".
+IMPACT_DATES: Mapping[str, str] = {
+    "committed_date": (
+        "The date people committed to deliver by. Only a person moves it; each move is "
+        "in committed_changes, with who and why."
+    ),
+    "likely_date": (
+        "When the forecast says the work will likely be done, from how fast the team "
+        "finishes: likely_by (85% likely) and likely_around (50%). It moves with the "
+        "causes in drivers; nobody sets it."
+    ),
+    "team_date": (
+        "The team's own date: the latest finish date the team gave (ETA or due date) "
+        "across the open requirements. It is neither the committed date nor the likely date."
+    ),
+}
+
+
+def impact_first_line(not_known: Sequence[str]) -> str:
+    """The returned text's first line: what is not known, always, even when nothing is."""
+    if not not_known:
+        return "Not known: nothing; the likely date is known at both ends of the period."
+    said = "; ".join(f"{note[:1].lower()}{note[1:]}".rstrip(".") for note in not_known)
+    return f"Not known: {said}."
+
+
+def _impact_payload(view: ImpactView) -> dict[str, object]:
+    """One scope's move, taken apart, for the model: names beside ids, keys and dates only.
+
+    What is not known comes first (``not_known`` and the summary's first line), so an
+    answer never drops it; the three dates are named apart (``dates``)."""
+    first_line = impact_first_line(view.not_known)
+    payload: dict[str, object] = {
+        "not_known": list(view.not_known),
+        "summary": f"{first_line}\n{view.summary}",
+        "dates": dict(IMPACT_DATES),
+        "scope": {
+            "kind": view.scope.kind.value,
+            "id": view.scope.id,
+            "name": view.name,
+            "project_id": view.scope.project_id,
+            "project_name": view.project_name,
+        },
+        "period": view.period.value,
+        "period_words": view.period_words,
+        "measure": view.measure.value,
+        "planning_complete_on": _iso(view.baseline_day),
+        "change_label": view.change_label,
+        # The likely date and the committed date at the start of the period and now.
+        "then": _impact_end(view.start),
+        "now": _impact_end(view.end),
+        "likely_date_moved_working_days": view.moved_working_days,
+        "unit": view.unit,
+        "drivers": [
+            {
+                "kind": driver.kind,
+                **({"group": driver.group.value} if driver.group is not None else {}),
+                "working_days": driver.working_days,
+                "note": driver.note,
+                **(
+                    {"items": [_impact_item(item) for item in driver.items]} if driver.items else {}
+                ),
+                **({"more_items": driver.more} if driver.more else {}),
+            }
+            for driver in view.drivers
+        ],
+        "scope_changes": {
+            "added": view.scope_changes.added_count,
+            "removed": view.scope_changes.removed_count,
+            "reopened": view.scope_changes.reopened_count,
+            "finished": view.scope_changes.finished_count,
+            **(
+                {"added_items": [_impact_item(item) for item in view.scope_changes.added]}
+                if view.scope_changes.added and not view.drivers
+                else {}
+            ),
+        },
+        "committed_changes": [
+            {
+                "from": _iso(change.from_date),
+                "to": _iso(change.to_date),
+                "on": change.on.isoformat(),
+                "by": change.by,
+                "note": _clip(change.note) or "",
+                **({"after_added": list(change.after_added)} if change.after_added else {}),
+            }
+            for change in view.committed_changes
+        ],
+        "team_date": (
+            {
+                "team_date_then": _iso(view.team_date.from_date),
+                "then_issue": view.team_date.from_key,
+                "team_date_now": _iso(view.team_date.to_date),
+                "now_issue": view.team_date.to_key,
+                "moves": [
+                    {"day": move.day.isoformat(), "cause": move.cause, "words": move.words}
+                    for move in view.team_date.moves
+                ],
+            }
+            if view.team_date is not None
+            else None
+        ),
+        "markers": [
+            {
+                "day": marker.day.isoformat(),
+                "kind": marker.kind,
+                "count": marker.count,
+                "keys": [item.key for item in marker.items],
+                **(
+                    {"change_label": marker.change_label} if marker.change_label is not None else {}
+                ),
+            }
+            for marker in view.markers
+        ],
+        "link": view.link,
+        "reconstructed_days": view.reconstructed_days,
+    }
+    if view.evidence is not None:
+        payload["evidence"] = {
+            "late": [
+                {
+                    "key": item.key,
+                    "title": _clip(item.title),
+                    "stage": STAGE_LABELS[item.stage],
+                    "date": item.date.isoformat(),
+                    "date_kind": item.date_kind,
+                    "working_days_late": item.working_days_late,
+                }
+                for item in view.evidence.late
+            ],
+            **({"more_late": view.evidence.more_late} if view.evidence.more_late else {}),
+            "undated": list(view.evidence.undated[:_MAX_UNDATED_KEYS]),
+        }
+    return payload
+
+
+def _impact_end(end: ImpactEnd | None) -> dict[str, object] | None:
+    if end is None:
+        return None
+    return {
+        "day": end.day.isoformat(),
+        "likely_by": _iso(end.p85),
+        "likely_around": _iso(end.p50),
+        "committed_date": _iso(end.committed),
+    }
+
+
+def _impact_item(item: ImpactItemView) -> dict[str, object]:
+    found: dict[str, object] = {
+        "key": item.key,
+        "title": _clip(item.title),
+        "working_days": item.working_days,
+        "day": _iso(item.day),
+    }
+    if item.type:
+        found["type"] = item.type
+    if item.group is not None:
+        found["group"] = item.group.value
+    if item.change_label is not None:
+        found["change_label"] = item.change_label
+    if item.added_by:
+        found["added_by"] = item.added_by
+    return found

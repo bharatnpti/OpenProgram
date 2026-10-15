@@ -42,7 +42,7 @@ export function ActingAsControls({ idPrefix }: { idPrefix: string }) {
         </select>
         <div
           aria-hidden
-          className="flex h-10 max-w-[240px] items-center gap-2 rounded-full border border-grey-border bg-white pl-4 pr-2.5 peer-hover:border-grey-disabled peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-magenta"
+          className="flex h-10 max-w-[240px] items-center gap-2 rounded-full border border-grey-border bg-(--op-viz-surface) pl-4 pr-2.5 peer-hover:border-grey-disabled peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-magenta"
         >
           <span className="min-w-0 leading-tight">
             <span className="block truncate text-[13px] font-bold">
@@ -62,7 +62,7 @@ export function ActingAsControls({ idPrefix }: { idPrefix: string }) {
           </label>
           <select
             id={`${idPrefix}-lens`}
-            className="h-10 rounded-full border border-grey-border bg-white px-3 text-[13px] font-bold"
+            className="h-10 rounded-full border border-grey-border bg-(--op-viz-surface) px-3 text-[13px] font-bold"
             value={role}
             onChange={(event) => setRole(event.target.value as AppRole)}
           >

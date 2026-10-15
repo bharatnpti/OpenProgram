@@ -68,6 +68,11 @@ from infra.workflows import (
 )
 from infra.workflows.brief_generation import BriefGenerationInput, BriefGenerationResult
 from infra.workflows.calendar_sync import CalendarSyncInput, CalendarSyncWorkflowResult
+from infra.workflows.checkin_fill import (
+    CheckinFillInput,
+    CheckinFillResult,
+    run_checkin_fill_activity,
+)
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
 from infra.workflows.delivery_reports import (
     DayReportDispatchInput,
@@ -121,7 +126,12 @@ SyncWorkflowResult = (
     | DayReportDispatchResult
     | GateScanResult
     | ReadinessScanResult
+    | CheckinFillResult
 )
+
+
+class DbosDatabaseNotConfigured(RuntimeError):
+    """DBOS was asked to launch on a database nobody named."""
 
 
 @dataclass(frozen=True)
@@ -132,12 +142,19 @@ class DbosRuntimeConfig:
     config from its settings, so launching a runtime never reads the global
     settings: a caller holding only an application name and a database URL
     (an integration test, a one-off script) needs no secret key or provider.
+
+    ``database_explicit`` is False only when the settings fell back to their
+    default URL. A launch registers this code as the database's application
+    version, which on the developer's running stack at that address stalls its
+    scheduled runs, so a launch on the fallback is refused. A caller that wrote
+    its own URL is explicit by construction.
     """
 
     app_name: str
     system_database_url: str
     system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
     sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
+    database_explicit: bool = True
 
 
 _configured_runtime: DbosRuntimeConfig | None = None
@@ -193,6 +210,9 @@ async def dbos_scheduled_checkin_fanout_workflow(
     return await _run_dbos_checkin_fanout(
         CheckinFanoutInput(
             tenant_id=context["tenant_id"],
+            # The fan-out cron is registered with no zone, so a run is for its UTC
+            # date (CheckInSendSchedule reads `send` in UTC too); a zone given to the
+            # cron would date the run there.
             checkin_date=scheduled_time.date().isoformat(),
         )
     )
@@ -439,6 +459,17 @@ async def dbos_readiness_scan_workflow(payload: ReadinessScanInput) -> Readiness
     return await dbos_run_readiness_scan_step(payload)
 
 
+# Retries are safe: a day already filled is never filled again.
+@DBOS.step(name="openprogram_run_checkin_fill", retries_allowed=True)
+async def dbos_run_checkin_fill_step(payload: CheckinFillInput) -> CheckinFillResult:
+    return await run_checkin_fill_activity(payload)
+
+
+@DBOS.workflow(name="openprogram_checkin_fill")
+async def dbos_checkin_fill_workflow(payload: CheckinFillInput) -> CheckinFillResult:
+    return await dbos_run_checkin_fill_step(payload)
+
+
 # A step, so a recovered run keeps the answer its first attempt recorded.
 @DBOS.step(name="openprogram_check_sync_tick_superseded")
 async def dbos_check_sync_tick_superseded_step(scheduled_at: str, cron: str) -> bool:
@@ -600,6 +631,7 @@ async def _start_daily_checkins_concurrently(
 
 
 async def _start_daily_checkin_workflow(input: DeveloperCheckinDispatch) -> str:
+    # The day only names the run: the uuid makes every id new, so it never dedupes.
     workflow_id = safe_workflow_id(
         "checkin-"
         f"{input.tenant_id}-{input.developer_id}-"
@@ -794,6 +826,8 @@ async def _run_derived_step(workflow_input: object, connector: str) -> SyncWorkf
         return await dbos_run_gate_scan_step(workflow_input)
     if isinstance(workflow_input, ReadinessScanInput):
         return await dbos_run_readiness_scan_step(workflow_input)
+    if isinstance(workflow_input, CheckinFillInput):
+        return await dbos_run_checkin_fill_step(workflow_input)
     raise ValueError(f"unsupported sync connector: {connector}")
 
 
@@ -839,6 +873,8 @@ async def _start_derived_workflow(workflow_input: object, connector: str) -> Non
         await DBOS.start_workflow_async(dbos_day_report_dispatch_workflow, workflow_input)
     elif isinstance(workflow_input, GateScanInput):
         await DBOS.start_workflow_async(dbos_gate_scan_workflow, workflow_input)
+    elif isinstance(workflow_input, CheckinFillInput):
+        await DBOS.start_workflow_async(dbos_checkin_fill_workflow, workflow_input)
     else:
         raise ValueError(f"unsupported sync connector: {connector}")
 
@@ -886,6 +922,7 @@ class DbosWorkflowScheduler:
     reply_debounce_seconds: int = 30
     system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
     sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
+    database_explicit: bool = True
 
     def runtime_config(self) -> DbosRuntimeConfig:
         return DbosRuntimeConfig(
@@ -893,6 +930,7 @@ class DbosWorkflowScheduler:
             system_database_url=self.system_database_url,
             system_pool_size=self.system_pool_size,
             sync_queue_concurrency=self.sync_queue_concurrency,
+            database_explicit=self.database_explicit,
         )
 
     async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
@@ -1045,6 +1083,7 @@ class DbosRollupRefresher:
     debounce_seconds: float = ROLLUP_REFRESH_DEBOUNCE_SECONDS
     system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
     sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
+    database_explicit: bool = True
 
     def runtime_config(self) -> DbosRuntimeConfig:
         return DbosRuntimeConfig(
@@ -1052,6 +1091,7 @@ class DbosRollupRefresher:
             system_database_url=self.system_database_url,
             system_pool_size=self.system_pool_size,
             sync_queue_concurrency=self.sync_queue_concurrency,
+            database_explicit=self.database_explicit,
         )
 
     async def refresh_rollup(self, tenant_id: str, as_of: date) -> None:
@@ -1087,6 +1127,7 @@ class DbosWorkflowWorker:
     system_database_url: str
     system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
     sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
+    database_explicit: bool = True
 
     def runtime_config(self) -> DbosRuntimeConfig:
         return DbosRuntimeConfig(
@@ -1094,6 +1135,7 @@ class DbosWorkflowWorker:
             system_database_url=self.system_database_url,
             system_pool_size=self.system_pool_size,
             sync_queue_concurrency=self.sync_queue_concurrency,
+            database_explicit=self.database_explicit,
         )
 
     async def run(self) -> None:
@@ -1114,6 +1156,7 @@ class DbosWorkflowReadinessProbe:
     system_database_url: str
     system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
     sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
+    database_explicit: bool = True
     _launched: bool = field(default=False, init=False, compare=False)
 
     def runtime_config(self) -> DbosRuntimeConfig:
@@ -1122,11 +1165,14 @@ class DbosWorkflowReadinessProbe:
             system_database_url=self.system_database_url,
             system_pool_size=self.system_pool_size,
             sync_queue_concurrency=self.sync_queue_concurrency,
+            database_explicit=self.database_explicit,
         )
 
     async def check(self) -> bool:
         if self._launched:
             return True
+        # Before the probe's own connection: it would reach the database too.
+        _require_named_database(self.runtime_config())
         try:
             connection = await psycopg.AsyncConnection.connect(self.system_database_url)
             try:
@@ -1142,8 +1188,19 @@ class DbosWorkflowReadinessProbe:
         return True
 
 
+def _require_named_database(config: DbosRuntimeConfig) -> None:
+    if not config.database_explicit:
+        raise DbosDatabaseNotConfigured(
+            "DBOS would launch on the default database URL, which is the local stack's "
+            "own database: set OPENPROGRAM_DATABASE_URL (or "
+            "OPENPROGRAM_DBOS_SYSTEM_DATABASE_URL) to the database it should use"
+        )
+
+
 def configure_dbos_runtime(config: DbosRuntimeConfig) -> None:
     global _configured_runtime
+    # Every launch is configured first, so this is the one place all of them pass.
+    _require_named_database(config)
     if _configured_runtime == config:
         return
     DBOS.destroy(destroy_registry=False)

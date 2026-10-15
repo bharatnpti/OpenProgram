@@ -1,6 +1,6 @@
-"""A check-in summary keeps the issue keys the person named (V2 B1d).
+"""A check-in summary keeps the issue keys the person named.
 
-V2 live: Hana replied about IDP-9, "about half done, no blockers", and the
+In a live run Hana replied about IDP-9, "about half done, no blockers", and the
 model's progress note, stored as her summary, read "About half done.": her card
 said nothing about which task.
 """
@@ -22,8 +22,8 @@ from infra.persistence.in_memory_graph import InMemoryGraphStore
 from tests.contract.fakes import FakeChatProvider, FakeIssueTracker
 from tests.unit.test_status_collector import SequenceLlmProvider
 
-# Hana's V2 reply, word for word.
-_HANA_V2 = (
+# Hana's reply, word for word.
+_HANA_REPLY = (
     "Hi! IDP-9 (Enterprise SSO onboarding guide) is in progress, about half done. No "
     "blockers, ETA hasn't changed. No MR for it, it's docs only."
 )
@@ -63,14 +63,14 @@ async def _parsed_note(note: str, reply: str) -> str:
     return signals.progress_note
 
 
-async def test_hanas_v2_summary_names_idp_9() -> None:
-    assert await _parsed_note("About half done.", _HANA_V2) == "IDP-9: About half done."
+async def test_hanas_summary_names_idp_9() -> None:
+    assert await _parsed_note("About half done.", _HANA_REPLY) == "IDP-9: About half done."
 
 
 async def test_the_evaluators_note_names_the_issue_too() -> None:
     llm = SequenceLlmProvider(texts=[_sufficient("About half done.")])
     decision = await ClarificationEvaluator(llm, model="test-model").evaluate(
-        tenant_id=_TENANT, developer_id=_HANA, raw_reply=_HANA_V2, correlation_id="corr-hana"
+        tenant_id=_TENANT, developer_id=_HANA, raw_reply=_HANA_REPLY, correlation_id="corr-hana"
     )
 
     assert decision.signals is not None
@@ -81,8 +81,8 @@ async def test_the_evaluators_note_names_the_issue_too() -> None:
     ("note", "reply", "expected"),
     [
         # A note that names every key is kept as the model wrote it, in any case.
-        ("IDP-9 is about half done.", _HANA_V2, "IDP-9 is about half done."),
-        ("idp-9 is about half done.", _HANA_V2, "idp-9 is about half done."),
+        ("IDP-9 is about half done.", _HANA_REPLY, "IDP-9 is about half done."),
+        ("idp-9 is about half done.", _HANA_REPLY, "idp-9 is about half done."),
         # Keys lead in the order the reply names them.
         (
             "Both in review.",
@@ -112,11 +112,11 @@ async def test_the_note_keeps_every_key_the_reply_names(
 async def test_both_prompts_ask_for_the_keys_in_the_note() -> None:
     parser_llm = SequenceLlmProvider(texts=[json.dumps(_signals("IDP-9 about half done."))])
     await StatusParser(parser_llm, model="test-model").parse_reply(
-        tenant_id=_TENANT, developer_id=_HANA, raw_reply=_HANA_V2, correlation_id="corr-hana"
+        tenant_id=_TENANT, developer_id=_HANA, raw_reply=_HANA_REPLY, correlation_id="corr-hana"
     )
     evaluator_llm = SequenceLlmProvider(texts=[_sufficient("IDP-9 about half done.")])
     await ClarificationEvaluator(evaluator_llm, model="test-model").evaluate(
-        tenant_id=_TENANT, developer_id=_HANA, raw_reply=_HANA_V2, correlation_id="corr-hana"
+        tenant_id=_TENANT, developer_id=_HANA, raw_reply=_HANA_REPLY, correlation_id="corr-hana"
     )
 
     for request in (*parser_llm.requests, *evaluator_llm.requests):
@@ -182,7 +182,7 @@ async def test_hanas_stored_summary_names_idp_9() -> None:
         InboundMessage(
             tenant_id=_TENANT,
             user=ChatUserRef(tenant_id=_TENANT, external_id=_HANA),
-            text=_HANA_V2,
+            text=_HANA_REPLY,
             thread_id="thread-hana",
             message_id="m1",
             correlation_id="corr-hana",

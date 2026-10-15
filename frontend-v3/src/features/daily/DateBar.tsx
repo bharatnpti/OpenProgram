@@ -62,7 +62,7 @@ export function DateBar({ facts, today }: { facts: DateFacts; today: string }) {
           {wide.legend.team ? (
             <span>
               <i className="dv-sw dv-sw-dia" />
-              Team's latest date
+              Team's own date
             </span>
           ) : null}
           {wide.legend.forecast ? (

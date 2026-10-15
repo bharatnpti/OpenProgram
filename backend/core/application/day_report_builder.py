@@ -25,7 +25,7 @@ about work, not people; the report never ranks or scores anyone.
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
@@ -41,19 +41,25 @@ from core.application.day_report_asks import (
     incoming_ask,
     most_needed,
     open_question_asks,
+    owner_heading,
+    profile_holder,
     readiness_decider,
     request_ask,
     signal_ask,
     team_from,
     trimmed,
 )
+from core.application.day_report_hygiene import HygienePart, hygiene_part
 from core.application.delivery_scope import PROJECT_OWNER_KEY, member_scope
 from core.application.delivery_service import DeliveryService
 from core.application.escalation_matrix_service import EscalationMatrixService
 from core.application.forecast_service import ForecastService, ScopeDeliveryView
 from core.application.gate_service import GateBoardView, GateService, IssueGatesView
+from core.application.hygiene_service import HygieneService
+from core.application.impact_service import DeliveryImpactService, ImpactLine
 from core.application.person_names import UNKNOWN_PERSON
 from core.application.persona_views import owned_project_tasks
+from core.application.profile_service import ProfileService
 from core.application.release_readiness_service import ReleaseReadinessService, ReportGaps
 from core.application.risk_service import RiskService
 from core.domain.auth import Role
@@ -122,6 +128,14 @@ _HEARD_BACK = {
 
 
 @dataclass(frozen=True, kw_only=True)
+class ProjectAsks:
+    """A project's asks for one day, flat, and who is who in it (``AskScope``)."""
+
+    scope: AskScope
+    asks: tuple[Ask, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
 class _Facts:
     scope: AskScope
     release: Release | None
@@ -133,6 +147,8 @@ class _Facts:
     findings: tuple[RiskFinding | DriftFinding, ...]
     #: Blocking release readiness gaps close to their date; none while readiness is off.
     readiness: ReportGaps = ReportGaps()
+    #: Why the 85% date moved since the previous snapshot, when it did.
+    impact: ImpactLine | None = None
 
 
 class DayReportBuilder:
@@ -150,6 +166,9 @@ class DayReportBuilder:
         escalation_service: EscalationMatrixService,
         console_base_url: str | None = None,
         readiness_service: ReleaseReadinessService | None = None,
+        profile_service: ProfileService | None = None,
+        impact_service: DeliveryImpactService | None = None,
+        hygiene_service: HygieneService | None = None,
     ) -> None:
         self._graph = graph_repository
         self._delivery = delivery_service
@@ -161,6 +180,11 @@ class DayReportBuilder:
         self._gates = gate_service
         self._escalation = escalation_service
         self._readiness = readiness_service
+        # Who brings what to each pod: names asks' owners with a chosen profile,
+        # and finds the holder a readiness criterion's profile asks for.
+        self._profiles = profile_service
+        self._impact = impact_service
+        self._hygiene = hygiene_service
         self._console_base_url = console_base_url.rstrip("/") if console_base_url else None
 
     async def build(
@@ -174,9 +198,10 @@ class DayReportBuilder:
         note: DayReportNote | None = None,
     ) -> DayReport:
         facts = await self._facts(tenant_id, project_id, day, release_id)
+        hygiene = await self._hygiene_part(tenant_id, facts, day)
         asks = [
             escalated(ask, facts.matrix, facts.scope)
-            for ask in await self._asks(tenant_id, facts, day)
+            for ask in [*await self._asks(tenant_id, facts, day), *hygiene.asks]
         ]
         scope = facts.scope
         status = await self._rollups.latest_node_status(tenant_id, scope.project.ref, day)
@@ -198,7 +223,10 @@ class DayReportBuilder:
             progress_line=_progress_line(facts.snapshot, facts.previous),
             sections=(
                 ReportSection(title="In short", lines=_in_short(facts, asks, note)),
-                ReportSection(title="Where we stand", groups=_where_we_stand(facts, stand)),
+                ReportSection(
+                    title="Where we stand",
+                    groups=(*_where_we_stand(facts, stand), *hygiene.groups()),
+                ),
                 ReportSection(
                     title="Most important",
                     lines=_most_important(facts),
@@ -208,7 +236,7 @@ class DayReportBuilder:
                     title="What we need, and from whom",
                     groups=tuple(
                         ReportGroup(
-                            heading=owner or "Nobody named yet",
+                            heading=owner_heading(owner, scope),
                             lines=tuple(ask.line() for ask in items),
                         )
                         for owner, items in owners
@@ -229,12 +257,37 @@ class DayReportBuilder:
             facts=DayReportFacts(
                 note=_note_facts(scope, note),
                 delivery=_date_facts(facts),
-                progress=_progress_facts(facts, stand),
+                progress=hygiene.progress(_progress_facts(facts, stand)),
                 gates=_gate_facts(facts.board),
                 important=_important_facts(facts),
-                asks=_owner_asks(owners, most_needed(asks)),
+                asks=_owner_asks(owners, most_needed(asks), scope),
             ),
         )
+
+    async def asks(
+        self,
+        tenant_id: str,
+        project_id: str,
+        day: date,
+        *,
+        release_id: str | None = None,
+    ) -> ProjectAsks:
+        """The day's asks for the project, flat and escalated, exactly as ``build`` makes them.
+
+        The same gathering as the report's "What we need, and from whom":
+        blockers, waits from outside, requests, signals, gates, questions,
+        readiness and hygiene asks, each escalated on the project's matrix. It
+        leaves out the forecast, the progress snapshots and the impact line,
+        which no ask reads. Ordered by the item: the level it reached, how
+        long it waited, then its kind; never grouped or ranked by person.
+        """
+        facts = await self._ask_facts(tenant_id, project_id, day, release_id)
+        hygiene = await self._hygiene_part(tenant_id, facts, day)
+        asks = [
+            escalated(ask, facts.matrix, facts.scope)
+            for ask in [*await self._asks(tenant_id, facts, day), *hygiene.asks]
+        ]
+        return ProjectAsks(scope=facts.scope, asks=tuple(most_needed(asks, limit=len(asks))))
 
     async def check_release(self, tenant_id: str, project_id: str, release_id: str) -> None:
         """Raise GraphNotFound unless the release belongs to the project."""
@@ -245,14 +298,28 @@ class DayReportBuilder:
     async def _facts(
         self, tenant_id: str, project_id: str, day: date, release_id: str | None
     ) -> _Facts:
-        release = await self._release(tenant_id, project_id, release_id)
-        scope = await self._scope(tenant_id, project_id, day, release)
-        return _Facts(
-            scope=scope,
-            release=release,
+        facts = await self._ask_facts(tenant_id, project_id, day, release_id)
+        release = facts.release
+        previous = await self._delivery.previous_snapshot(tenant_id, project_id, day, release)
+        return replace(
+            facts,
             snapshot=await self._delivery.snapshot(tenant_id, project_id, day, release),
-            previous=await self._delivery.previous_snapshot(tenant_id, project_id, day, release),
+            previous=previous,
             delivery=await self._delivery_view(tenant_id, project_id, day, release),
+            impact=await self._impact_line(tenant_id, project_id, release, previous, day),
+        )
+
+    async def _ask_facts(
+        self, tenant_id: str, project_id: str, day: date, release_id: str | None
+    ) -> _Facts:
+        """What the asks read: who is who, the gates, the matrix, findings and readiness."""
+        release = await self._release(tenant_id, project_id, release_id)
+        return _Facts(
+            scope=await self._scope(tenant_id, project_id, day, release),
+            release=release,
+            snapshot=None,
+            previous=None,
+            delivery=None,
             board=await self._gates.board(tenant_id, project_id, day, release),
             matrix=(await self._escalation.matrix_for(tenant_id, project_id)).matrix,
             findings=(
@@ -265,6 +332,27 @@ class DayReportBuilder:
                 else ReportGaps()
             ),
         )
+
+    async def _impact_line(
+        self,
+        tenant_id: str,
+        project_id: str,
+        release: Release | None,
+        previous: RequirementsSnapshot | None,
+        day: date,
+    ) -> ImpactLine | None:
+        """Why the 85% date moved since the previous snapshot, as one line."""
+        if self._impact is None or previous is None:
+            return None
+        scope = CommitmentScope(
+            kind=CommitmentScopeKind.RELEASE if release else CommitmentScopeKind.PROJECT,
+            id=release.release_id if release else project_id,
+            project_id=project_id,
+        )
+        try:
+            return await self._impact.report_line(tenant_id, scope, since=previous.day, day=day)
+        except GraphNotFound:
+            return None
 
     async def _release(
         self, tenant_id: str, project_id: str, release_id: str | None
@@ -346,6 +434,7 @@ class DayReportBuilder:
                 assignees.setdefault(edge.to_node_id, edge.from_node_id)
         members = {member for member, team in member_teams.items() if team in team_ids}
         members |= {assignees[task_id] for task_id in tasks if task_id in assignees}
+        profiles, checked, labels = await self._profile_maps(tenant_id, day)
         return AskScope(
             project=project,
             tasks=tasks,
@@ -364,7 +453,25 @@ class DayReportBuilder:
                 )
                 for member, ids in member_team_ids.items()
             },
+            profiles=profiles,
+            checked_profiles=checked,
+            profile_labels=labels,
         )
+
+    async def _profile_maps(
+        self, tenant_id: str, day: date
+    ) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]], dict[str, str]]:
+        """Each pod's members' profiles on the day, the chosen ones of them, and the labels."""
+        profiles: dict[str, dict[str, str]] = {}
+        checked: dict[str, dict[str, str]] = {}
+        if self._profiles is None:
+            return profiles, checked, {}
+        for view in (await self._profiles.profiles_on(tenant_id, day)).values():
+            profiles.setdefault(view.pod_id, {})[view.member_id] = view.profile
+            if view.checked:
+                checked.setdefault(view.pod_id, {})[view.member_id] = view.profile
+        labels = {entry.slug: entry.label for entry in await self._profiles.catalog(tenant_id)}
+        return profiles, checked, labels
 
     async def _asks(self, tenant_id: str, facts: _Facts, day: date) -> list[Ask]:
         scope = facts.scope
@@ -397,6 +504,13 @@ class DayReportBuilder:
         asks.extend(_readiness_asks(facts.readiness, scope, facts.matrix, day))
         return asks
 
+    async def _hygiene_part(self, tenant_id: str, facts: _Facts, day: date) -> HygienePart:
+        """Jira hygiene's count line, and its asking rules' asks (day_report_hygiene)."""
+        if self._hygiene is None:
+            return HygienePart()
+        report = await self._hygiene.report(tenant_id, facts.scope.project.id, facts.release, day)
+        return hygiene_part(report, facts.scope, facts.matrix, day)
+
     async def _incoming(
         self, tenant_id: str, scope: AskScope, day: date
     ) -> list[tuple[str, ResolvedBlocker]]:
@@ -426,6 +540,14 @@ class DayReportBuilder:
                     found.setdefault(blocker.blocker_id, (developer_id, blocker))
         return list(found.values())
 
+    async def ask_scope(self, tenant_id: str, project_id: str, day: date) -> AskScope:
+        """Who is who in the project on ``day``, as its whole-project report's asks read it.
+
+        For a reader that works out one ask's way up the matrix without the
+        rest of the report (the request trail).
+        """
+        return await self._scope(tenant_id, project_id, day, None)
+
 
 # ---- the sections ---------------------------------------------------------------------
 
@@ -452,8 +574,11 @@ def _delivery_line(view: ScopeDeliveryView) -> str:
     if view.history.p85 is not None:
         line += f" History says 85% likely by {_day_label(view.history.p85)}."
     if view.team.latest is not None and view.team.latest_key:
+        undated = view.team.undated
         line += (
-            f" The team's latest date is {_day_label(view.team.latest)} ({view.team.latest_key})."
+            f" Team's own date: {_day_label(view.team.latest)} ({view.team.latest_key})"
+            + (f" · {undated} {'has' if undated == 1 else 'have'} no date" if undated else "")
+            + "."
         )
     return line
 
@@ -485,6 +610,8 @@ def _stand(facts: _Facts, day: date) -> _Stand:
     since = previous.day if previous is not None else None
     moves, more, scope_line = _move_parts(previous, snapshot)
     date_lines = tuple(_date_lines(facts.delivery, since, day))
+    if facts.impact is not None:
+        date_lines += (facts.impact.text,)
     placeholder = None
     if not (moves or more or scope_line or date_lines):
         placeholder = (
@@ -554,6 +681,8 @@ def _most_important(facts: _Facts) -> tuple[str, ...]:
     # the cap below never folds one into "and N more". Without one, the order
     # is what it always was.
     lines: list[str] = list(facts.readiness.lines)
+    if facts.impact is not None and facts.impact.leads:
+        lines.append(facts.impact.text)
     lines.extend(_date_reasons(facts))
     lines.extend(_bypass_line(issue) for issue in facts.board.issues if issue.passed_without)
     lines.extend(_risk_lines(facts))
@@ -614,7 +743,7 @@ _DRAWN_REASONS: tuple[tuple[str, str], ...] = (
     ("History: ", "forecast"),
     ("No history yet", "history"),
     ("Nothing reached production in the last ", "history"),
-    ("Team dates: ", "team"),
+    ("Team's own date: ", "team"),
 )
 
 
@@ -752,13 +881,13 @@ def _important_facts(facts: _Facts) -> ImportantFacts:
 
 
 def _owner_asks(
-    owners: Sequence[tuple[str | None, Sequence[Ask]]], needed: Sequence[Ask]
+    owners: Sequence[tuple[str | None, Sequence[Ask]]], needed: Sequence[Ask], scope: AskScope
 ) -> tuple[OwnerAsks, ...]:
     # The very asks In short names, not equal ones: two asks may read alike.
     most = {id(ask) for ask in needed}
     return tuple(
         OwnerAsks(
-            heading=owner or "Nobody named yet",
+            heading=owner_heading(owner, scope),
             named=bool(owner),
             asks=tuple(
                 AskFacts(
@@ -796,15 +925,35 @@ def _readiness_asks(
     for gap in readiness.gaps:
         pod_id = gap.scope.id if gap.scope.kind is ScopeKind.POD else None
         decider = readiness_decider(scope, matrix, pod_id)
+        waited = max(0, (day - gap.entered_on).days) if gap.entered_on else None
         asks.append(
             Ask(
                 need=NeedType.DECISION,
                 owner=decider.owner,
                 text=trimmed(gap.ask),
-                waited_days=max(0, (day - gap.entered_on).days) if gap.entered_on else None,
+                waited_days=waited,
                 team=decider.team,
             )
         )
+        if gap.owner_profile and gap.fix_ask:
+            # The criterion names who makes the evidence: its profile's holder in the
+            # scope's pods is asked to create or link it. The decision stays the decider's.
+            holder, team = profile_holder(scope, gap.owner_profile, pod_id)
+            label = scope.profile_labels.get(gap.owner_profile, gap.owner_profile)
+            text = (
+                gap.fix_ask
+                if holder
+                else f"{gap.fix_ask}; nobody in its pods has the {label} profile yet"
+            )
+            asks.append(
+                Ask(
+                    need=NeedType.FIX,
+                    owner=holder,
+                    text=trimmed(text),
+                    waited_days=waited,
+                    team=team,
+                )
+            )
     return asks
 
 

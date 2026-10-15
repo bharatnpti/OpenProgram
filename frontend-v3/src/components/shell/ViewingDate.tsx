@@ -28,7 +28,7 @@ export function ViewingDateControl() {
         "h-10 flex-none gap-2 rounded-full border px-3 text-[13px] font-bold",
         chosen
           ? "border-rag-amber bg-rag-amber-bg text-rag-amber-deep"
-          : "border-grey-border bg-white text-ink peer-hover:border-grey-disabled",
+          : "border-grey-border bg-(--op-viz-surface) text-ink peer-hover:border-grey-disabled",
       )}
     />
   );

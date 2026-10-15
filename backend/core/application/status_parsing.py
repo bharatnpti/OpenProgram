@@ -44,7 +44,7 @@ _REQUEST_NAME_RULE = (
     "anyone, the team, QA, a dev or my lead names nobody: add no request for it."
 )
 # The progress note is stored as the person's summary, which is read without the
-# reply, so it keeps the issues the reply names (V2 B1d: "About half done." for IDP-9).
+# reply, so it keeps the issues the reply names ("About half done." for IDP-9).
 _PROGRESS_NOTE_RULE = (
     "progress_note is a short summary of the reply that names every issue key the reply "
     "names, each with what the reply says about it (for example 'IDP-9 is about half "
@@ -200,7 +200,7 @@ class ClarificationEvaluator:
     ) -> ClarificationDecision:
         """Read whether ``raw_reply`` gives a status, and whether it is enough to finalize.
 
-        Rules first, the model only when they cannot tell (V2 B16b): a reply
+        Rules first, the model only when they cannot tell: a reply
         whose words carry no status ("thanks, nothing from me today") is never
         the model's to call a status. The rules read ``checkin_text``, all of the
         person's messages on this check-in with this one last, when given, so a
@@ -496,9 +496,9 @@ def _signals_from_json(
 
 
 def _note_naming_reply_issues(note: str, reply: str) -> str:
-    """``note`` naming every issue key ``reply`` names (V2 B1d).
+    """``note`` naming every issue key ``reply`` names.
 
-    V2 live: Hana wrote "IDP-9 (Enterprise SSO onboarding guide) is in
+    In a live run Hana wrote "IDP-9 (Enterprise SSO onboarding guide) is in
     progress, about half done. ...", and the model's progress note, stored as
     her summary, read "About half done.": her card no longer said which task.
     The note's words are kept, and the keys the reply names that it leaves out

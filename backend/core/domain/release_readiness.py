@@ -80,6 +80,7 @@ PLACEHOLDERS = (
 _PLACEHOLDER = re.compile(r"\{([A-Za-z_]+)\}")
 _NON_WORD = re.compile(r"[^\w]+")
 _PROJECT_KEY = re.compile(r"^[A-Z][A-Z0-9_]+$")
+_PROFILE_SLUG = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 _ISSUE_KEY = re.compile(r"^[A-Z][A-Z0-9_]*-\d+$")
 _SLUG = re.compile(r"[^a-z0-9]+")
 
@@ -217,6 +218,10 @@ class ReleaseCriterion:
     when_types: tuple[str, ...] = ()
     draft: DraftTemplate = field(default_factory=DraftTemplate)
     enabled: bool = True
+    #: The profile (a catalog slug) whose holder in the scope's pods is asked to
+    #: create or link the evidence while it is missing, beside the decision ask.
+    #: Empty asks nobody but the decider. A profile grants no rights.
+    owner_profile: str = ""
     #: +1 on every save; findings record the version they were judged on.
     version: int = 1
     updated_at: datetime | None = None
@@ -271,6 +276,24 @@ class ScopeIssue:
     #: False in a stage marked "not counted" (won't do, duplicate): never evidence.
     counted: bool = True
     updated_at: str | None = None
+    # Read by Jira hygiene's rules (core/domain/hygiene.py); readiness ignores them.
+    #: Where the stage mapping places it; None in a stage marked "not counted".
+    stage: DeliveryStage | None = None
+    #: A type the stage mapping counts as a requirement, placed on a stage.
+    requirement: bool = False
+    created_at: str | None = None
+    due_date: str | None = None
+    story_points: float | None = None
+    priority: str | None = None
+    fix_versions: tuple[str, ...] = ()
+    components: tuple[str, ...] = ()
+    severity: str | None = None
+    #: The member it is assigned to; None when nobody is, or the account is not a member.
+    assignee_id: str | None = None
+    #: Assigned to anyone, a member or an account no member is linked to.
+    assigned: bool = False
+    #: The member who reported it, when linked.
+    reporter_id: str | None = None
 
 
 # ---- findings ---------------------------------------------------------------------------
@@ -885,6 +908,9 @@ def validated_criterion(criterion: ReleaseCriterion) -> ReleaseCriterion:
     if any(not _label_ok(label) for label in criterion.when_labels if label.strip()):
         problems.append("a label has no spaces")
     draft = _draft_template(criterion.draft, problems)
+    owner_profile = criterion.owner_profile.strip().lower()
+    if owner_profile and not _PROFILE_SLUG.match(owner_profile):
+        problems.append("the profile to ask is one of the profile list's ids, such as security")
     if problems:
         raise ReadinessError(_sentence_of(problems))
     return replace(
@@ -895,6 +921,7 @@ def validated_criterion(criterion: ReleaseCriterion) -> ReleaseCriterion:
         when_labels=when_labels,
         when_types=when_types,
         draft=draft,
+        owner_profile=owner_profile,
     )
 
 

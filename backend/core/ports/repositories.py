@@ -24,6 +24,7 @@ from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import SyncCursor, SyncCursorRecord
 from core.domain.jira_writes import JiraWritesChange, StoredJiraWrites
+from core.domain.observed_day import FillDaySetting
 from core.domain.rollup import NodeStatus
 from core.domain.status import (
     CheckIn,
@@ -31,6 +32,7 @@ from core.domain.status import (
     CheckInCorrelation,
     CheckInDay,
     CheckInNudge,
+    CheckInNudgeSent,
     CheckInPreference,
     CheckInScheduleRun,
     CheckInSignals,
@@ -245,6 +247,12 @@ class CrossPersonRequestRepository(Protocol):
 
     async def list_open(self, tenant_id: str) -> list[CrossPersonRequest]: ...
 
+    async def list_resolved_since(
+        self, tenant_id: str, since: datetime
+    ) -> list[CrossPersonRequest]:
+        """Requests resolved (not dismissed) last changed on or after ``since``, newest first."""
+        ...
+
     async def get_by_notify_correlation(
         self,
         tenant_id: str,
@@ -346,6 +354,14 @@ class StatusRepository(Protocol):
         self, tenant_id: str, correlation_id: str, nudge_number: int
     ) -> CheckInNudge | None: ...
 
+    async def checkin_nudges_on_day(self, tenant_id: str, day: date) -> list[CheckInNudgeSent]:
+        """The rungs sent for the check-ins of ``day`` (their local day), oldest first.
+
+        Only rungs that went out (``sent_at`` set): a rung reserved but never
+        sent is not one. The day is read as ``checkins_on_day`` reads it.
+        """
+        ...
+
     async def record_checkin_clarification(
         self, clarification: CheckInClarification
     ) -> CheckInClarification: ...
@@ -399,6 +415,13 @@ class StatusRepository(Protocol):
         self, tenant_id: str, work_item_id: str, as_of: date
     ) -> list[DeveloperBlocker]: ...
 
+    async def blockers_on_work_items(
+        self, tenant_id: str, work_item_ids: Sequence[str], after: date, until: date
+    ) -> list[DeveloperBlocker]:
+        """Blockers on any of ``work_item_ids`` opened or resolved after ``after`` and on
+        or before ``until``: the timeline's blocker markers, by the day each happened."""
+        ...
+
     async def has_blocker_rows(self, tenant_id: str, developer_id: str) -> bool: ...
 
     async def latest_developer_status(
@@ -422,6 +445,18 @@ class ConversationRepository(Protocol):
     async def list_turns_for_day(
         self, tenant_id: str, developer_id: str, on: date
     ) -> list[ConversationTurn]: ...
+
+    async def peek_turns_for_day(
+        self, tenant_id: str, developer_id: str, on: date
+    ) -> list[ConversationTurn]:
+        """The person's turns of ``on``, as ``list_turns_for_day``, without touching them.
+
+        The other reads mark each turn accessed, which moves its retention
+        purge back. A person reading their own conversation in the console
+        must never keep it for good, so this read leaves ``last_accessed_at``
+        as it is.
+        """
+        ...
 
     async def list_recent_turns(
         self,
@@ -533,6 +568,22 @@ class SyncCursorRepository(Protocol):
         """Every stored cursor for a tenant, ordered by connector then scope."""
         ...
 
+    async def swap_cursor(
+        self,
+        tenant_id: str,
+        connector: str,
+        scope: str,
+        expected_value: str | None,
+        cursor: SyncCursor,
+    ) -> bool:
+        """Record ``cursor`` only while the stored cursor's value is ``expected_value``.
+
+        None expects no cursor (or one without a value). One conditional write:
+        of two callers swapping from the same value, one wins. True when this
+        call recorded it.
+        """
+        ...
+
 
 class IdentityLinkRepository(Protocol):
     """Persist provider-neutral identity links keyed by tenant and developer."""
@@ -554,6 +605,14 @@ class WriteBackConfigRepository(Protocol):
     async def get_writeback_enabled(self, tenant_id: str) -> bool | None: ...
 
     async def set_writeback_enabled(self, tenant_id: str, enabled: bool) -> None: ...
+
+
+class FillDayRepository(Protocol):
+    """The tenant's "fill the day from Jira" switch; None while an admin never saved it."""
+
+    async def get_fill_day(self, tenant_id: str) -> FillDaySetting | None: ...
+
+    async def save_fill_day(self, setting: FillDaySetting) -> None: ...
 
 
 class JiraWritesRepository(Protocol):
@@ -597,6 +656,19 @@ class WriteBackAuditRepository(Protocol):
     ) -> WriteBackAudit | None: ...
 
     async def get_writeback_audit(self, tenant_id: str, audit_id: str) -> WriteBackAudit | None: ...
+
+    def exclusive_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> AbstractAsyncContextManager[None]:
+        """Hold one correlation's write-back answers alone while one is resolved.
+
+        A proposal can be answered in the chat and in the console at nearly the
+        same moment, and both would read it pending and write the issue. Held
+        around the pending read and the write, the second waits, then finds the
+        first one's row and writes nothing. Across processes: the API and the
+        worker both answer.
+        """
+        ...
 
     async def count_applied_writebacks(
         self, tenant_id: str, since: datetime | None = None

@@ -233,6 +233,27 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/workflows/forecast-days/reconstruct": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Dispatch Forecast Reconstruction
+     * @description Rebuild the forecast of the days before today from the stored snapshots, for the
+     *     principal's tenant: the snapshot run, with reconstruct_days. Days the hourly run kept stay.
+     */
+    post: operations["dispatch_forecast_reconstruction_admin_workflows_forecast_days_reconstruct_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/admin/ops/dead-letters": {
     parameters: {
       query?: never;
@@ -559,6 +580,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/config/members/identity-counts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Config Identity Counts
+     * @description How many members have no chat id, and how many no Jira account.
+     */
+    get: operations["get_config_identity_counts_config_members_identity_counts_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/members/unmapped": {
     parameters: {
       query?: never;
@@ -636,7 +677,15 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Create Config Members From Directory */
+    /**
+     * Create Config Members From Directory
+     * @description Import people as members; with ``pod_id``, also put each in that pod.
+     *
+     *     Each joins the pod with ``role`` (developer when not given) and, when
+     *     given, ``profile`` (recorded as set by the import). Someone already in the
+     *     pod keeps their membership and role; only a given profile is recorded for
+     *     them. The pod and the profile are checked before anyone is imported.
+     */
     post: operations["create_config_members_from_directory_config_members_from_directory_post"];
     delete?: never;
     options?: never;
@@ -762,7 +811,14 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Link Config Pod Member */
+    /**
+     * Link Config Pod Member
+     * @description Add the member to the pod with their role and, when given, their profile in it.
+     *
+     *     The profile is checked before the link is made, so a refused profile adds
+     *     nobody. Without one, the membership's profile reads from its role until
+     *     someone sets it.
+     */
     post: operations["link_config_pod_member_config_pods__pod_id__members__member_id__post"];
     /** Unlink Config Pod Member */
     delete: operations["unlink_config_pod_member_config_pods__pod_id__members__member_id__delete"];
@@ -909,6 +965,30 @@ export interface paths {
      * @description The master Jira writes switch, as Admin › Jira writes sets it (and audits it).
      */
     put: operations["update_config_tenant_writeback_config_tenant_writeback_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/checkin-fill": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Config Checkin Fill
+     * @description Whether the day is filled from Jira for members the check-in never reached.
+     */
+    get: operations["get_config_checkin_fill_config_checkin_fill_get"];
+    /**
+     * Update Config Checkin Fill
+     * @description Admin › Check-ins: "Fill the day from Jira for people who were not asked".
+     */
+    put: operations["update_config_checkin_fill_config_checkin_fill_put"];
     post?: never;
     delete?: never;
     options?: never;
@@ -1383,6 +1463,97 @@ export interface paths {
     post?: never;
     /** Delete Release */
     delete: operations["delete_release_projects__project_id__releases__release_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/baselines": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Project Baselines
+     * @description The project's (or one release's) planning baselines as they stood on ``as_of``,
+     *     newest first, each with the scope of that day against it.
+     */
+    get: operations["project_baselines_projects__project_id__baselines_get"];
+    put?: never;
+    /**
+     * Mark Planning Complete
+     * @description Freeze the requirements in scope as the new baseline; an earlier one is kept, replaced.
+     */
+    post: operations["mark_planning_complete_projects__project_id__baselines_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/delivery/impact": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Delivery Impact
+     * @description Why the project's (one release's, one pod's) 85% or 50% date moved over the period:
+     *     the forecast then and now, each driver in working days with its work items, the
+     *     committed date's moves, the team's date, late and undated requirements, the
+     *     timeline's markers, and what is not known.
+     */
+    get: operations["delivery_impact_projects__project_id__delivery_impact_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/timeline": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Project Timeline
+     * @description The project's (or one release's) row, its releases, then its pods worst verdict
+     *     first, each from planning to its committed date with progress, the forecast band,
+     *     the team's date, the committed date's history and the impact markers.
+     */
+    get: operations["project_timeline_projects__project_id__timeline_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/pods/{pod_id}/timeline": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Pod Timeline
+     * @description The pod's row for each project it works on, with the project's committed date as a
+     *     reference tick.
+     */
+    get: operations["pod_timeline_pods__pod_id__timeline_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -1866,6 +2037,239 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/projects/{project_id}/hygiene": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Project Hygiene */
+    get: operations["project_hygiene_projects__project_id__hygiene_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/pods/{pod_id}/hygiene": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Pod Hygiene */
+    get: operations["pod_hygiene_pods__pod_id__hygiene_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/hygiene/run": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Run Project
+     * @description Check now: the project, its releases and its pods, inline. Reads only synced data.
+     */
+    post: operations["run_project_projects__project_id__hygiene_run_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/hygiene-findings/{finding_id}/waive": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Waive */
+    post: operations["waive_hygiene_findings__finding_id__waive_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/hygiene-findings/{finding_id}/not-applicable": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Not Applicable */
+    post: operations["not_applicable_hygiene_findings__finding_id__not_applicable_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/hygiene-findings/{finding_id}/reopen": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reopen */
+    post: operations["reopen_hygiene_findings__finding_id__reopen_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/hygiene-findings/{finding_id}/recheck": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Recheck
+     * @description Read the issue again as the last Jira sync left it, after a fix in Jira.
+     */
+    post: operations["recheck_hygiene_findings__finding_id__recheck_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/hygiene-findings/{finding_id}/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** History */
+    get: operations["history_hygiene_findings__finding_id__history_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/hygiene": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Hygiene Config */
+    get: operations["hygiene_config_config_hygiene_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/hygiene/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Save Settings */
+    put: operations["save_settings_config_hygiene_settings_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/hygiene/rules": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Save Rule
+     * @description Create a rule (empty id, or an example's id) or replace the one with that id.
+     */
+    put: operations["save_rule_config_hygiene_rules_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/hygiene/rules/{rule_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Remove Rule */
+    delete: operations["remove_rule_config_hygiene_rules__rule_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/hygiene/rules/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview Rule
+     * @description Try on a project: what the scan would find with this rule. Writes nothing.
+     */
+    post: operations["preview_rule_config_hygiene_rules_preview_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/day-reports": {
     parameters: {
       query?: never;
@@ -2289,7 +2693,14 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Project Progress */
+    /**
+     * Project Progress
+     * @description The project's colour, its tasks, and the factors behind the colour.
+     *
+     *     An executive reads it with nobody in it: no person's own status among
+     *     the factors, a blocker as "Open blocker." on its work item, and every name
+     *     said as a role or a team.
+     */
     get: operations["project_progress_projects__project_id__progress_get"];
     put?: never;
     post?: never;
@@ -2323,7 +2734,14 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Program Tree */
+    /**
+     * Program Tree
+     * @description The tree under a node with each node's status.
+     *
+     *     A reader who counts people only (an executive) reads it with nobody in it:
+     *     no person's node, each pod, project and program with how many people
+     *     it holds (none under five), and its factors worded as on the heat map.
+     */
     get: operations["program_tree_programs__program_id__tree_get"];
     put?: never;
     post?: never;
@@ -2366,7 +2784,14 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Portfolio Heatmap */
+    /**
+     * Portfolio Heatmap
+     * @description The day's heat, each cell with why it has its colour.
+     *
+     *     An executive reads it with nobody in it: no person's cell but their
+     *     own, and reasons that count people and name work items, never a name or a
+     *     blocker's own words. Decided here by role, never by the console hiding it.
+     */
     get: operations["portfolio_heatmap_portfolio_heatmap_get"];
     put?: never;
     post?: never;
@@ -2389,6 +2814,7 @@ export interface paths {
      *
      *     The heat map's read (the same colours and reasons) with the portfolio's
      *     risk and drift findings, so it needs both: manager, exec and admin hold them.
+     *     An executive's names nobody, as their heat map does.
      */
     get: operations["portfolio_attention_portfolio_attention_get"];
     put?: never;
@@ -2499,7 +2925,18 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Narrative Briefs */
+    /**
+     * Narrative Briefs
+     * @description The latest briefs, newest first.
+     *
+     *     An executive reads every brief with each person said as their role or team,
+     *     and no person among its sources: a pod's brief names its people to the
+     *     people who run pods, never to an executive. A brief written before the
+     *     executive brief stopped naming people reads the same way. Nor do they read
+     *     the brief of a pod or project of fewer than five people: its
+     *     text counts its people ("two of three confirmed"); its dates and verdict
+     *     are on the project's page.
+     */
     get: operations["narrative_briefs_persona_briefs_get"];
     put?: never;
     post?: never;
@@ -2619,6 +3056,400 @@ export interface paths {
     get: operations["portfolio_risks_portfolio_risks_get"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/conversation": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * My Conversation
+     * @description The caller's own conversation of ``day``, read-only; past the window, "not kept".
+     */
+    get: operations["my_conversation_me_conversation_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/asks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Project Asks
+     * @description Who must act on the project: each ask's what, who, how long and why, by the item.
+     */
+    get: operations["project_asks_projects__project_id__asks_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/today-counts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * My Today Counts
+     * @description Replies of the day and open warnings over the caller's part; none for a developer.
+     */
+    get: operations["my_today_counts_me_today_counts_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/jira-changes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * My Jira Changes
+     * @description The caller's own changes waiting for their yes, each with the gate a yes would meet.
+     */
+    get: operations["my_jira_changes_me_jira_changes_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/jira-changes/{item_id}/answer": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Answer My Jira Change
+     * @description Say yes or no to one change. Every gate of the write applies again to a yes.
+     */
+    post: operations["answer_my_jira_change_me_jira_changes__item_id__answer_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/portfolio/delivery": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Portfolio Delivery
+     * @description Will we make the date? for every project the reader reads, worst first.
+     *
+     *     Each project's three dates (committed, likely, the team's own), its verdict
+     *     and one reason line, today's health in words, done of total per pod, and the
+     *     changes on its bar, from the kept rows "as of" ``computed_at``.
+     */
+    get: operations["portfolio_delivery_portfolio_delivery_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/portfolio/scope": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Portfolio Scope
+     * @description What joined each project after planning, and its open Jira hygiene findings.
+     *
+     *     With ``pod_id``, the pod's part of each project it works on: the plan counted
+     *     over the requirements below the pod, and the findings on its issues or its board.
+     */
+    get: operations["portfolio_scope_portfolio_scope_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/portfolio/warnings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Portfolio Warnings
+     * @description Early warnings across the readable projects, grouped by kind with a count each.
+     *
+     *     Each item names the pods it sits in. With ``pod_id``, only that pod's part; a
+     *     developer reads their own pod's, in counts and teams.
+     */
+    get: operations["portfolio_warnings_portfolio_warnings_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/cross-person-requests/counts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Cross Person Request Counts */
+    get: operations["cross_person_request_counts_cross_person_requests_counts_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/cross-person-requests/resolved": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Resolved Cross Person Requests
+     * @description Asks resolved in the ``days`` days up to ``as_of``, newest first; never dismissed copies.
+     */
+    get: operations["resolved_cross_person_requests_cross_person_requests_resolved_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/cross-person-requests/{request_id}/trail": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Cross Person Request Trail */
+    get: operations["cross_person_request_trail_cross_person_requests__request_id__trail_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/checkin-coverage": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Project Checkin Coverage
+     * @description Counts only, no one named: every reader of the project's progress gets them.
+     *
+     *     A reader who counts people only (an executive) gets none for a project of
+     *     fewer than five people: its dates and verdict are on its page.
+     */
+    get: operations["project_checkin_coverage_projects__project_id__checkin_coverage_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/profiles": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Profiles
+     * @description The tenant's profile catalog: the generic defaults with its own changes.
+     */
+    get: operations["list_profiles_profiles_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/profiles/{slug}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Save Profile
+     * @description Rename, hide or add a catalog entry. Admins only.
+     */
+    put: operations["save_profile_config_profiles__slug__put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/pods/{pod_id}/profiles": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Pod Profiles
+     * @description The pod's people, each with their role and profile in it: the pod panel's readers.
+     */
+    get: operations["pod_profiles_pods__pod_id__profiles_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/profiles": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * My Profiles
+     * @description The caller's own profile in each pod they are in, to read.
+     */
+    get: operations["my_profiles_me_profiles_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/pods/{pod_id}/members/{member_id}/profile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Membership Profile
+     * @description The membership's profile, its history, and a suggestion with its reasons.
+     *
+     *     Also for someone not in the pod yet, so the add dialog can preselect one;
+     *     ``role`` is the pod role they are about to get.
+     */
+    get: operations["membership_profile_config_pods__pod_id__members__member_id__profile_get"];
+    /**
+     * Set Membership Profile
+     * @description Change the member's profile in the pod from today; earlier days keep theirs.
+     */
+    put: operations["set_membership_profile_config_pods__pod_id__members__member_id__profile_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/profiles/review": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Review Profiles
+     * @description Profiles nobody checked yet (from the pod role or the backfill), with suggestions.
+     */
+    get: operations["review_profiles_config_profiles_review_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/profiles/review/accept": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Accept Profiles
+     * @description Accept the suggestions shown, each as its own dated row; nothing is set otherwise.
+     */
+    post: operations["accept_profiles_config_profiles_review_accept_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2745,6 +3576,68 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** AcceptProfileItem */
+    AcceptProfileItem: {
+      /** Pod Id */
+      pod_id: string;
+      /** Member Id */
+      member_id: string;
+      /** Profile */
+      profile: string;
+    };
+    /**
+     * AcceptProfilesRequest
+     * @description The suggestions the person saw and accepts, exactly as shown.
+     */
+    AcceptProfilesRequest: {
+      /** Items */
+      items: components["schemas"]["AcceptProfileItem"][];
+    };
+    /** AcceptProfilesResponse */
+    AcceptProfilesResponse: {
+      /** Accepted */
+      accepted: components["schemas"]["MemberProfileResponse"][];
+    };
+    /**
+     * AgainstPlanDto
+     * @description The scope today against the planning baseline: keys counted, never who.
+     */
+    AgainstPlanDto: {
+      /**
+       * Planned On
+       * Format: date
+       */
+      planned_on: string;
+      /** Planned */
+      planned: number;
+      /**
+       * Added
+       * @description Requirements in scope now that were not in the baseline.
+       */
+      added: number;
+      /**
+       * Without Label
+       * @description Of those added, the ones without the baseline's change label.
+       */
+      without_label: number;
+      /**
+       * Without Label Percent
+       * @description without_label as a whole percentage of added; null with none added.
+       */
+      without_label_percent: number | null;
+      /**
+       * Change Label
+       * @description The baseline's change label: tenant data.
+       */
+      change_label: string;
+      /** Removed */
+      removed: number;
+      /**
+       * Added Days
+       * @description Working days the additions since planning moved the 85% date, summed from the kept days' breakdowns; null when no kept day took them apart.
+       */
+      added_days?: number | null;
+    };
     /**
      * AppliesTo
      * @enum {string}
@@ -2904,6 +3797,16 @@ export interface components {
       /** Scopes */
       scopes: string[];
     };
+    /**
+     * BaselineKind
+     * @enum {string}
+     */
+    BaselineKind: "snapshot" | "date";
+    /**
+     * BaselineScopeKind
+     * @enum {string}
+     */
+    BaselineScopeKind: "project" | "release";
     /** BlockerCorrectionItemDto */
     BlockerCorrectionItemDto: {
       /** Blocker Id */
@@ -3143,6 +4046,47 @@ export interface components {
      * @enum {string}
      */
     CheckInSendKind: "weekly" | "dates" | "other" | "off";
+    /** CheckinCoverageCauseDto */
+    CheckinCoverageCauseDto: {
+      /**
+       * Cause
+       * @enum {string}
+       */
+      cause: "no_jira_link" | "jira_not_synced" | "no_chat_id" | "nothing_moved";
+      /** Count */
+      count: number;
+    };
+    /**
+     * CheckinCoverageDto
+     * @description How a pod's day was captured: "6 replied · 3 from Jira · 1 no data (no Jira link)".
+     */
+    CheckinCoverageDto: {
+      /**
+       * Replied
+       * @description Gave the day's status themselves (confirmed or partial).
+       */
+      replied: number;
+      /**
+       * Inferred
+       * @description Inferred from what moved in the tracker and Git.
+       */
+      inferred: number;
+      /**
+       * No Data
+       * @description Closed stale or unknown: nothing said, nothing moved.
+       */
+      no_data: number;
+      /**
+       * Waiting
+       * @description No status for the day yet.
+       */
+      waiting: number;
+      /**
+       * Causes
+       * @description Why the no-data days have none, counted per cause.
+       */
+      causes?: components["schemas"]["CheckinCoverageCauseDto"][];
+    };
     /**
      * CheckinDefaultsResponse
      * @description The team defaults a member follows for any field not set for them.
@@ -3179,6 +4123,41 @@ export interface components {
       status_as_of: string | null;
       /** Summary */
       summary: string;
+      /**
+       * Evidence
+       * @description An inferred day's lines of what moved in the tracker and Git; not the person's word.
+       */
+      evidence?: string[];
+      /**
+       * No Data Cause
+       * @description Why a day closed stale or unknown has no data.
+       */
+      no_data_cause?: ("no_jira_link" | "jira_not_synced" | "no_chat_id" | "nothing_moved") | null;
+      /**
+       * Asked At
+       * @description When the day's check-in first asked them; only where the ladder is read (reads_ladder).
+       */
+      asked_at?: string | null;
+      /**
+       * Replied At
+       * @description When their first reply of the day was recorded; null while none is, or where the ladder is not read.
+       */
+      replied_at?: string | null;
+      /**
+       * Reminders
+       * @description The day's silence-ladder rungs that went out for them, oldest first: a reminder to them, then their scrum master and manager told. Only where the ladder is read.
+       */
+      reminders?: components["schemas"]["CheckinRungDto"][];
+      /**
+       * Checkin Time
+       * @description Their check-in time (HH:MM, in `timezone`): an admin's and their own pod's scrum master's read only (reads_schedule).
+       */
+      checkin_time?: string | null;
+      /**
+       * Timezone
+       * @description The zone of `checkin_time`.
+       */
+      timezone?: string | null;
     };
     /** CheckinDispatchRequest */
     CheckinDispatchRequest: {
@@ -3192,6 +4171,37 @@ export interface components {
       chat_external_id?: string | null;
       /** Checkin Date */
       checkin_date?: string | null;
+    };
+    /**
+     * CheckinFillResponse
+     * @description The tenant's switch "Fill the day from Jira for people who were not asked".
+     */
+    CheckinFillResponse: {
+      /**
+       * Enabled
+       * @description Whether the reconcile tick fills the day from Jira for members the check-in never reached (the send off, or a send that failed).
+       */
+      enabled: boolean;
+      /**
+       * Source
+       * @description 'default' while an admin never saved it (on), 'tenant' once saved.
+       * @enum {string}
+       */
+      source: "default" | "tenant";
+      /**
+       * Deployment Enabled
+       * @description The deployment's own switch (OPENPROGRAM_CHECKIN_FILL_ENABLED); off wins.
+       */
+      deployment_enabled: boolean;
+      /** Updated At */
+      updated_at?: string | null;
+      /** Updated By */
+      updated_by?: string | null;
+    };
+    /** CheckinFillUpdateRequest */
+    CheckinFillUpdateRequest: {
+      /** Enabled */
+      enabled: boolean;
     };
     /**
      * CheckinPreferenceResponse
@@ -3241,6 +4251,32 @@ export interface components {
       reply_wait_seconds?: number | null;
       /** Final Reply Wait Seconds */
       final_reply_wait_seconds?: number | null;
+    };
+    /**
+     * CheckinRungDto
+     * @description One rung of the day's silence ladder that went out: whom it was for, and when.
+     */
+    CheckinRungDto: {
+      /**
+       * Number
+       * @description Its place on the ladder: 1 is the reminder to the person.
+       */
+      number: number;
+      /**
+       * Target
+       * @description developer (a reminder to the person), scrum_master or manager; null when the rung was not recorded and today's ladder has no rung of that number.
+       */
+      target: ("developer" | "scrum_master" | "manager") | null;
+      /**
+       * Sent At
+       * Format: date-time
+       */
+      sent_at: string;
+      /**
+       * Recorded
+       * @description Whom it was for was recorded when it went out; false: read from today's ladder, for a rung sent before rungs were recorded.
+       */
+      recorded: boolean;
     };
     /**
      * CheckinSendResponse
@@ -3298,6 +4334,36 @@ export interface components {
      * @enum {string}
      */
     CommitmentScopeKind: "project" | "pod" | "release";
+    /** CommittedChangeResponse */
+    CommittedChangeResponse: {
+      /** From Date */
+      from_date: string | null;
+      /** To Date */
+      to_date: string | null;
+      /**
+       * On
+       * Format: date
+       */
+      on: string;
+      /** By */
+      by: string;
+      /** Note */
+      note: string;
+      /** After Added */
+      after_added: string[];
+    };
+    /**
+     * ConditionKind
+     * @enum {string}
+     */
+    ConditionKind:
+      | "added_after_baseline_without_label"
+      | "missing_label"
+      | "missing_field"
+      | "missing_gate_kind"
+      | "stale_in_status"
+      | "past_due_open"
+      | "too_big";
     /** ConfigEdgeResponse */
     ConfigEdgeResponse: {
       /** From Node Id */
@@ -3552,6 +4618,43 @@ export interface components {
      * @enum {string}
      */
     ContactSource: "team_scrum_master" | "team_manager" | "member";
+    /**
+     * ConversationResponse
+     * @description The person's own conversation of one day, read-only, oldest first.
+     *
+     *     ``kept`` False: past the retention window, so nothing is shown and
+     *     ``note`` says why.
+     */
+    ConversationResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** Kept */
+      kept: boolean;
+      /** Retention Days */
+      retention_days: number;
+      /** Note */
+      note?: string | null;
+      /** Turns */
+      turns: components["schemas"]["ConversationTurnDto"][];
+    };
+    /** ConversationTurnDto */
+    ConversationTurnDto: {
+      /**
+       * Role
+       * @enum {string}
+       */
+      role: "agent" | "user";
+      /** Text */
+      text: string;
+      /**
+       * At
+       * Format: date-time
+       */
+      at: string;
+    };
     /**
      * CrossPersonDelivery
      * @description Whether the counterpart has been sent the DM about a request.
@@ -3818,6 +4921,53 @@ export interface components {
        * @default
        */
       note: string;
+    };
+    /**
+     * DeliveryImpactResponse
+     * @description Why one scope's forecast moved over a period: then, now, and each driver between.
+     */
+    DeliveryImpactResponse: {
+      scope_kind: components["schemas"]["CommitmentScopeKind"];
+      /** Scope Id */
+      scope_id: string;
+      /** Project Id */
+      project_id: string;
+      /** Name */
+      name: string;
+      /** Project Name */
+      project_name: string;
+      period: components["schemas"]["PeriodKind"];
+      /** Period Words */
+      period_words: string;
+      measure: components["schemas"]["Measure"];
+      detail: components["schemas"]["ImpactDetail"];
+      /** Change Label */
+      change_label: string;
+      /** Baseline Day */
+      baseline_day: string | null;
+      start: components["schemas"]["ImpactEndResponse"] | null;
+      end: components["schemas"]["ImpactEndResponse"] | null;
+      /** Moved Working Days */
+      moved_working_days: number | null;
+      /** Unit */
+      unit: string | null;
+      /** Summary */
+      summary: string;
+      /** Drivers */
+      drivers: components["schemas"]["ImpactDriverResponse"][];
+      scope_changes: components["schemas"]["ScopeChangesResponse"];
+      evidence: components["schemas"]["EvidenceResponse"] | null;
+      /** Committed Changes */
+      committed_changes: components["schemas"]["CommittedChangeResponse"][];
+      team_date: components["schemas"]["TeamDateResponse"] | null;
+      /** Markers */
+      markers: components["schemas"]["MarkerResponse"][];
+      /** Link */
+      link: string;
+      /** Reconstructed Days */
+      reconstructed_days: number;
+      /** Not Known */
+      not_known: string[];
     };
     /** DeliveryOutcomeResponse */
     DeliveryOutcomeResponse: {
@@ -4166,6 +5316,18 @@ export interface components {
       projects: components["schemas"]["EscalationMatrixResponse"][];
     };
     /**
+     * EvidenceResponse
+     * @description What explains pace without a share of its own.
+     */
+    EvidenceResponse: {
+      /** Late */
+      late: components["schemas"]["LateResponse"][];
+      /** More Late */
+      more_late: number;
+      /** Undated */
+      undated: string[];
+    };
+    /**
      * FieldConditionDto
      * @description The field (or option) applies only while ``field`` holds one of ``values``.
      */
@@ -4272,6 +5434,8 @@ export interface components {
        * @description The person is the synced tracker issue's assignee through their identity link. The tick to move the issue also needs write_back other than off.
        */
       can_move_in_tracker: boolean;
+      /** @description What the tracker says of the task today, never merged into last_update. */
+      observed?: components["schemas"]["ObservedTaskDto"] | null;
     };
     /**
      * ForecastDayResponse
@@ -4290,6 +5454,12 @@ export interface components {
       p85: string | null;
       /** Sample Days */
       sample_days: number;
+      /**
+       * Reconstructed
+       * @description True when the day was rebuilt later from the stored snapshots, not kept on the day.
+       * @default false
+       */
+      reconstructed: boolean;
     };
     /**
      * ForecastHistoryResponse
@@ -4308,6 +5478,15 @@ export interface components {
        * @description Working days of history each day's forecast needed before it gave dates.
        */
       needed_days: number;
+    };
+    /** ForecastReconstructionRequest */
+    ForecastReconstructionRequest: {
+      /**
+       * Days
+       * @description How many days before today to rebuild from the stored snapshots.
+       * @default 90
+       */
+      days: number;
     };
     /**
      * ForecastSettingsResponse
@@ -4363,6 +5542,11 @@ export interface components {
       project_id: string;
       /** Release Id */
       release_id: string | null;
+      /**
+       * Pod Id
+       * @description Set for one pod's part: the requirements below the pod.
+       */
+      pod_id: string | null;
       /** Templates */
       templates: components["schemas"]["GateTemplateDto"][];
       /** Issues */
@@ -4584,6 +5768,377 @@ export interface components {
        */
       needed_days: number;
     };
+    /** HygieneActionsDto */
+    HygieneActionsDto: {
+      /** Waive */
+      waive: boolean;
+      /** Not Applicable */
+      not_applicable: boolean;
+      /** Recheck */
+      recheck: boolean;
+      /** Reopen */
+      reopen: boolean;
+    };
+    /**
+     * HygieneBoardResponse
+     * @description A project's (or a pod's) Jira hygiene: each rule's counts, then the issues that break it.
+     */
+    HygieneBoardResponse: {
+      /** Project Id */
+      project_id: string | null;
+      /** Pod Id */
+      pod_id: string | null;
+      /** Release Id */
+      release_id: string | null;
+      /** Scope Name */
+      scope_name: string;
+      scan: components["schemas"]["HygieneScanDto"];
+      /** Counts Only */
+      counts_only: boolean;
+      /** Open */
+      open: number;
+      /** Held */
+      held: number;
+      /** Rules */
+      rules: components["schemas"]["HygieneRuleRowDto"][];
+      /** Findings */
+      findings: components["schemas"]["HygieneFindingResponse"][];
+      /** Pods */
+      pods: components["schemas"]["HygieneChoiceDto"][];
+      /** Releases */
+      releases: components["schemas"]["HygieneChoiceDto"][];
+      /** Can Run */
+      can_run: boolean;
+    };
+    /** HygieneChoiceDto */
+    HygieneChoiceDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+    };
+    /** HygieneConditionDto */
+    HygieneConditionDto: {
+      kind: components["schemas"]["ConditionKind"];
+      /**
+       * Labels
+       * @description added_after_baseline_without_label: the change labels (empty: the planning baseline's and the tenant's); missing_label: any of these.
+       */
+      labels?: string[];
+      field?: components["schemas"]["IssueField"] | null;
+      /**
+       * Gate Kind
+       * @description A gate item kind's key.
+       * @default
+       */
+      gate_kind: string;
+      stage?: components["schemas"]["DeliveryStage"] | null;
+      /**
+       * Working Days
+       * @default 0
+       */
+      working_days: number;
+      /**
+       * Points Over
+       * @default 0
+       */
+      points_over: number;
+    };
+    /** HygieneConfigResponse */
+    HygieneConfigResponse: {
+      settings: components["schemas"]["HygieneSettingsDto"];
+      /** Is Default */
+      is_default: boolean;
+      /** Rules */
+      rules: components["schemas"]["HygieneRuleDto"][];
+      /** Examples */
+      examples: components["schemas"]["HygieneRuleDto"][];
+      /** Gate Kinds */
+      gate_kinds: components["schemas"]["HygieneGateKindDto"][];
+      /** Placeholders */
+      placeholders: string[];
+    };
+    /** HygieneDecisionDto */
+    HygieneDecisionDto: {
+      /** By Name */
+      by_name: string | null;
+      /**
+       * At
+       * Format: date-time
+       */
+      at: string;
+      /** Reason */
+      reason: string;
+    };
+    /** HygieneFindingResponse */
+    HygieneFindingResponse: {
+      /** Finding Id */
+      finding_id: string;
+      /** Rule Id */
+      rule_id: string;
+      /** Issue Key */
+      issue_key: string;
+      /** Title */
+      title: string;
+      scope: components["schemas"]["HygieneScopeDto"];
+      stage: components["schemas"]["DeliveryStage"] | null;
+      /** What */
+      what: string;
+      owner: components["schemas"]["HygieneOwnerViewDto"];
+      /** Suggested Fix */
+      suggested_fix: string;
+      state: components["schemas"]["HygieneState"];
+      /** Held */
+      held: boolean;
+      /**
+       * First Seen At
+       * Format: date-time
+       */
+      first_seen_at: string;
+      /** Open Days */
+      open_days: number;
+      resolution: components["schemas"]["Resolution"] | null;
+      decision: components["schemas"]["HygieneDecisionDto"] | null;
+      can: components["schemas"]["HygieneActionsDto"];
+    };
+    /** HygieneGateKindDto */
+    HygieneGateKindDto: {
+      /** Key */
+      key: string;
+      /** Label */
+      label: string;
+    };
+    /** HygieneHistoryEntryDto */
+    HygieneHistoryEntryDto: {
+      /**
+       * At
+       * Format: date-time
+       */
+      at: string;
+      /** Action */
+      action: string;
+      /** Actor Name */
+      actor_name: string;
+      /** Note */
+      note: string | null;
+    };
+    /** HygieneHistoryResponse */
+    HygieneHistoryResponse: {
+      /** Entries */
+      entries: components["schemas"]["HygieneHistoryEntryDto"][];
+    };
+    /** HygieneMatcherDto */
+    HygieneMatcherDto: {
+      kind: components["schemas"]["MatcherKind"];
+      /** Value */
+      value: string;
+    };
+    /** HygieneOwnerDto */
+    HygieneOwnerDto: {
+      kind: components["schemas"]["OwnerKind"];
+      /**
+       * Profile
+       * @description A profile id (GET /profiles), for kind profile.
+       * @default
+       */
+      profile: string;
+    };
+    /** HygieneOwnerViewDto */
+    HygieneOwnerViewDto: {
+      /** Name */
+      name: string | null;
+      via: components["schemas"]["OwnerKind"] | null;
+      /** Profile Label */
+      profile_label: string | null;
+    };
+    /** HygienePreviewIssueDto */
+    HygienePreviewIssueDto: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      /** What */
+      what: string;
+      /** Owner Name */
+      owner_name: string | null;
+      /** Suggested Fix */
+      suggested_fix: string;
+    };
+    /** HygienePreviewRequest */
+    HygienePreviewRequest: {
+      /** Project Id */
+      project_id: string;
+      rule: components["schemas"]["HygieneRuleDto"];
+    };
+    /** HygienePreviewResponse */
+    HygienePreviewResponse: {
+      /** Scopes */
+      scopes: components["schemas"]["HygienePreviewScopeDto"][];
+    };
+    /** HygienePreviewScopeDto */
+    HygienePreviewScopeDto: {
+      scope: components["schemas"]["HygieneScopeDto"];
+      /** Looked At */
+      looked_at: number;
+      /** Found */
+      found: number;
+      /** Issues */
+      issues: components["schemas"]["HygienePreviewIssueDto"][];
+      /** Needs Baseline */
+      needs_baseline: boolean;
+    };
+    /** HygieneReasonRequest */
+    HygieneReasonRequest: {
+      /** Reason */
+      reason: string;
+    };
+    /** HygieneRuleDto */
+    HygieneRuleDto: {
+      /**
+       * Rule Id
+       * @description Empty creates one; an example's id adds it.
+       * @default
+       */
+      rule_id: string;
+      /**
+       * Version
+       * @description Read only: +1 on every save.
+       * @default 0
+       */
+      version: number;
+      /** Name */
+      name: string;
+      /** @default project */
+      scope: components["schemas"]["RuleScope"];
+      select?: components["schemas"]["HygieneSelectDto"];
+      condition: components["schemas"]["HygieneConditionDto"];
+      /**
+       * @description list_only shows it on Overall and counts it; ask also asks its owner.
+       * @default list_only
+       */
+      severity: components["schemas"]["RuleSeverity"];
+      /** @default fix */
+      need: components["schemas"]["RuleNeed"];
+      owner?: components["schemas"]["HygieneOwnerDto"];
+      blocking_before?: components["schemas"]["DeliveryStage"] | null;
+      /**
+       * Suggested Fix
+       * @default
+       */
+      suggested_fix: string;
+      /**
+       * Enabled
+       * @default true
+       */
+      enabled: boolean;
+    };
+    /** HygieneRuleRowDto */
+    HygieneRuleRowDto: {
+      /** Rule Id */
+      rule_id: string;
+      /** Name */
+      name: string;
+      /** Stated */
+      stated: string;
+      severity: components["schemas"]["RuleSeverity"];
+      need: components["schemas"]["RuleNeed"];
+      condition: components["schemas"]["ConditionKind"];
+      /** Blocking */
+      blocking: boolean;
+      /** Open */
+      open: number;
+      /** New Today */
+      new_today: number;
+      /** Oldest Days */
+      oldest_days: number | null;
+      /** Held */
+      held: number;
+      /** Decided */
+      decided: number;
+    };
+    /** HygieneRunResponse */
+    HygieneRunResponse: {
+      run: components["schemas"]["HygieneRunSummaryDto"];
+      board: components["schemas"]["HygieneBoardResponse"];
+    };
+    /** HygieneRunSummaryDto */
+    HygieneRunSummaryDto: {
+      status: components["schemas"]["core__domain__release_readiness__RunStatus"];
+      /** Scopes */
+      scopes: number;
+      /** Opened */
+      opened: number;
+      /** Resolved */
+      resolved: number;
+      /** Changed */
+      changed: number;
+      /** Open */
+      open: number;
+    };
+    /** HygieneScanDto */
+    HygieneScanDto: {
+      /** Enabled */
+      enabled: boolean;
+      /** Last Run At */
+      last_run_at: string | null;
+      last_run_status: components["schemas"]["core__domain__release_readiness__RunStatus"] | null;
+      /** Data As Of */
+      data_as_of: string | null;
+      /** Stale */
+      stale: boolean;
+    };
+    /** HygieneScopeDto */
+    HygieneScopeDto: {
+      kind: components["schemas"]["ScopeKind"];
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+    };
+    /**
+     * HygieneSelectDto
+     * @description Which of a scope's issues the rule looks at: every matcher must match.
+     */
+    HygieneSelectDto: {
+      /** Matchers */
+      matchers?: components["schemas"]["HygieneMatcherDto"][];
+      /** @default any */
+      stage_filter: components["schemas"]["StageFilter"];
+      stage?: components["schemas"]["DeliveryStage"] | null;
+      /**
+       * Every Type
+       * @description False looks only at the requirements the stage mapping counts.
+       * @default false
+       */
+      every_type: boolean;
+    };
+    /** HygieneSettingsDto */
+    HygieneSettingsDto: {
+      /**
+       * Enabled
+       * @description The scan checks every hour; off, a tick does nothing.
+       */
+      enabled: boolean;
+      /**
+       * Change Labels
+       * @description The tenant's labels for scope agreed after planning; empty keeps CR.
+       */
+      change_labels?: string[];
+      /**
+       * Stale Working Days
+       * @default 5
+       */
+      stale_working_days: number;
+      /** Updated At */
+      updated_at?: string | null;
+      /** Updated By */
+      updated_by?: string | null;
+    };
+    /**
+     * HygieneState
+     * @enum {string}
+     */
+    HygieneState: "open" | "resolved" | "waived" | "not_applicable";
     /** IdentityAutoMatchMemberDto */
     IdentityAutoMatchMemberDto: {
       /** Id */
@@ -4599,6 +6154,24 @@ export interface components {
       updated_count: number;
       /** Members */
       members: components["schemas"]["IdentityAutoMatchMemberDto"][];
+    };
+    /**
+     * IdentityCountsResponse
+     * @description Admin › Directory: members with no chat id and with no Jira account.
+     */
+    IdentityCountsResponse: {
+      /** Members */
+      members: number;
+      /**
+       * Without Chat Id
+       * @description No chat id: the check-in cannot reach them.
+       */
+      without_chat_id: number;
+      /**
+       * Without Jira Account
+       * @description Neither a Jira account nor a Jira email: their day cannot be read from Jira.
+       */
+      without_jira_account: number;
     };
     /** IdentityLinkResponse */
     IdentityLinkResponse: {
@@ -4623,6 +6196,62 @@ export interface components {
       jira_email?: string | null;
       /** Vcs Username */
       vcs_username?: string | null;
+    };
+    /**
+     * ImpactDetail
+     * @enum {string}
+     */
+    ImpactDetail: "full" | "dates";
+    /** ImpactDriverResponse */
+    ImpactDriverResponse: {
+      /** Kind */
+      kind: string;
+      group: components["schemas"]["ScopeGroup"] | null;
+      /** Working Days */
+      working_days: number;
+      /** P50 */
+      p50: number;
+      /** P85 */
+      p85: number;
+      /** Items */
+      items: components["schemas"]["ImpactItemResponse"][];
+      /** More */
+      more: number;
+      /** Note */
+      note: string;
+    };
+    /** ImpactEndResponse */
+    ImpactEndResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** P50 */
+      p50: string | null;
+      /** P85 */
+      p85: string | null;
+      /** Committed */
+      committed: string | null;
+      verdict: components["schemas"]["Verdict"] | null;
+    };
+    /** ImpactItemResponse */
+    ImpactItemResponse: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      /** Type */
+      type: string | null;
+      /** Working Days */
+      working_days: number;
+      /** Day */
+      day: string | null;
+      group: components["schemas"]["ScopeGroup"] | null;
+      /** Change Label */
+      change_label: boolean | null;
+      /** Added By */
+      added_by: string | null;
     };
     /**
      * InvestigateAnswerEvent
@@ -4708,6 +6337,19 @@ export interface components {
       /** Error */
       error?: string | null;
     };
+    /**
+     * IssueField
+     * @enum {string}
+     */
+    IssueField:
+      | "story_points"
+      | "due_date"
+      | "parent"
+      | "fix_version"
+      | "priority"
+      | "assignee"
+      | "components"
+      | "severity";
     /** IssueGatesResponse */
     IssueGatesResponse: {
       /** Key */
@@ -4758,6 +6400,124 @@ export interface components {
      * @enum {string}
      */
     ItemStatus: "suggested" | "dismissed" | "pending" | "met" | "failed" | "waived";
+    /** JiraChangeAnswerRequest */
+    JiraChangeAnswerRequest: {
+      /**
+       * Answer
+       * @enum {string}
+       */
+      answer: "yes" | "no";
+    };
+    /**
+     * JiraChangeAnswerResponse
+     * @description What the answer did. ``already_answered``: the chat (or another tab) answered first.
+     */
+    JiraChangeAnswerResponse: {
+      /** Item Id */
+      item_id: string;
+      /** Issue Key */
+      issue_key: string;
+      /**
+       * Outcome
+       * @enum {string}
+       */
+      outcome:
+        | "applied"
+        | "declined"
+        | "held_open_mr"
+        | "not_owner"
+        | "no_change"
+        | "failed"
+        | "off"
+        | "already_answered";
+      /** Detail */
+      detail: string;
+      /**
+       * Checkin Finished
+       * @default false
+       */
+      checkin_finished: boolean;
+      /**
+       * Line Sent
+       * @default false
+       */
+      line_sent: boolean;
+    };
+    /**
+     * JiraChangeDto
+     * @description One change waiting for the person's yes.
+     *
+     *     ``kind``: ``proposal`` (from a check-in), ``suggestion`` (a merged merge
+     *     request, the issue still open) or ``due_date`` (no answer here: change it
+     *     in the tracker). ``holds_checkin``: the day's check-in waits for this answer.
+     */
+    JiraChangeDto: {
+      /** Id */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "proposal" | "suggestion" | "due_date";
+      /** Issue Key */
+      issue_key: string;
+      /** Issue Title */
+      issue_title?: string | null;
+      /** Why */
+      why: string;
+      /** Asked On */
+      asked_on?: string | null;
+      /** Target Label */
+      target_label?: string | null;
+      gate?: components["schemas"]["JiraChangeGateDto"] | null;
+      /** Answerable */
+      answerable: boolean;
+      /**
+       * Holds Checkin
+       * @default false
+       */
+      holds_checkin: boolean;
+      /** Due On */
+      due_on?: string | null;
+      /** Eta On */
+      eta_on?: string | null;
+    };
+    /**
+     * JiraChangeGateDto
+     * @description What a yes would meet now, read from the same gates the write passes.
+     *
+     *     ``yes_allowed`` is False for every state but ``open`` and ``no_change``: the
+     *     console offers no yes a gate would refuse. A no is always allowed for a
+     *     proposal or a suggestion: it never writes.
+     */
+    JiraChangeGateDto: {
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "open" | "no_change" | "off" | "not_owner" | "held_open_mr" | "unreadable";
+      /** Yes Allowed */
+      yes_allowed: boolean;
+      /** Tracker Status */
+      tracker_status?: string | null;
+      /**
+       * Merge Requests
+       * @default []
+       */
+      merge_requests: string[];
+    };
+    /** JiraChangesResponse */
+    JiraChangesResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Tracker */
+      tracker: string;
+      /** Items */
+      items: components["schemas"]["JiraChangeDto"][];
+    };
     /**
      * JiraCreateProjectsDto
      * @description The Jira projects release readiness may create issues in.
@@ -4868,6 +6628,23 @@ export interface components {
       readiness_create?: boolean | null;
       create_projects?: components["schemas"]["JiraCreateProjectsUpdate"] | null;
     };
+    /** LateResponse */
+    LateResponse: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      stage: components["schemas"]["DeliveryStage"];
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      /** Date Kind */
+      date_kind: string;
+      /** Working Days Late */
+      working_days_late: number;
+    };
     /**
      * LogoContentType
      * @enum {string}
@@ -4882,6 +6659,46 @@ export interface components {
       /** Redirect Url */
       redirect_url: string;
     };
+    /** MarkerItemResponse */
+    MarkerItemResponse: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      stage: components["schemas"]["DeliveryStage"] | null;
+      group: components["schemas"]["ScopeGroup"] | null;
+      /** Added By */
+      added_by: string | null;
+    };
+    /**
+     * MarkerResponse
+     * @description One kind of event on one day, on the timeline's impact lane.
+     */
+    MarkerResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** Kind */
+      kind: string;
+      /** Count */
+      count: number;
+      /** Items */
+      items: components["schemas"]["MarkerItemResponse"][];
+      /** Change Label */
+      change_label: boolean | null;
+      /** Working Days */
+      working_days: number | null;
+      /** P50 Days */
+      p50_days: number | null;
+      /** P85 Days */
+      p85_days: number | null;
+      /** Taken Apart */
+      taken_apart: boolean | null;
+      /** Reconstructed */
+      reconstructed: boolean;
+    };
     /**
      * MatcherKind
      * @enum {string}
@@ -4892,15 +6709,76 @@ export interface components {
      * @enum {string}
      */
     MatrixSource: "project" | "tenant" | "default";
+    /**
+     * Measure
+     * @description Which forecast date a move is read on: the 85% date, as the verdict reads it.
+     * @enum {string}
+     */
+    Measure: "p85" | "p50";
     /** MemberFromDirectoryRequest */
     MemberFromDirectoryRequest: {
       /** External Ids */
       external_ids: string[];
+      /** Pod Id */
+      pod_id?: string | null;
+      /** Role */
+      role?: string | null;
+      /** Profile */
+      profile?: string | null;
+    };
+    /** MemberProfileResponse */
+    MemberProfileResponse: {
+      /** Pod Id */
+      pod_id: string;
+      /** Pod Name */
+      pod_name: string;
+      /** Member Id */
+      member_id: string;
+      /** Member Name */
+      member_name: string;
+      /** Role */
+      role: string | null;
+      /** Profile */
+      profile: string;
+      /** Label */
+      label: string;
+      /** Code Work */
+      code_work: boolean;
+      /**
+       * Source
+       * @enum {string}
+       */
+      source: "pod_role" | "backfill" | "admin" | "import" | "suggestion_accepted";
+      /** Checked */
+      checked: boolean;
+      /** Since */
+      since: string | null;
+      /** Set By Name */
+      set_by_name: string | null;
+      /** Set At */
+      set_at: string | null;
+      /** Is Lead */
+      is_lead: boolean;
     };
     /** MemberTaskAssignmentRequest */
     MemberTaskAssignmentRequest: {
       /** Task Id */
       task_id: string;
+    };
+    /** MembershipProfileResponse */
+    MembershipProfileResponse: {
+      /** Pod Id */
+      pod_id: string;
+      /** Pod Name */
+      pod_name: string;
+      /** Member Id */
+      member_id: string;
+      /** Member Name */
+      member_name: string;
+      current: components["schemas"]["MemberProfileResponse"] | null;
+      /** History */
+      history: components["schemas"]["ProfileHistoryEntry"][];
+      suggestion: components["schemas"]["ProfileSuggestionResponse"];
     };
     /**
      * MyRequestRelation
@@ -5020,6 +6898,68 @@ export interface components {
        */
       mapped: boolean;
     };
+    /**
+     * ObservedTaskDto
+     * @description What the tracker says of a task today ("Jira today"), beside what its people said.
+     */
+    ObservedTaskDto: {
+      /**
+       * Status
+       * @description The tracker's status name now.
+       */
+      status: string | null;
+      /** @description The delivery stage that status maps to. */
+      stage: components["schemas"]["DeliveryStage"] | null;
+      /**
+       * Since
+       * @description When the task entered that status, by the tracker's history.
+       */
+      since: string | null;
+      /**
+       * Moved By
+       * @description Who made that move, by name, when it was not one of the task's own people.
+       */
+      moved_by?: string | null;
+      /**
+       * Changes
+       * @description The day's other changes, worded: 'due date moved Oct 10 → Oct 14'.
+       */
+      changes?: string[];
+      /**
+       * Quiet Days
+       * @description Days a task under way has not moved, from five on.
+       */
+      quiet_days?: number | null;
+    };
+    /**
+     * OwnerKind
+     * @enum {string}
+     */
+    OwnerKind: "assignee" | "reporter" | "profile" | "decision_owner" | "pod_scrum_master";
+    /**
+     * OwnerSaysDto
+     * @description What the item's owner last said in their own status, and where it came from.
+     */
+    OwnerSaysDto: {
+      /**
+       * Text
+       * @description Their latest status in their words, member ids said as names.
+       */
+      text: string;
+      /** @description confirmed: they said it; partial, inferred (from Jira and Git) or stale. */
+      source: components["schemas"]["StatusSource"];
+      /**
+       * On
+       * Format: date
+       * @description The day of that status.
+       */
+      on: string;
+    };
+    /**
+     * PeriodKind
+     * @enum {string}
+     */
+    PeriodKind: "since_baseline" | "last_7_days" | "last_30_days" | "since_date_change" | "from";
     /** PersonaTreeEdgeDto */
     PersonaTreeEdgeDto: {
       /** From Node Id */
@@ -5041,6 +6981,138 @@ export interface components {
       confidence: number | null;
       /** Factors */
       factors: components["schemas"]["RollupFactorDto"][];
+      /**
+       * People
+       * @description How many people a pod, project or program holds on the day; null for any other node, and for a group of fewer than five read by someone who counts people only.
+       */
+      people?: number | null;
+    };
+    /** PlanningBaselineResponse */
+    PlanningBaselineResponse: {
+      /** Baseline Id */
+      baseline_id: string;
+      /** Number */
+      number: number;
+      /** Active */
+      active: boolean;
+      scope_kind: components["schemas"]["BaselineScopeKind"];
+      /** Scope Id */
+      scope_id: string;
+      /** Project Id */
+      project_id: string;
+      kind: components["schemas"]["BaselineKind"];
+      /**
+       * Planned On
+       * Format: date
+       */
+      planned_on: string;
+      /**
+       * Reconstructed
+       * @description True when no snapshot of the day was kept and the requirements were rebuilt.
+       */
+      reconstructed: boolean;
+      /**
+       * Snapshot Day
+       * @description The snapshot the requirements were read from, when it is not planned_on.
+       */
+      snapshot_day: string | null;
+      /** Requirements */
+      requirements: number;
+      /** Open */
+      open: number;
+      /**
+       * Points
+       * @description The story points frozen, when every requirement carried them.
+       */
+      points: number | null;
+      /** Change Label */
+      change_label: string;
+      /** Grace Working Days */
+      grace_working_days: number;
+      /** Note */
+      note: string;
+      /** Set By */
+      set_by: string;
+      /** Set By Name */
+      set_by_name: string;
+      /**
+       * Set At
+       * Format: date-time
+       */
+      set_at: string;
+      /** Superseded At */
+      superseded_at: string | null;
+      since: components["schemas"]["ScopeSinceBaselineResponse"];
+    };
+    /**
+     * PlanningBaselinesResponse
+     * @description A project's or a release's baselines on the day read, newest first.
+     */
+    PlanningBaselinesResponse: {
+      /** Project Id */
+      project_id: string;
+      /** Release Id */
+      release_id: string | null;
+      scope_kind: components["schemas"]["BaselineScopeKind"];
+      /** Scope Id */
+      scope_id: string;
+      /** Name */
+      name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /**
+       * In Scope
+       * @description Requirements in scope on the day read.
+       */
+      in_scope: number;
+      active: components["schemas"]["PlanningBaselineResponse"] | null;
+      /** Baselines */
+      baselines: components["schemas"]["PlanningBaselineResponse"][];
+      /**
+       * Default Change Label
+       * @default CR
+       */
+      default_change_label: string;
+      /**
+       * Default Grace Working Days
+       * @default 2
+       */
+      default_grace_working_days: number;
+    };
+    /**
+     * PlanningCompleteRequest
+     * @description Mark planning complete for the project, or for one of its releases.
+     */
+    PlanningCompleteRequest: {
+      /**
+       * Release Id
+       * @description One release of the project; null for the whole project.
+       */
+      release_id?: string | null;
+      /**
+       * Planned On
+       * @description The day planning was complete; null for today. An earlier day freezes that day's stored snapshot.
+       */
+      planned_on?: string | null;
+      /**
+       * Change Label
+       * @description The Jira label of a change agreed after planning; null for the default "CR".
+       */
+      change_label?: string | null;
+      /**
+       * Grace Working Days
+       * @description Working days after planning in which an added requirement counts as planned.
+       * @default 2
+       */
+      grace_working_days: number;
+      /**
+       * Note
+       * @default
+       */
+      note: string;
     };
     /** PodBlockersResponse */
     PodBlockersResponse: {
@@ -5077,6 +7149,20 @@ export interface components {
       missing: number;
       /** Developers */
       developers: components["schemas"]["CheckinDeveloperDto"][];
+      /** @description How the pod's day was captured, counted per pod. */
+      coverage?: components["schemas"]["CheckinCoverageDto"] | null;
+      /**
+       * Reads Ladder
+       * @description The caller reads the day's silence ladder: asked and replied times and the rungs sent (a scrum master for their own pods, a manager, an admin).
+       * @default false
+       */
+      reads_ladder: boolean;
+      /**
+       * Reads Schedule
+       * @description The caller reads each person's check-in time and zone (an admin, and a scrum master of their own pods).
+       * @default false
+       */
+      reads_schedule: boolean;
     };
     /**
      * PodDeliveryResponse
@@ -5106,6 +7192,24 @@ export interface components {
     PodMemberLinkRequest: {
       /** Role */
       role: string;
+      /** Profile */
+      profile?: string | null;
+    };
+    /** PodProfilesResponse */
+    PodProfilesResponse: {
+      /** Pod Id */
+      pod_id: string;
+      /** Pod Name */
+      pod_name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Can Edit */
+      can_edit: boolean;
+      /** Members */
+      members: components["schemas"]["MemberProfileResponse"][];
     };
     /** PodProjectDeliveryResponse */
     PodProjectDeliveryResponse: {
@@ -5188,6 +7292,8 @@ export interface components {
        * @description That ETA as it was given: 'Oct 9' from the console, 'Tuesday' from chat.
        */
       eta_label?: string | null;
+      /** @description What the tracker says of the task today, never merged into last_update. */
+      observed?: components["schemas"]["ObservedTaskDto"] | null;
     };
     /** PodTaskOwnerDto */
     PodTaskOwnerDto: {
@@ -5231,9 +7337,41 @@ export interface components {
       headline: string;
       /** Detail */
       detail: string | null;
-      checkins: components["schemas"]["AttentionCheckinsDto"];
+      /** @description The day's check-in counts for the people in the program's teams; null for a reader who counts people only, when the program has fewer than five. */
+      checkins: components["schemas"]["AttentionCheckinsDto"] | null;
       /** Signals */
       signals: components["schemas"]["AttentionSignalDto"][];
+    };
+    /**
+     * PortfolioDeliveryResponse
+     * @description Every project the reader reads, worst first, from the kept forecast rows.
+     *
+     *     ``counts`` cover every project the search matches (the verdict filter aside), so
+     *     each tile is a filter; ``total`` is how many match the filters, of which
+     *     ``projects`` is the page from ``offset``.
+     */
+    PortfolioDeliveryResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /**
+       * Computed At
+       * @description The newest kept row's time: 'as of HH:MM'.
+       */
+      computed_at: string | null;
+      counts: components["schemas"]["VerdictCountsDto"];
+      /** Total */
+      total: number;
+      /** Offset */
+      offset: number;
+      /** Limit */
+      limit: number;
+      /** Projects */
+      projects: components["schemas"]["PortfolioProjectDto"][];
+      /** Programs */
+      programs: components["schemas"]["PortfolioProgramDto"][];
     };
     /** PortfolioFeedItemResponse */
     PortfolioFeedItemResponse: {
@@ -5243,7 +7381,8 @@ export interface components {
       kind: string;
       /** Summary */
       summary: string;
-      entity_ref: components["schemas"]["EntityRefDto"];
+      /** @description What the event is about. Null for a reader who reads no person (an executive) when it is about one: a member's id names them as much as a name does. */
+      entity_ref: components["schemas"]["EntityRefDto"] | null;
       /**
        * Observed At
        * Format: date-time
@@ -5312,6 +7451,158 @@ export interface components {
       /** Cells */
       cells: components["schemas"]["HeatmapCellDto"][];
     };
+    /**
+     * PortfolioMarkDto
+     * @description One change on a project's bar.
+     */
+    PortfolioMarkDto: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /**
+       * Kind
+       * @description scope_added, scope_removed, reopened or committed_date_changed.
+       */
+      kind: string;
+      /** Count */
+      count: number;
+      /**
+       * Working Days
+       * @description Working days it moved the 85% date that day, later positive; null for a committed date's move or a day not taken apart.
+       */
+      working_days: number | null;
+      /**
+       * Pushed
+       * @description It moved the 85% date later: a change that pushed it.
+       */
+      pushed: boolean;
+      /**
+       * Moved To
+       * @description A committed date's move: the date it moved to.
+       */
+      moved_to?: string | null;
+    };
+    /** PortfolioPodDto */
+    PortfolioPodDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Done */
+      done: number;
+      /** Total */
+      total: number;
+      verdict: components["schemas"]["Verdict"] | null;
+      /** Target */
+      target: string | null;
+      /** P85 */
+      p85: string | null;
+    };
+    /** PortfolioProgramDto */
+    PortfolioProgramDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      counts: components["schemas"]["VerdictCountsDto"];
+    };
+    /** PortfolioProjectDto */
+    PortfolioProjectDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Program Id */
+      program_id: string | null;
+      /** Program Name */
+      program_name: string | null;
+      /** @description Null while no forecast row is kept for it. */
+      verdict: components["schemas"]["Verdict"] | null;
+      /**
+       * Target
+       * @description The committed date, else Jira's release date.
+       */
+      target: string | null;
+      /**
+       * Target Source
+       * @description committed, jira_release, or null.
+       */
+      target_source: string | null;
+      /** P50 */
+      p50: string | null;
+      /** P85 */
+      p85: string | null;
+      /**
+       * Team Date
+       * @description The team's own date: the latest ETA or due date.
+       */
+      team_date: string | null;
+      /** Team Key */
+      team_key: string | null;
+      /**
+       * Days Late
+       * @description Working days the 85% date lies after the target; negative: before it.
+       */
+      days_late: number | null;
+      /**
+       * Reason
+       * @description Why it has its verdict, in one line that counts work items.
+       */
+      reason: string;
+      /**
+       * Health
+       * @description Today's health in words, e.g. '1 open blocker, 2 of 8 not replied'; never a colour.
+       */
+      health: string;
+      /**
+       * Health Day
+       * @description The day the rollup it is read from was kept.
+       */
+      health_day: string | null;
+      /** Done */
+      done: number;
+      /** Total */
+      total: number;
+      /** Pods */
+      pods: components["schemas"]["PortfolioPodDto"][];
+      /** Releases */
+      releases: components["schemas"]["PortfolioReleaseDto"][];
+      /** Marks */
+      marks: components["schemas"]["PortfolioMarkDto"][];
+      plan: components["schemas"]["AgainstPlanDto"] | null;
+      /**
+       * Start
+       * Format: date
+       * @description Where the bar starts: planning, else a month back.
+       */
+      start: string;
+      /**
+       * Kept On
+       * @description The day of the forecast row read.
+       */
+      kept_on: string | null;
+      /**
+       * Computed At
+       * @description When that row was computed.
+       */
+      computed_at: string | null;
+      /** Reconstructed */
+      reconstructed: boolean;
+    };
+    /** PortfolioReleaseDto */
+    PortfolioReleaseDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      verdict: components["schemas"]["Verdict"] | null;
+      /** Target */
+      target: string | null;
+      /** P85 */
+      p85: string | null;
+    };
     /** PortfolioRisksResponse */
     PortfolioRisksResponse: {
       /**
@@ -5326,6 +7617,138 @@ export interface components {
        * @default []
        */
       drift: components["schemas"]["DriftFindingResponse"][];
+    };
+    /**
+     * PortfolioScopeResponse
+     * @description Each readable project against its plan, and the open Jira hygiene findings.
+     *
+     *     ``counts_only``: the reader reads each rule's count, never an issue or an owner.
+     */
+    PortfolioScopeResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Reads Baselines */
+      reads_baselines: boolean;
+      /** Hygiene Enabled */
+      hygiene_enabled: boolean;
+      /** Counts Only */
+      counts_only: boolean;
+      /** Projects */
+      projects: components["schemas"]["ScopeProjectDto"][];
+      /** Rules */
+      rules: components["schemas"]["ScopeRuleCountDto"][];
+      /** Findings */
+      findings: components["schemas"]["ScopeFindingDto"][];
+      /** Findings Total */
+      findings_total: number;
+    };
+    /**
+     * PortfolioSort
+     * @enum {string}
+     */
+    PortfolioSort: "worst" | "days_late" | "committed" | "name";
+    /**
+     * PortfolioWarningsResponse
+     * @description Early warnings grouped by kind, each with its count; findings attach to work items.
+     */
+    PortfolioWarningsResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /**
+       * Seen Since
+       * @description The first day drift sightings were recorded: an age from it is a lower bound.
+       */
+      seen_since: string | null;
+      /** Groups */
+      groups: components["schemas"]["WarningGroupDto"][];
+      /** Total */
+      total: number;
+      /** Projects */
+      projects: number;
+    };
+    /** ProfileHistoryEntry */
+    ProfileHistoryEntry: {
+      /** Profile */
+      profile: string;
+      /**
+       * Valid From
+       * Format: date
+       */
+      valid_from: string;
+      /**
+       * Source
+       * @enum {string}
+       */
+      source: "pod_role" | "backfill" | "admin" | "import" | "suggestion_accepted";
+      /** Set At */
+      set_at: string | null;
+    };
+    /** ProfileResponse */
+    ProfileResponse: {
+      /** Slug */
+      slug: string;
+      /** Label */
+      label: string;
+      /** Code Work */
+      code_work: boolean;
+      /** Title Words */
+      title_words: string[];
+      /** Sort */
+      sort: number;
+      /** Hidden */
+      hidden: boolean;
+      /** Customized */
+      customized: boolean;
+    };
+    /** ProfileReviewItemResponse */
+    ProfileReviewItemResponse: {
+      current: components["schemas"]["MemberProfileResponse"];
+      suggestion: components["schemas"]["ProfileSuggestionResponse"];
+    };
+    /** ProfileReviewResponse */
+    ProfileReviewResponse: {
+      /** Items */
+      items: components["schemas"]["ProfileReviewItemResponse"][];
+    };
+    /** ProfileSuggestionResponse */
+    ProfileSuggestionResponse: {
+      /** Profile */
+      profile: string;
+      /** Label */
+      label: string;
+      /** Reasons */
+      reasons: string[];
+    };
+    /**
+     * ProfileUpdateRequest
+     * @description A catalog entry as the tenant wants it: a rename, hiding it, or a new one.
+     */
+    ProfileUpdateRequest: {
+      /** Label */
+      label: string;
+      /**
+       * Code Work
+       * @default false
+       */
+      code_work: boolean;
+      /**
+       * Hidden
+       * @default false
+       */
+      hidden: boolean;
+      /** Title Words */
+      title_words?: string[];
+      /**
+       * Sort
+       * @default 100
+       */
+      sort: number;
     };
     /** ProgramProjectLinkRequest */
     ProgramProjectLinkRequest: {
@@ -5345,6 +7768,103 @@ export interface components {
       nodes: components["schemas"]["PersonaTreeNodeDto"][];
       /** Edges */
       edges: components["schemas"]["PersonaTreeEdgeDto"][];
+    };
+    /**
+     * ProjectAskDto
+     * @description One ask of who must act: what, who, how long, why. Ordered by the item, never by person.
+     *
+     *     For an executive ``who`` is the owning team and ``detail`` and
+     *     ``escalated_to`` are empty: no one's name reaches them.
+     */
+    ProjectAskDto: {
+      need: components["schemas"]["NeedType"];
+      /** Need Label */
+      need_label: string;
+      /** What */
+      what: string;
+      /** Who */
+      who?: string | null;
+      /** Team */
+      team?: string | null;
+      /** Waited Days */
+      waited_days?: number | null;
+      /** Detail */
+      detail?: string | null;
+      /** Issue Key */
+      issue_key?: string | null;
+      /** Level */
+      level: number;
+      /** Escalated To */
+      escalated_to?: string | null;
+      /** Escalation Label */
+      escalation_label?: string | null;
+      /**
+       * Request Id
+       * @description The request between people this ask is, when it is one: the console lists it under the caller's own asks and leaves it out of this table then.
+       */
+      request_id?: string | null;
+    };
+    /** ProjectAsksResponse */
+    ProjectAsksResponse: {
+      /** Project Id */
+      project_id: string;
+      /** Project Name */
+      project_name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Names Hidden */
+      names_hidden: boolean;
+      /** Asks */
+      asks: components["schemas"]["ProjectAskDto"][];
+    };
+    /**
+     * ProjectCheckinCoverageDto
+     * @description How the day was captured across the project's people: counts, no names.
+     */
+    ProjectCheckinCoverageDto: {
+      /**
+       * Replied
+       * @description Gave the day's status themselves (confirmed or partial).
+       */
+      replied: number;
+      /**
+       * Inferred
+       * @description Filled from what moved in the tracker and Git.
+       */
+      inferred: number;
+      /**
+       * No Data
+       * @description Closed stale or unknown: nothing said, nothing moved.
+       */
+      no_data: number;
+      /**
+       * Waiting
+       * @description No status for the day yet.
+       */
+      waiting: number;
+    };
+    /**
+     * ProjectCheckinCoverageResponse
+     * @description ``GET /projects/{id}/checkin-coverage``: the day's check-ins over the project, counted.
+     */
+    ProjectCheckinCoverageResponse: {
+      /** Project Id */
+      project_id: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /**
+       * People
+       * @description Everyone on the project's pods, each once; null for an executive when they are fewer than five.
+       */
+      people: number | null;
+      /** @description The day's check-ins, counted; null when ``people`` is. */
+      coverage: components["schemas"]["ProjectCheckinCoverageDto"] | null;
     };
     /** ProjectDeliveryResponse */
     ProjectDeliveryResponse: {
@@ -5771,6 +8291,12 @@ export interface components {
        * @default true
        */
       enabled: boolean;
+      /**
+       * Owner Profile
+       * @description A profile id (GET /profiles): while the criterion is missing, its holder in the scope's pods is asked to create or link it. Empty asks only the decider.
+       * @default
+       */
+      owner_profile: string;
     };
     /** ReadinessCriterionSummaryDto */
     ReadinessCriterionSummaryDto: {
@@ -6197,6 +8723,21 @@ export interface components {
       /** Updated By */
       updated_by: string;
     };
+    /**
+     * RepliesCountDto
+     * @description The day's replies: ``replied`` (confirmed or partial) of ``people``, and
+     *     ``inferred``, filled from the tracker and Git, never green.
+     */
+    RepliesCountDto: {
+      /** People */
+      people: number;
+      /** Replied */
+      replied: number;
+      /** Inferred */
+      inferred: number;
+      /** Waiting */
+      waiting: number;
+    };
     /** ReportAskFactsResponse */
     ReportAskFactsResponse: {
       need: components["schemas"]["NeedType"];
@@ -6522,6 +9063,151 @@ export interface components {
       rows: string[][];
     };
     /**
+     * RequestCountsResponse
+     * @description ``GET /cross-person-requests/counts``: the requests board as counts, no one named.
+     */
+    RequestCountsResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /**
+       * Open
+       * @description Asked and not yet acknowledged.
+       */
+      open: number;
+      /** Acknowledged */
+      acknowledged: number;
+      /**
+       * Needs Resolution
+       * @description The name matched nobody yet.
+       */
+      needs_resolution: number;
+      /**
+       * Waiting Over A Week
+       * @description Open or acknowledged for 7 days or more.
+       */
+      waiting_over_a_week: number;
+      /**
+       * Not Delivered
+       * @description Open, and the DM to the person asked failed.
+       */
+      not_delivered: number;
+      /**
+       * Resolved Recently
+       * @description Resolved in the last `resolved_window_days`.
+       */
+      resolved_recently: number;
+      /** Resolved Window Days */
+      resolved_window_days: number;
+    };
+    /**
+     * RequestTrailResponse
+     * @description ``GET /cross-person-requests/{id}/trail``: what happened to one ask, and what is due.
+     */
+    RequestTrailResponse: {
+      /** Request Id */
+      request_id: string;
+      status: components["schemas"]["CrossPersonRequestStatus"];
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /**
+       * Names Hidden
+       * @description No one is named: the caller reads no names.
+       */
+      names_hidden: boolean;
+      /** Steps */
+      steps: components["schemas"]["RequestTrailStepDto"][];
+    };
+    /** RequestTrailStepDto */
+    RequestTrailStepDto: {
+      /**
+       * Kind
+       * @description unmatched (nobody matched the name; the requester was asked whom they meant), asked, acknowledged, named (in the day report, by the escalation matrix), nobody_above (due to go up, nobody named above), resolved, cleared (the merge landed) or closed (a copy of a newer ask).
+       * @enum {string}
+       */
+      kind:
+        | "unmatched"
+        | "asked"
+        | "acknowledged"
+        | "named"
+        | "nobody_above"
+        | "resolved"
+        | "cleared"
+        | "closed";
+      /**
+       * State
+       * @description done: it happened. due: the matrix makes it due and no day report has carried it (see report).
+       * @enum {string}
+       */
+      state: "done" | "due";
+      /**
+       * At
+       * @description When, for a step of a moment.
+       */
+      at?: string | null;
+      /**
+       * On
+       * @description The day, for a step of a day: the report that named it, or the day the matrix reaches it.
+       */
+      on?: string | null;
+      /**
+       * Who
+       * @description The person at this step (the person asked, or whom the report names); null when not known or not read.
+       */
+      who?: string | null;
+      /**
+       * Role
+       * @description The matrix level's name for `named`.
+       */
+      role?: string | null;
+      /**
+       * By
+       * @description Who made it happen; null for OpenProgram itself.
+       */
+      by?: string | null;
+      /**
+       * Dm
+       * @description On `asked`: the DM to the person asked was sent, is being retried, was not delivered, or none was sent.
+       */
+      dm?: ("sent" | "retrying" | "not_delivered" | "none") | null;
+      /**
+       * Dm Attempts
+       * @default 0
+       */
+      dm_attempts: number;
+      /**
+       * Dm At
+       * @description When the DM went out, if kept.
+       */
+      dm_at?: string | null;
+      /**
+       * Eta
+       * @description On `acknowledged`: when their reply said, in its words.
+       */
+      eta?: string | null;
+      /**
+       * Project Name
+       * @description The project whose day report carries a named step.
+       */
+      project_name?: string | null;
+      /**
+       * Report
+       * @description On `named`: sent (a day report carried it), not_sent (none went out while it stood there), no_report (the project has no day report) or upcoming.
+       */
+      report?: ("sent" | "not_sent" | "no_report" | "upcoming") | null;
+      /**
+       * Computed
+       * @description Worked out from the escalation matrix, not a recorded event.
+       * @default false
+       */
+      computed: boolean;
+    };
+    /**
      * RequestType
      * @enum {string}
      */
@@ -6621,6 +9307,13 @@ export interface components {
       release_id: string | null;
       /** Release Name */
       release_name: string | null;
+      /**
+       * Pod Id
+       * @description Set for one pod's part: the requirements below the pod.
+       */
+      pod_id: string | null;
+      /** Pod Name */
+      pod_name: string | null;
       /** Live */
       live: boolean;
       /** Available */
@@ -6662,6 +9355,11 @@ export interface components {
        */
       forecast_needed_days: number;
     };
+    /**
+     * Resolution
+     * @enum {string}
+     */
+    Resolution: "fixed" | "left_scope";
     /**
      * ReviewStage
      * @enum {string}
@@ -6738,10 +9436,43 @@ export interface components {
       applies_to_pod_ids: string[];
     };
     /**
+     * RuleNeed
+     * @enum {string}
+     */
+    RuleNeed: "fix" | "decision";
+    /**
+     * RuleScope
+     * @description Which issue set a rule reads: readiness's scope builders.
+     * @enum {string}
+     */
+    RuleScope: "project" | "release" | "pod";
+    /**
+     * RuleSeverity
+     * @enum {string}
+     */
+    RuleSeverity: "list_only" | "ask";
+    /**
      * RunTrigger
      * @enum {string}
      */
     RunTrigger: "schedule" | "manual";
+    /** ScopeChangesResponse */
+    ScopeChangesResponse: {
+      /** Added */
+      added: components["schemas"]["ImpactItemResponse"][];
+      /** Removed */
+      removed: components["schemas"]["ImpactItemResponse"][];
+      /** Reopened */
+      reopened: components["schemas"]["ImpactItemResponse"][];
+      /** Added Count */
+      added_count: number;
+      /** Removed Count */
+      removed_count: number;
+      /** Reopened Count */
+      reopened_count: number;
+      /** Finished Count */
+      finished_count: number;
+    };
     /**
      * ScopeDeliveryResponse
      * @description One scope's committed date and forecast: a project, a pod's part, or a release.
@@ -6771,11 +9502,111 @@ export interface components {
       /** Open */
       open: number;
     };
+    /** ScopeFindingDto */
+    ScopeFindingDto: {
+      /** Id */
+      id: string;
+      /** Issue Key */
+      issue_key: string;
+      /** Title */
+      title: string;
+      /** Rule Id */
+      rule_id: string;
+      /** Rule Name */
+      rule_name: string;
+      /** Project Id */
+      project_id: string;
+      /** Project Name */
+      project_name: string;
+      /**
+       * Owner Name
+       * @description Null for a reader who sees no person.
+       */
+      owner_name: string | null;
+      /** Owner Team */
+      owner_team: string | null;
+      /**
+       * Found On
+       * Format: date
+       */
+      found_on: string;
+      /** Open Days */
+      open_days: number;
+      /**
+       * Asks
+       * @description Its rule asks the owner in the day report: nothing to send.
+       */
+      asks: boolean;
+      /** Held */
+      held: boolean;
+    };
+    /**
+     * ScopeGroup
+     * @description What kind of addition a requirement that joined the scope was.
+     * @enum {string}
+     */
+    ScopeGroup: "change_request" | "no_label" | "bug" | "moved_in" | "planned" | "before_planning";
     /**
      * ScopeKind
      * @enum {string}
      */
     ScopeKind: "project" | "release" | "pod";
+    /** ScopeProjectDto */
+    ScopeProjectDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Program Id */
+      program_id: string | null;
+      /** Program Name */
+      program_name: string | null;
+      /** @description Null without a baseline, or for a reader of no baselines. */
+      plan: components["schemas"]["AgainstPlanDto"] | null;
+      /** Added Keys */
+      added_keys: string[];
+      /** Without Label Keys */
+      without_label_keys: string[];
+      /**
+       * Scope Day
+       * @description The stored snapshot the scope is read from.
+       */
+      scope_day: string | null;
+      /** Hygiene Open */
+      hygiene_open: number;
+    };
+    /** ScopeRuleCountDto */
+    ScopeRuleCountDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /**
+       * Asks
+       * @description The rule asks each owner in the day report.
+       */
+      asks: boolean;
+      /** Open */
+      open: number;
+    };
+    /**
+     * ScopeSinceBaselineResponse
+     * @description Today's scope against one baseline: keys only (at most 50 listed), never who.
+     */
+    ScopeSinceBaselineResponse: {
+      /** Added */
+      added: number;
+      /** Added With Label */
+      added_with_label: number;
+      /** Removed */
+      removed: number;
+      /** Added Keys */
+      added_keys: string[];
+      /** Added With Label Keys */
+      added_with_label_keys: string[];
+      /** Removed Keys */
+      removed_keys: string[];
+    };
     /**
      * SelfCheckinPreferenceUpdateRequest
      * @description The part of their own check-in preference a person may change.
@@ -6794,6 +9625,16 @@ export interface components {
       /** Weekdays */
       weekdays?: number[] | null;
     };
+    /** SetProfileRequest */
+    SetProfileRequest: {
+      /** Profile */
+      profile: string;
+      /**
+       * Accepted Suggestion
+       * @default false
+       */
+      accepted_suggestion: boolean;
+    };
     /**
      * SettingSource
      * @description Where an effective value comes from.
@@ -6805,6 +9646,11 @@ export interface components {
      * @enum {string}
      */
     Severity: "blocking" | "advisory";
+    /**
+     * StageFilter
+     * @enum {string}
+     */
+    StageFilter: "any" | "before" | "at_or_past";
     /** StageStatusesDto */
     StageStatusesDto: {
       stage: components["schemas"]["DeliveryStage"];
@@ -7012,6 +9858,19 @@ export interface components {
       status: components["schemas"]["MyStatusResponse"];
       tracker: components["schemas"]["TaskTrackerResultDto"] | null;
     };
+    /** TeamDateResponse */
+    TeamDateResponse: {
+      /** From Date */
+      from_date: string | null;
+      /** From Key */
+      from_key: string | null;
+      /** To Date */
+      to_date: string | null;
+      /** To Key */
+      to_key: string | null;
+      /** Moves */
+      moves: components["schemas"]["TeamMoveResponse"][];
+    };
     /** TeamForecastResponse */
     TeamForecastResponse: {
       /** Latest */
@@ -7022,6 +9881,26 @@ export interface components {
       dated: number;
       /** Undated */
       undated: number;
+    };
+    /** TeamMoveResponse */
+    TeamMoveResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** From Date */
+      from_date: string | null;
+      /** From Key */
+      from_key: string | null;
+      /** To Date */
+      to_date: string | null;
+      /** To Key */
+      to_key: string | null;
+      /** Cause */
+      cause: string;
+      /** Words */
+      words: string;
     };
     /**
      * TenantLogoResponse
@@ -7074,6 +9953,229 @@ export interface components {
     TenantWritebackUpdateRequest: {
       /** Enabled */
       enabled: boolean;
+    };
+    /** TimelineAxisResponse */
+    TimelineAxisResponse: {
+      /**
+       * Start
+       * Format: date
+       */
+      start: string;
+      /**
+       * End
+       * Format: date
+       */
+      end: string;
+      /**
+       * Today
+       * Format: date
+       */
+      today: string;
+    };
+    /** TimelineBaselineResponse */
+    TimelineBaselineResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** Reconstructed */
+      reconstructed: boolean;
+    };
+    /** TimelineCommittedResponse */
+    TimelineCommittedResponse: {
+      /** Date */
+      date: string | null;
+      /** History */
+      history: components["schemas"]["TimelineTickResponse"][];
+    };
+    /** TimelineForecastResponse */
+    TimelineForecastResponse: {
+      /**
+       * P50
+       * Format: date
+       */
+      p50: string;
+      /**
+       * P85
+       * Format: date
+       */
+      p85: string;
+      /** On */
+      on: string | null;
+    };
+    /** TimelineMarkerItemResponse */
+    TimelineMarkerItemResponse: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      stage: components["schemas"]["DeliveryStage"] | null;
+      group: components["schemas"]["ScopeGroup"] | null;
+      /** Change Label */
+      change_label: boolean | null;
+      /** Added By */
+      added_by: string | null;
+      /** Waits On */
+      waits_on: string | null;
+      /** Hygiene */
+      hygiene: boolean | null;
+    };
+    /**
+     * TimelineMarkerResponse
+     * @description One kind of event on one day, on a row's impact lane.
+     */
+    TimelineMarkerResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** Kind */
+      kind: string;
+      /** Count */
+      count: number;
+      /** Items */
+      items: components["schemas"]["TimelineMarkerItemResponse"][];
+      /** Change Label */
+      change_label: boolean | null;
+      /** Working Days */
+      working_days: number | null;
+      /** P50 Days */
+      p50_days: number | null;
+      /** P85 Days */
+      p85_days: number | null;
+      /** Taken Apart */
+      taken_apart: boolean | null;
+      /** Reconstructed */
+      reconstructed: boolean;
+    };
+    /** TimelineProgressResponse */
+    TimelineProgressResponse: {
+      /** Done */
+      done: number;
+      /** Total */
+      total: number;
+      /** Unit */
+      unit: string;
+    };
+    /**
+     * TimelineResponse
+     * @description A project's or a pod's timeline: the axis, the rows, and each row in words.
+     */
+    TimelineResponse: {
+      axis: components["schemas"]["TimelineAxisResponse"];
+      /** Rows */
+      rows: components["schemas"]["TimelineRowResponse"][];
+      /** Text */
+      text: components["schemas"]["TimelineTextResponse"][];
+      /** Change Label */
+      change_label: string;
+    };
+    /** TimelineRowResponse */
+    TimelineRowResponse: {
+      /** Row */
+      row: string;
+      scope_kind: components["schemas"]["CommitmentScopeKind"];
+      /** Scope Id */
+      scope_id: string;
+      /** Project Id */
+      project_id: string;
+      /** Project Name */
+      project_name: string;
+      /** Name */
+      name: string;
+      access: components["schemas"]["NodeAccess"];
+      verdict: components["schemas"]["Verdict"] | null;
+      baseline: components["schemas"]["TimelineBaselineResponse"] | null;
+      /**
+       * Start
+       * Format: date
+       */
+      start: string;
+      committed: components["schemas"]["TimelineCommittedResponse"];
+      /** Jira Release Date */
+      jira_release_date: string | null;
+      forecast: components["schemas"]["TimelineForecastResponse"] | null;
+      /** Forecast Reason */
+      forecast_reason: string | null;
+      team: components["schemas"]["TimelineTeamResponse"];
+      progress: components["schemas"]["TimelineProgressResponse"] | null;
+      scope: components["schemas"]["TimelineScopeResponse"] | null;
+      /** Markers */
+      markers: components["schemas"]["TimelineMarkerResponse"][];
+      /** Reference Date */
+      reference_date: string | null;
+      /** Can Set Date */
+      can_set_date: boolean;
+    };
+    /** TimelineScopeResponse */
+    TimelineScopeResponse: {
+      /** At Baseline */
+      at_baseline: number;
+      /** Now */
+      now: number;
+    };
+    /** TimelineTeamResponse */
+    TimelineTeamResponse: {
+      /** Date */
+      date: string | null;
+      /** Key */
+      key: string | null;
+      /** Undated */
+      undated: number;
+    };
+    /**
+     * TimelineTextResponse
+     * @description The spoken summary of one row, worded by the server.
+     */
+    TimelineTextResponse: {
+      /** Row */
+      row: string;
+      /** Scope Id */
+      scope_id: string;
+      /** Project Id */
+      project_id: string;
+      /** Sentence */
+      sentence: string;
+    };
+    /**
+     * TimelineTickResponse
+     * @description One value the committed date took, and the day it was set.
+     */
+    TimelineTickResponse: {
+      /**
+       * On
+       * Format: date
+       */
+      on: string;
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+    };
+    /**
+     * TodayCountsResponse
+     * @description Today's counts over what the caller reads: the portfolio, or their own pods and projects.
+     */
+    TodayCountsResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /**
+       * Scope
+       * @enum {string}
+       */
+      scope: "portfolio" | "own";
+      /** @description The day's replies over the people counted; null for an executive when they are fewer than five. */
+      replies: components["schemas"]["RepliesCountDto"] | null;
+      /** Open Warnings */
+      open_warnings: number;
+      /** Project Count */
+      project_count: number;
     };
     /** TrackedQuestionResponse */
     TrackedQuestionResponse: {
@@ -7156,6 +10258,138 @@ export interface components {
      * @enum {string}
      */
     Verdict: "on_track" | "at_risk" | "off_track" | "done" | "no_date" | "not_enough_data";
+    /** VerdictCountsDto */
+    VerdictCountsDto: {
+      /**
+       * On Track
+       * @default 0
+       */
+      on_track: number;
+      /**
+       * At Risk
+       * @default 0
+       */
+      at_risk: number;
+      /**
+       * Off Track
+       * @default 0
+       */
+      off_track: number;
+      /**
+       * Done
+       * @default 0
+       */
+      done: number;
+      /**
+       * No Date
+       * @default 0
+       */
+      no_date: number;
+      /**
+       * Not Enough Data
+       * @default 0
+       */
+      not_enough_data: number;
+      /**
+       * None
+       * @description Projects with no forecast row kept yet.
+       * @default 0
+       */
+      none: number;
+    };
+    /**
+     * VerdictFilter
+     * @description The filter chips: a project's verdict, as the reader picks it.
+     * @enum {string}
+     */
+    VerdictFilter: "late" | "at_risk" | "no_date" | "on_track" | "done" | "not_enough_data";
+    /** WarningGroupDto */
+    WarningGroupDto: {
+      kind: components["schemas"]["WarningKind"];
+      /** Title */
+      title: string;
+      /** Count */
+      count: number;
+      /**
+       * Items
+       * @description Oldest first.
+       */
+      items: components["schemas"]["WarningItemDto"][];
+      /**
+       * Counts Only
+       * @description The reader reads this group's count, not its items.
+       */
+      counts_only: boolean;
+    };
+    /** WarningItemDto */
+    WarningItemDto: {
+      /** Id */
+      id: string;
+      /**
+       * Kind
+       * @description The drift kind, the risk rule, or 'blocker'.
+       */
+      kind: string;
+      /** Key */
+      key: string;
+      /** Line */
+      line: string;
+      /** Age Days */
+      age_days: number;
+      /** Since */
+      since: string | null;
+      /**
+       * Age Known
+       * @description False: the age only counts from the first recording ('seen since').
+       */
+      age_known: boolean;
+      /**
+       * Owner
+       * @description Who acts on it, by name; null where the reader sees the team instead.
+       */
+      owner: string | null;
+      /** Owner Team */
+      owner_team: string | null;
+      /** Owner Is You */
+      owner_is_you: boolean;
+      /** Project Id */
+      project_id: string;
+      /** Project Name */
+      project_name: string;
+      severity: components["schemas"]["Rag"];
+      /** Evidence Url */
+      evidence_url?: string | null;
+      /**
+       * Watermelon
+       * @default false
+       */
+      watermelon: boolean;
+      /**
+       * Pods
+       * @description The project's pods it sits in: the issue's, else its owner's, by name.
+       */
+      pods: components["schemas"]["WarningPodDto"][];
+      /** @description What the named owner last said in their own status; null wherever the reader sees the team instead of the owner. */
+      owner_says: components["schemas"]["OwnerSaysDto"] | null;
+    };
+    /**
+     * WarningKind
+     * @enum {string}
+     */
+    WarningKind:
+      | "blockers"
+      | "tools_disagree"
+      | "done_in_code"
+      | "review_stuck"
+      | "no_movement"
+      | "no_code_yet";
+    /** WarningPodDto */
+    WarningPodDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+    };
     /** WorkItemCreateRequest */
     WorkItemCreateRequest: {
       /** Id */
@@ -7614,7 +10848,8 @@ export interface operations {
   program_tree_graph_programs__program_id__tree_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -7763,6 +10998,41 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["CalendarSyncDispatchRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkflowDispatchResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  dispatch_forecast_reconstruction_admin_workflows_forecast_days_reconstruct_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ForecastReconstructionRequest"];
       };
     };
     responses: {
@@ -8874,6 +12144,37 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ConfigNodeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_config_identity_counts_config_members_identity_counts_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IdentityCountsResponse"];
         };
       };
       /** @description Validation Error */
@@ -10035,10 +13336,77 @@ export interface operations {
       };
     };
   };
+  get_config_checkin_fill_config_checkin_fill_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CheckinFillResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_config_checkin_fill_config_checkin_fill_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CheckinFillUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CheckinFillResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   list_programs_programs_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -10071,7 +13439,8 @@ export interface operations {
   list_projects_projects_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -10104,7 +13473,8 @@ export interface operations {
   list_workstreams_workstreams_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -10137,7 +13507,8 @@ export interface operations {
   get_workstream_workstreams__workstream_id__get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -10172,7 +13543,8 @@ export interface operations {
   list_project_workstreams_projects__project_id__workstreams_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -10207,7 +13579,8 @@ export interface operations {
   list_pods_pods_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -10570,11 +13943,14 @@ export interface operations {
   project_requirements_projects__project_id__requirements_get: {
     parameters: {
       query?: {
-        as_of?: string;
         /** @description Days of timeline up to as_of. Left out: 30, or the forecast's window when the tenant's minimum needs more. */
         days?: number | null;
         /** @description One release of the project. */
         release_id?: string | null;
+        /** @description One pod's part: the requirements below the pod. */
+        pod_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -10807,7 +14183,8 @@ export interface operations {
   project_delivery_projects__project_id__delivery_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -10842,10 +14219,11 @@ export interface operations {
   project_forecast_history_projects__project_id__delivery_history_get: {
     parameters: {
       query?: {
-        as_of?: string;
         days?: number;
         /** @description One release of the project. */
         release_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -10993,7 +14371,8 @@ export interface operations {
   pod_delivery_pods__pod_id__delivery_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -11198,6 +14577,199 @@ export interface operations {
       };
     };
   };
+  project_baselines_projects__project_id__baselines_get: {
+    parameters: {
+      query?: {
+        /** @description One release of the project. */
+        release_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanningBaselinesResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  mark_planning_complete_projects__project_id__baselines_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PlanningCompleteRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanningBaselineResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  delivery_impact_projects__project_id__delivery_impact_get: {
+    parameters: {
+      query?: {
+        period?: components["schemas"]["PeriodKind"];
+        /** @description The period's first day, with period=from. */
+        from?: string | null;
+        measure?: components["schemas"]["Measure"];
+        /** @description One release of the project. */
+        release_id?: string | null;
+        /** @description One pod's part of the project. */
+        pod_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeliveryImpactResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_timeline_projects__project_id__timeline_get: {
+    parameters: {
+      query?: {
+        /** @description One release of the project. */
+        release_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TimelineResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  pod_timeline_pods__pod_id__timeline_get: {
+    parameters: {
+      query?: {
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TimelineResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   list_templates_config_gates_get: {
     parameters: {
       query?: never;
@@ -11298,8 +14870,11 @@ export interface operations {
   gate_board_projects__project_id__gates_get: {
     parameters: {
       query?: {
-        as_of?: string;
         release_id?: string | null;
+        /** @description One pod's part: the requirements below the pod. */
+        pod_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -12178,6 +15753,451 @@ export interface operations {
       };
     };
   };
+  project_hygiene_projects__project_id__hygiene_get: {
+    parameters: {
+      query?: {
+        release_id?: string | null;
+        pod_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneBoardResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  pod_hygiene_pods__pod_id__hygiene_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneBoardResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  run_project_projects__project_id__hygiene_run_post: {
+    parameters: {
+      query?: {
+        release_id?: string | null;
+        pod_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneRunResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  waive_hygiene_findings__finding_id__waive_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["HygieneReasonRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneFindingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  not_applicable_hygiene_findings__finding_id__not_applicable_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["HygieneReasonRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneFindingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  reopen_hygiene_findings__finding_id__reopen_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneFindingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  recheck_hygiene_findings__finding_id__recheck_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneFindingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  history_hygiene_findings__finding_id__history_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneHistoryResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  hygiene_config_config_hygiene_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneConfigResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_settings_config_hygiene_settings_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["HygieneSettingsDto"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneSettingsDto"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_rule_config_hygiene_rules_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["HygieneRuleDto"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygieneRuleDto"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  remove_rule_config_hygiene_rules__rule_id__delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        rule_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  preview_rule_config_hygiene_rules_preview_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["HygienePreviewRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HygienePreviewResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   list_reports_day_reports_get: {
     parameters: {
       query?: {
@@ -12969,7 +16989,8 @@ export interface operations {
   my_focus_me_focus_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13002,7 +17023,8 @@ export interface operations {
   pod_blockers_pods__pod_id__blockers_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13037,7 +17059,8 @@ export interface operations {
   pod_checkins_pods__pod_id__checkins_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13072,7 +17095,8 @@ export interface operations {
   pod_rollup_pods__pod_id__rollup_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13107,7 +17131,8 @@ export interface operations {
   pod_tasks_pods__pod_id__tasks_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13142,7 +17167,8 @@ export interface operations {
   project_progress_projects__project_id__progress_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13177,7 +17203,8 @@ export interface operations {
   workstream_progress_workstreams__workstream_id__progress_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13212,7 +17239,8 @@ export interface operations {
   program_tree_programs__program_id__tree_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13247,7 +17275,8 @@ export interface operations {
   my_delivery_tree_me_delivery_tree_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13280,8 +17309,9 @@ export interface operations {
   portfolio_heatmap_portfolio_heatmap_get: {
     parameters: {
       query?: {
-        as_of?: string;
         program_root_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13314,10 +17344,11 @@ export interface operations {
   portfolio_attention_portfolio_attention_get: {
     parameters: {
       query?: {
-        as_of?: string;
         program_root_id?: string | null;
         /** @description The reader's IANA time zone, for the times a sentence names. */
         tz?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13350,8 +17381,9 @@ export interface operations {
   node_trend_persona__level___entity_id__trend_get: {
     parameters: {
       query?: {
-        as_of?: string;
         window_days?: number;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13387,7 +17419,8 @@ export interface operations {
   workstream_flow_workstreams__workstream_id__flow_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13422,7 +17455,8 @@ export interface operations {
   portfolio_flow_portfolio_flow_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13455,11 +17489,12 @@ export interface operations {
   portfolio_pull_request_flow_portfolio_pr_flow_get: {
     parameters: {
       query?: {
-        as_of?: string;
         days?: number;
         program_id?: string | null;
         project_id?: string | null;
         pod_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13696,7 +17731,8 @@ export interface operations {
   project_risks_projects__project_id__risks_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13731,7 +17767,8 @@ export interface operations {
   portfolio_risks_portfolio_risks_get: {
     parameters: {
       query?: {
-        as_of?: string;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
       };
       header?: {
         authorization?: string | null;
@@ -13748,6 +17785,730 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PortfolioRisksResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  my_conversation_me_conversation_get: {
+    parameters: {
+      query?: {
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        day?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConversationResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_asks_projects__project_id__asks_get: {
+    parameters: {
+      query?: {
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectAsksResponse"];
+        };
+      };
+      /** @description No such project. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  my_today_counts_me_today_counts_get: {
+    parameters: {
+      query?: {
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TodayCountsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  my_jira_changes_me_jira_changes_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JiraChangesResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  answer_my_jira_change_me_jira_changes__item_id__answer_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["JiraChangeAnswerRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JiraChangeAnswerResponse"];
+        };
+      };
+      /** @description No such change is waiting for the caller. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description A change the console cannot make, such as a due date. */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  portfolio_delivery_portfolio_delivery_get: {
+    parameters: {
+      query?: {
+        /** @description Name, code, Jira key or programme. */
+        q?: string;
+        /** @description Keep these verdicts: late, at_risk, no_date, on_track, ... */
+        verdict?: components["schemas"]["VerdictFilter"][] | null;
+        program_id?: string | null;
+        sort?: components["schemas"]["PortfolioSort"];
+        offset?: number;
+        limit?: number;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PortfolioDeliveryResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  portfolio_scope_portfolio_scope_get: {
+    parameters: {
+      query?: {
+        q?: string;
+        program_id?: string | null;
+        project_id?: string | null;
+        /** @description One pod's part: the work below the pod, its findings and its people's blockers. */
+        pod_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PortfolioScopeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  portfolio_warnings_portfolio_warnings_get: {
+    parameters: {
+      query?: {
+        q?: string;
+        project_id?: string | null;
+        /** @description One pod's part: the work below the pod, its findings and its people's blockers. */
+        pod_id?: string | null;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PortfolioWarningsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  cross_person_request_counts_cross_person_requests_counts_get: {
+    parameters: {
+      query?: {
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RequestCountsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  resolved_cross_person_requests_cross_person_requests_resolved_get: {
+    parameters: {
+      query?: {
+        days?: number;
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CrossPersonRequestsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  cross_person_request_trail_cross_person_requests__request_id__trail_get: {
+    parameters: {
+      query?: {
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        request_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RequestTrailResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_checkin_coverage_projects__project_id__checkin_coverage_get: {
+    parameters: {
+      query?: {
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectCheckinCoverageResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_profiles_profiles_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProfileResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_profile_config_profiles__slug__put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProfileUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProfileResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  pod_profiles_pods__pod_id__profiles_get: {
+    parameters: {
+      query?: {
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PodProfilesResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  my_profiles_me_profiles_get: {
+    parameters: {
+      query?: {
+        /** @description The day to read. Left out: today in the tenant's timezone. */
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MemberProfileResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  membership_profile_config_pods__pod_id__members__member_id__profile_get: {
+    parameters: {
+      query?: {
+        role?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MembershipProfileResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  set_membership_profile_config_pods__pod_id__members__member_id__profile_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetProfileRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MemberProfileResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  review_profiles_config_profiles_review_get: {
+    parameters: {
+      query?: {
+        pod_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProfileReviewResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  accept_profiles_config_profiles_review_accept_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AcceptProfilesRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AcceptProfilesResponse"];
         };
       };
       /** @description Validation Error */

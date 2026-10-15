@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from core.application.brief_facts import (
     BriefFacts,
@@ -16,13 +17,14 @@ from core.application.brief_facts import (
     project_status,
 )
 from core.application.brief_grounding import compose_brief, fallback_brief
+from core.application.people_words import PeopleWords, is_small, people_words
 from core.application.persona_views import NO_POD_ROW, PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.errors import GraphNotFound
 from core.domain.graph import EdgeKind, GraphNode, GraphTree, NodeKind
 from core.domain.llm import LlmMessage, LlmRequest
-from core.domain.status import CheckInDay
+from core.domain.status import CheckInDay, local_date
 from core.ports.llm import LlmProvider
 from core.ports.repositories import GraphRepository, NarrativeBriefRepository, StatusRepository
 
@@ -94,11 +96,14 @@ class NarrativeBriefService:
         model: str,
         status_repository: StatusRepository | None = None,
         provider_names: ProviderNames | None = None,
+        zone: ZoneInfo | None = None,
     ) -> None:
         """``status_repository`` says which blockers are open now; without it a
         brief states the blockers check-ins reported, never whether they cleared.
         ``provider_names`` names the tracker and code host in the exec brief's
-        headline, as Exec Today names them."""
+        headline, as Exec Today names them. ``zone`` is the tenant's: a brief is
+        about the day its run's instant falls on there, the day the console reads
+        as today (the brief workflow passes ServiceRegistry.tenant_zone)."""
         self._llm_provider = llm_provider
         self._feed_service = feed_service
         self._persona_view_service = persona_view_service
@@ -107,6 +112,11 @@ class NarrativeBriefService:
         self._model = model
         self._status_repository = status_repository
         self._provider_names = provider_names
+        self._zone = zone or ZoneInfo("UTC")
+
+    def _day(self, as_of: datetime) -> date:
+        """The brief's day: ``as_of``'s date in the tenant's zone, not its UTC date."""
+        return local_date(as_of, self._zone)
 
     async def generate(
         self,
@@ -117,9 +127,17 @@ class NarrativeBriefService:
         as_of: datetime,
     ) -> NarrativeBrief:
         facts = await self.facts(tenant_id, kind, scope_id, as_of=as_of)
-        scope_name = await self._scope_name(tenant_id, kind, scope_id, as_of.date())
+        scope_name = await self._scope_name(tenant_id, kind, scope_id, self._day(as_of))
         title = _title_for(kind, scope_name)
         body = await self._compose_body(tenant_id, kind, scope_id, as_of, title, facts)
+        sources = facts.sources
+        if kind is BriefKind.EXEC:
+            # Executives read roles, teams and counts, never a person: the
+            # brief is grounded on the named facts, then says each person as
+            # their role or team, and lists no person among its sources.
+            words = await self._people_words(tenant_id, self._day(as_of))
+            body = words.say(body)
+            sources = tuple(source for source in sources if not _person_source(source))
         brief = NarrativeBrief(
             tenant_id=tenant_id,
             kind=kind,
@@ -127,7 +145,7 @@ class NarrativeBriefService:
             title=title,
             body=body,
             generated_at=as_of,
-            sources=facts.sources,
+            sources=sources,
         )
         await self._brief_repository.record_brief(brief)
         return brief
@@ -147,13 +165,13 @@ class NarrativeBriefService:
         """
         lookback = _LOOKBACK_DAYS.get(kind, 7)
         since = as_of - timedelta(days=lookback)
-        scoped = await self._scoped_status(tenant_id, kind, scope_id, as_of.date())
+        day = self._day(as_of)
+        scoped = await self._scoped_status(tenant_id, kind, scope_id, day)
         feed = await self._feed_service.feed(tenant_id, since=since, limit=_MAX_FEED_ITEMS)
         items = tuple(item for item in feed.items if item.observed_at <= as_of)
         if len(feed.items) >= _MAX_FEED_ITEMS and feed.items:
             # More happened than was read: say the window the facts cover.
             since = max(since, min(item.observed_at for item in feed.items))
-        day = as_of.date()
         tasks = {
             node.id: node
             for node in await self._graph_repository.list_nodes(tenant_id, NodeKind.TASK, as_of=day)
@@ -185,10 +203,12 @@ class NarrativeBriefService:
                 tasks=tasks,
                 people=people,
                 repos=repos,
-                open_blockers=await self._open_blockers(tenant_id, person_ids, as_of.date()),
+                open_blockers=await self._open_blockers(tenant_id, person_ids, day),
                 scope_ref=_scope_ref(kind, scope_id),
-                checkins_today=await self._checkins_today(tenant_id, team_ids, as_of.date()),
+                checkins_today=await self._checkins_today(tenant_id, team_ids, day),
                 headline=await self._headline(tenant_id, kind, as_of),
+                # An executive counts no one in a portfolio of fewer than five.
+                people_counted=kind is not BriefKind.EXEC or not is_small(len(team_ids)),
             )
         )
 
@@ -238,14 +258,23 @@ class NarrativeBriefService:
                 return await self._pod_scope(tenant_id, scope_id, as_of)
             if kind is BriefKind.WEEKLY_PROJECT:
                 return await self._project_scope(tenant_id, scope_id, as_of)
-            heatmap = await self._persona_view_service.portfolio_heatmap(tenant_id, as_of)
+            # The brief's own day is its today, as its headline says it.
+            heatmap = await self._persona_view_service.portfolio_heatmap(
+                tenant_id, as_of, today=as_of
+            )
             team = frozenset(
                 cell.entity_ref.id
                 for cell in heatmap.cells
                 if cell.entity_ref.kind is NodeKind.DEVELOPER and cell.row != NO_POD_ROW
             )
+            # The status it states is the heat map as an executive reads it: the
+            # teams' cells, no person's, and no people counted on a group of
+            # fewer than five.
+            counted = await self._persona_view_service.portfolio_heatmap(
+                tenant_id, as_of, today=as_of, counts_only=True
+            )
             return _ScopedStatus(
-                scope=BriefScope(), status=heatmap_status(heatmap.cells), team_ids=team
+                scope=BriefScope(), status=heatmap_status(counted.cells), team_ids=team
             )
         except GraphNotFound:
             return _ScopedStatus(scope=BriefScope.empty(), status=no_status())
@@ -315,19 +344,23 @@ class NarrativeBriefService:
         )
 
     async def _headline(self, tenant_id: str, kind: BriefKind, as_of: datetime) -> str | None:
-        """The exec brief's day as Exec Today's hero says it: the same cause, the same counts."""
+        """The exec brief's day as Exec Today's hero says it: the same cause, the same
+        counts, read as an executive reads them (no people counted on a program of
+        fewer than five)."""
         if kind is not BriefKind.EXEC:
             return None
+        day = self._day(as_of)
         try:
             view = await self._persona_view_service.portfolio_attention(
                 tenant_id,
-                as_of.date(),
+                day,
                 None,
                 None,
-                today=as_of.date(),
+                today=day,
                 zone=UTC,
                 names=self._provider_names,
                 clock=False,
+                counts_only=True,
             )
         except GraphNotFound:
             return None
@@ -361,6 +394,12 @@ class NarrativeBriefService:
             counts[blocker.developer_id] = counts.get(blocker.developer_id, 0) + 1
         return counts
 
+    async def _people_words(self, tenant_id: str, day: date) -> PeopleWords:
+        """Each member as an executive reads them: their role, else their team."""
+        nodes = await self._graph_repository.list_nodes(tenant_id, as_of=day)
+        edges = await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+        return people_words(nodes, edges, as_of=day)
+
     async def _scope_name(
         self,
         tenant_id: str,
@@ -372,6 +411,11 @@ class NarrativeBriefService:
             return "portfolio"
         node = await self._graph_repository.get_node(tenant_id, scope_id, as_of=as_of)
         return node.name if node is not None else scope_id
+
+
+def _person_source(source: str) -> bool:
+    """A source that is one person ("developer:<id>"), not a team or a work item."""
+    return source.startswith(f"{NodeKind.DEVELOPER.value}:")
 
 
 def _contained(tree: GraphTree) -> tuple[GraphNode, ...]:

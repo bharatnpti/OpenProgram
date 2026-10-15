@@ -47,13 +47,13 @@ export function ChatView({
 }) {
   const assistant = useAssistant();
   const { access, greetingName, canReadPodDetail } = useRole();
-  const { pathname, search } = useLocation();
+  const { pathname } = useLocation();
   const { label } = useViewingDate();
   const day = useDayWords();
   const end = useRef<HTMLDivElement>(null);
   const targets = useMemo(() => paletteTargets(access), [access]);
   const place = {
-    ...placeOf(pathname, search, access.signals.defaultView),
+    ...placeOf(pathname),
     subject: assistant.subject,
   };
   const next = nextQuestions(

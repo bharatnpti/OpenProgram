@@ -17,6 +17,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from api.dependencies import (
+    as_of_or_tenant_today,
     get_current_principal,
     get_delivery_scope_service,
     get_forecast_service,
@@ -33,6 +34,7 @@ from api.dtos import (
     ReleaseResponse,
     ScopeDeliveryResponse,
 )
+from api.people_projection import PeopleWordsDep, all_for_reader, for_reader
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.delivery_scope import DeliveryScopeService
 from core.application.forecast_service import MAX_FORECAST_HISTORY_DAYS, ForecastService
@@ -55,7 +57,8 @@ async def project_delivery(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ForecastService, Depends(get_forecast_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    words: PeopleWordsDep,
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
 ) -> ProjectDeliveryResponse:
     # Every project for its readers; for a scrum master, the projects their pods work on.
     try:
@@ -66,7 +69,8 @@ async def project_delivery(
         view = await service.project_delivery(principal.tenant_id, project_id, as_of)
     except GraphNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return ProjectDeliveryResponse.from_view(view)
+    # An executive reads who set a date as their role.
+    return for_reader(ProjectDeliveryResponse.from_view(view), words)
 
 
 @router.get("/projects/{project_id}/delivery/history", response_model=ForecastHistoryResponse)
@@ -74,7 +78,7 @@ async def project_forecast_history(
     project_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ForecastService, Depends(get_forecast_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     days: Annotated[int, Query(ge=1, le=MAX_FORECAST_HISTORY_DAYS)] = HISTORY_DAYS,
     release_id: Annotated[str | None, Query(description="One release of the project.")] = None,
 ) -> ForecastHistoryResponse:
@@ -142,7 +146,8 @@ async def pod_delivery(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ForecastService, Depends(get_forecast_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    words: PeopleWordsDep,
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
 ) -> PodDeliveryResponse:
     # Who sets pod dates or reads project progress, and a developer for their own pod.
     policy = AuthorizationPolicy()
@@ -166,12 +171,13 @@ async def pod_delivery(
             )
     except GraphNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return PodDeliveryResponse(
+    response = PodDeliveryResponse(
         pod_id=pod_id,
         can_set_dates=policy.can(principal, Capability.SET_POD_DATES)
         and await _runs_pod(service, principal, pod_id),
         projects=items,
     )
+    return for_reader(response, words)
 
 
 @router.get("/projects/{project_id}/releases", response_model=list[ReleaseResponse])
@@ -179,13 +185,14 @@ async def list_releases(
     project_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ForecastService, Depends(get_forecast_service)],
+    words: PeopleWordsDep,
 ) -> list[ReleaseResponse]:
     _ensure(principal, Capability.READ_PROJECT_PROGRESS)
     try:
         releases = await service.releases(principal.tenant_id, project_id)
     except GraphNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return [ReleaseResponse.from_domain(release) for release in releases]
+    return all_for_reader([ReleaseResponse.from_domain(release) for release in releases], words)
 
 
 @router.get(
@@ -309,7 +316,7 @@ async def _runs_pod(service: ForecastService, principal: Principal, pod_id: str)
     """A manager or admin sets any pod's date; a scrum master only their own pod's."""
     if principal.has_role(Role.ADMIN) or principal.has_role(Role.MGR):
         return True
-    return await service.runs_pod(principal.tenant_id, pod_id, principal.subject, date.today())
+    return await service.runs_pod(principal.tenant_id, pod_id, principal.subject, service.today())
 
 
 def _ensure(principal: Principal, capability: Capability) -> None:

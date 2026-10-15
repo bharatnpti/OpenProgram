@@ -1,7 +1,9 @@
 """Gates, their items, and the questions requirements wait on.
 
 Gate templates are runtime config (manage_config). The board is read by
-whoever reads the project's progress or works its gates. Confirming,
+whoever reads the project's progress or works its gates; one pod's part of it
+(``pod_id``) holds the requirements below the pod, and an executive reads no
+pod of fewer than five people on its own. Confirming,
 dismissing and adding items or questions needs edit_gates; signing an item off
 is further limited to the roles its gate names for the item's kind. The
 tenant always comes from the principal.
@@ -14,7 +16,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
-from api.dependencies import get_current_principal, get_forecast_service, get_gate_service
+from api.dependencies import (
+    as_of_or_tenant_today,
+    get_current_principal,
+    get_forecast_service,
+    get_gate_service,
+    get_registry,
+    get_tenant_today,
+)
 from api.dtos import (
     GateBoardResponse,
     GateItemCreateRequest,
@@ -27,13 +36,16 @@ from api.dtos import (
     QuestionUpdateRequest,
     TrackedQuestionResponse,
 )
+from api.people_projection import PeopleWordsDep, for_reader
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.forecast_service import ForecastService
 from core.application.gate_service import GateService
+from core.application.pod_level import ensure_pod_level, pod_part
 from core.domain.auth import Principal
 from core.domain.errors import AuthorizationDenied, GraphNotFound
 from core.domain.forecast import Release
 from core.domain.gates import GateError, GateTemplate, ItemKind
+from infra.registry import ServiceRegistry
 
 router = APIRouter(tags=["gates"])
 
@@ -106,16 +118,38 @@ async def gate_board(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[GateService, Depends(get_gate_service)],
     forecasts: Annotated[ForecastService, Depends(get_forecast_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    words: PeopleWordsDep,
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
+    registry: Annotated[ServiceRegistry, Depends(get_registry)],
     release_id: Annotated[str | None, Query()] = None,
+    pod_id: Annotated[
+        str | None, Query(description="One pod's part: the requirements below the pod.")
+    ] = None,
 ) -> GateBoardResponse:
     _ensure_reader(principal)
     release = await _release(forecasts, principal, project_id, release_id)
     try:
-        view = await service.board(principal.tenant_id, project_id, as_of, release)
+        part = None
+        if pod_id:
+            graph = registry.graph_repository()
+            pod = await ensure_pod_level(graph, principal, pod_id, as_of)
+            part = await pod_part(
+                graph=graph,
+                delivery=registry.delivery_service(),
+                forecasts=forecasts,
+                tenant_id=principal.tenant_id,
+                project_id=project_id,
+                pod=pod,
+                as_of=as_of,
+                release=release,
+            )
+        view = await service.board(principal.tenant_id, project_id, as_of, release, part)
+    except AuthorizationDenied as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except GraphNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return GateBoardResponse.from_view(view)
+    # An executive reads who asked and who was asked as a role or a team.
+    return for_reader(GateBoardResponse.from_view(view), words)
 
 
 @router.post("/projects/{project_id}/gates/scan", response_model=GateScanResponse)
@@ -124,14 +158,13 @@ async def scan_now(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[GateService, Depends(get_gate_service)],
     forecasts: Annotated[ForecastService, Depends(get_forecast_service)],
+    today: Annotated[date, Depends(get_tenant_today)],
     release_id: Annotated[str | None, Query()] = None,
     force: Annotated[bool, Query(description="Read every issue, changed or not.")] = False,
 ) -> GateScanResponse:
     _ensure(principal, Capability.EDIT_GATES)
     release = await _release(forecasts, principal, project_id, release_id)
-    summary = await service.scan_scope(
-        principal.tenant_id, project_id, date.today(), release, force=force
-    )
+    summary = await service.scan_scope(principal.tenant_id, project_id, today, release, force=force)
     return GateScanResponse(
         read=summary.read,
         unchanged=summary.unchanged,

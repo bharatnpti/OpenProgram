@@ -120,6 +120,9 @@ class _Registry:
     def time_series_repository(self) -> InMemoryGraphStore:
         return self.store
 
+    def tenant_today(self) -> date:
+        return DAY
+
     async def close(self) -> None:
         return None
 

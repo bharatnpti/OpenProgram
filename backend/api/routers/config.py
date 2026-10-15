@@ -7,14 +7,19 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from api.dependencies import (
+    as_of_or_tenant_today,
     get_config_service,
     get_current_principal,
     get_directory_service,
     get_directory_sync_service,
+    get_fill_day_settings_service,
     get_jira_writes_service,
+    get_profile_service,
     get_settings_from_request,
 )
 from api.dtos import (
+    CheckinFillResponse,
+    CheckinFillUpdateRequest,
     CheckinPreferenceResponse,
     CheckinPreferenceUpdateRequest,
     ConfigEdgeResponse,
@@ -27,6 +32,7 @@ from api.dtos import (
     DirectoryUserResponse,
     EscalationCandidateResponse,
     IdentityAutoMatchResponse,
+    IdentityCountsResponse,
     IdentityLinkResponse,
     IdentityLinkUpdateRequest,
     MemberFromDirectoryRequest,
@@ -45,6 +51,7 @@ from api.dtos import (
     WritebackConsentResponse,
     WritebackConsentUpdateRequest,
 )
+from api.people_projection import PeopleWordsDep, all_for_reader, for_reader
 from config.settings import Settings
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.config_service import (
@@ -54,7 +61,9 @@ from core.application.config_service import (
     DirectoryService,
 )
 from core.application.directory_sync_service import DirectorySyncService
+from core.application.fill_day import FillDaySettingsService
 from core.application.jira_writes_service import JiraWritesService
+from core.application.profile_service import ProfileService
 from core.domain.auth import Principal
 from core.domain.errors import (
     AuthorizationDenied,
@@ -64,6 +73,7 @@ from core.domain.errors import (
 )
 from core.domain.graph import GraphNode, JsonScalar, NodeKind
 from core.domain.identity import IdentityLink
+from core.domain.profiles import ProfileError, ProfileSource
 from core.domain.status import CheckInPreference, effective_checkin_preference
 from core.domain.writeback import WriteBackGate, WriteBackGateSource
 
@@ -525,6 +535,20 @@ async def list_config_members(
     ]
 
 
+@router.get("/config/members/identity-counts", response_model=IdentityCountsResponse)
+async def get_config_identity_counts(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> IdentityCountsResponse:
+    """How many members have no chat id, and how many no Jira account."""
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        counts = await service.identity_counts(principal.tenant_id)
+    except ConfigValidationError as exc:
+        raise _http_error(exc) from exc
+    return IdentityCountsResponse.from_domain(counts)
+
+
 @router.get("/config/members/unmapped", response_model=list[UnmappedMemberResponse])
 async def list_config_unmapped_members(
     principal: Annotated[Principal, Depends(get_current_principal)],
@@ -599,13 +623,46 @@ async def create_config_members_from_directory(
     request: MemberFromDirectoryRequest,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ConfigService, Depends(get_config_service)],
+    profiles: Annotated[ProfileService, Depends(get_profile_service)],
 ) -> list[ConfigNodeResponse]:
+    """Import people as members; with ``pod_id``, also put each in that pod.
+
+    Each joins the pod with ``role`` (developer when not given) and, when
+    given, ``profile`` (recorded as set by the import). Someone already in the
+    pod keeps their membership and role; only a given profile is recorded for
+    them. The pod and the profile are checked before anyone is imported.
+    """
     _ensure(principal, Capability.MANAGE_CONFIG)
     try:
+        if request.pod_id is not None:
+            await service.get_node(principal.tenant_id, request.pod_id, NodeKind.POD)
+        if request.profile is not None:
+            await profiles.ensure_offered(principal.tenant_id, request.profile)
         members = await service.add_members_from_directory(
             principal.tenant_id,
             request.external_ids,
         )
+        if request.pod_id is not None:
+            for member in members:
+                try:
+                    await service.link_pod_member(
+                        principal.tenant_id, request.pod_id, member.id, request.role or "developer"
+                    )
+                except ConfigConflict:
+                    pass  # already in the pod: their membership and role stay as they are
+                if request.profile is not None:
+                    await profiles.set_profile(
+                        principal.tenant_id,
+                        request.pod_id,
+                        member.id,
+                        request.profile,
+                        source=ProfileSource.IMPORT,
+                        by=principal.subject,
+                    )
+    except ProfileError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
     except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
         raise _http_error(exc) from exc
     return [ConfigNodeResponse.from_domain(member) for member in members]
@@ -849,10 +906,32 @@ async def link_config_pod_member(
     request: PodMemberLinkRequest,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ConfigService, Depends(get_config_service)],
+    profiles: Annotated[ProfileService, Depends(get_profile_service)],
 ) -> ConfigEdgeResponse:
+    """Add the member to the pod with their role and, when given, their profile in it.
+
+    The profile is checked before the link is made, so a refused profile adds
+    nobody. Without one, the membership's profile reads from its role until
+    someone sets it.
+    """
     _ensure(principal, Capability.MANAGE_CONFIG)
     try:
+        if request.profile is not None:
+            await profiles.ensure_offered(principal.tenant_id, request.profile)
         edge = await service.link_pod_member(principal.tenant_id, pod_id, member_id, request.role)
+        if request.profile is not None:
+            await profiles.set_profile(
+                principal.tenant_id,
+                pod_id,
+                member_id,
+                request.profile,
+                source=ProfileSource.ADMIN,
+                by=principal.subject,
+            )
+    except ProfileError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
     except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
         raise _http_error(exc) from exc
     return ConfigEdgeResponse.from_domain(edge)
@@ -1102,7 +1181,7 @@ async def list_config_pod_escalation_candidates(
     _ensure(principal, Capability.MANAGE_CONFIG)
     try:
         candidates = await service.list_escalation_candidates(
-            principal.tenant_id, pod_id, date.today()
+            principal.tenant_id, pod_id, service.today()
         )
     except (ConfigValidationError, GraphNotFound) as exc:
         raise _http_error(exc) from exc
@@ -1139,86 +1218,133 @@ async def update_config_tenant_writeback(
     )
 
 
+@router.get("/config/checkin-fill", response_model=CheckinFillResponse)
+async def get_config_checkin_fill(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[FillDaySettingsService, Depends(get_fill_day_settings_service)],
+    settings: Annotated[Settings, Depends(get_settings_from_request)],
+) -> CheckinFillResponse:
+    """Whether the day is filled from Jira for members the check-in never reached."""
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    setting, saved = await service.read(principal.tenant_id)
+    return CheckinFillResponse.from_domain(
+        setting, saved=saved, deployment_enabled=settings.checkin_fill_enabled
+    )
+
+
+@router.put("/config/checkin-fill", response_model=CheckinFillResponse)
+async def update_config_checkin_fill(
+    request: CheckinFillUpdateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[FillDaySettingsService, Depends(get_fill_day_settings_service)],
+    settings: Annotated[Settings, Depends(get_settings_from_request)],
+) -> CheckinFillResponse:
+    """Admin › Check-ins: "Fill the day from Jira for people who were not asked"."""
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    setting = await service.set(principal.tenant_id, request.enabled, actor=principal.subject)
+    return CheckinFillResponse.from_domain(
+        setting, saved=True, deployment_enabled=settings.checkin_fill_enabled
+    )
+
+
 @router.get("/programs", response_model=list[DirectoryItemResponse])
 async def list_programs(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
+    words: PeopleWordsDep,
 ) -> list[DirectoryItemResponse]:
     _ensure(principal, Capability.READ_DIRECTORY)
-    return [
-        DirectoryItemResponse.from_view(item)
-        for item in await service.list_programs(principal.tenant_id, as_of)
-    ]
+    return all_for_reader(
+        [
+            DirectoryItemResponse.from_view(item)
+            for item in await service.list_programs(principal.tenant_id, as_of)
+        ],
+        words,
+    )
 
 
 @router.get("/projects", response_model=list[DirectoryItemResponse])
 async def list_projects(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
+    words: PeopleWordsDep,
 ) -> list[DirectoryItemResponse]:
     _ensure(principal, Capability.READ_DIRECTORY)
-    return [
-        DirectoryItemResponse.from_view(item)
-        for item in await service.list_projects(principal.tenant_id, as_of)
-    ]
+    return all_for_reader(
+        [
+            DirectoryItemResponse.from_view(item)
+            for item in await service.list_projects(principal.tenant_id, as_of)
+        ],
+        words,
+    )
 
 
 @router.get("/workstreams", response_model=list[DirectoryItemResponse])
 async def list_workstreams(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
+    words: PeopleWordsDep,
 ) -> list[DirectoryItemResponse]:
     _ensure(principal, Capability.READ_DIRECTORY)
-    return [
-        DirectoryItemResponse.from_view(item)
-        for item in await service.list_workstreams(principal.tenant_id, as_of)
-    ]
+    return all_for_reader(
+        [
+            DirectoryItemResponse.from_view(item)
+            for item in await service.list_workstreams(principal.tenant_id, as_of)
+        ],
+        words,
+    )
 
 
 @router.get("/workstreams/{workstream_id}", response_model=DirectoryItemResponse)
 async def get_workstream(
     workstream_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
+    words: PeopleWordsDep,
 ) -> DirectoryItemResponse:
     _ensure(principal, Capability.READ_DIRECTORY)
     try:
         item = await service.get_workstream(principal.tenant_id, workstream_id, as_of)
     except GraphNotFound as exc:
         raise _http_error(exc) from exc
-    return DirectoryItemResponse.from_view(item)
+    return for_reader(DirectoryItemResponse.from_view(item), words)
 
 
 @router.get("/projects/{project_id}/workstreams", response_model=list[DirectoryItemResponse])
 async def list_project_workstreams(
     project_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
+    words: PeopleWordsDep,
 ) -> list[DirectoryItemResponse]:
     _ensure(principal, Capability.READ_DIRECTORY)
     try:
         items = await service.list_project_workstreams(principal.tenant_id, project_id, as_of)
     except GraphNotFound as exc:
         raise _http_error(exc) from exc
-    return [DirectoryItemResponse.from_view(item) for item in items]
+    return all_for_reader([DirectoryItemResponse.from_view(item) for item in items], words)
 
 
 @router.get("/pods", response_model=list[DirectoryItemResponse])
 async def list_pods(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DirectoryService, Depends(get_directory_service)],
+    words: PeopleWordsDep,
 ) -> list[DirectoryItemResponse]:
     _ensure(principal, Capability.READ_DIRECTORY)
-    return [
-        DirectoryItemResponse.from_view(item)
-        for item in await service.list_pods(principal.tenant_id, as_of)
-    ]
+    return all_for_reader(
+        [
+            DirectoryItemResponse.from_view(item)
+            for item in await service.list_pods(principal.tenant_id, as_of)
+        ],
+        words,
+    )
 
 
 async def _create_node(

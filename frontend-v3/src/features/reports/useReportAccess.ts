@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useContext, useMemo } from "react";
 
 import { useRole, type AppRole } from "../../app/role";
-import { useReadOnly } from "../../app/viewingDate";
+import { PastDaySaidContext, useReadOnly } from "../../app/viewingDate";
 import { accessFor, withoutWrites, type ReportAccess } from "./access";
 
 export type ReportAccessNow = ReportAccess & {
@@ -14,7 +14,7 @@ export type ReportAccessNow = ReportAccess & {
   reason: string | null;
   /**
    * What a control that is off says: the past day's reason when the role could
-   * use it today, else nothing. A control the role never uses is not drawn, and
+   * use it today and the page has not said it at its top, else nothing. A control the role never uses is not drawn, and
    * no line says who would use it.
    */
   pastDay: (capability: keyof ReportAccess) => string | null;
@@ -30,6 +30,8 @@ export type ReportAccessNow = ReportAccess & {
 export function useReportAccess(): ReportAccessNow {
   const { role, roles, isDevMode } = useRole();
   const { readOnly, reason } = useReadOnly();
+  // A page that says the past day once at its top: no control says it again.
+  const said = useContext(PastDaySaidContext);
   return useMemo(() => {
     const lens = isDevMode ? [role] : roles;
     const byRole = accessFor(lens);
@@ -39,7 +41,7 @@ export function useReportAccess(): ReportAccessNow {
       role: byRole,
       readOnly,
       reason,
-      pastDay: (capability) => (readOnly && reason && byRole[capability] ? reason : null),
+      pastDay: (capability) => (readOnly && reason && !said && byRole[capability] ? reason : null),
     };
-  }, [isDevMode, role, roles, readOnly, reason]);
+  }, [isDevMode, role, roles, readOnly, reason, said]);
 }

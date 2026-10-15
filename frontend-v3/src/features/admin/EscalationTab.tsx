@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
@@ -75,7 +76,10 @@ export function EscalationTab() {
           Everything a day report lists under “What we need, and from whom” is an ask: a fix, a
           decision, an answer or a review, owned by the one person who can do it. That owner is
           level 1. The longer an ask waits, the higher it goes: each level says after how many days
-          each kind of ask reaches it, and who stands there.
+          each kind of ask reaches it, and who stands there.{" "}
+          <Link to="/requests" className="font-bold text-magenta">
+            See who is waiting on whom: Requests →
+          </Link>
         </TabIntro>
         <div className="flex flex-wrap items-end gap-3 rounded-2xl bg-grey-fill px-4 py-3">
           <div className="min-w-[240px] flex-1">

@@ -72,6 +72,12 @@ _ANY_REST_TWIN: dict[str, tuple[tuple[str, str], ...]] = {
         ("GET", f"/projects/project-own/delivery?as_of={AS_OF}"),
         ("GET", f"/pods/pod-own/delivery?as_of={AS_OF}"),
     ),
+    # What moved a date: a project's readers, and a scrum master for their own
+    # projects and pods (DeliveryImpactService.access); never a developer.
+    "delivery_impact": (
+        ("GET", f"/projects/project-own/delivery/impact?as_of={AS_OF}"),
+        ("GET", f"/projects/project-own/delivery/impact?pod_id=pod-own&as_of={AS_OF}"),
+    ),
     # The same for a readiness board: a scrum master reads the projects their own
     # pods work on, and a pod's board is its scrum master's (readiness_access).
     "release_readiness": (
@@ -138,6 +144,7 @@ def _ask_service(store: InMemoryGraphStore, registry: ServiceRegistry) -> AskSer
         forecast_service=registry.forecast_service(),
         delivery_scope_service=DeliveryScopeService(store, store),
         release_readiness_service=registry.release_readiness_service(),
+        impact_service=registry.delivery_impact_service(),
         model="test-model",
     )
 
@@ -381,10 +388,11 @@ async def test_ask_route_labels_each_reference_and_keeps_the_ids(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["answer"] == "Data Pod is amber: Omar Haddad sent a partial update."
+    # An executive reads the person as their team, a manager by name.
+    assert body["answer"] == "Data Pod is amber: a team member sent a partial update."
     assert body["references"] == ["U0AA1OMAR01", "pod-data", "CHK-8", "U-missing"]
     assert body["sources"] == [
-        {"id": "U0AA1OMAR01", "kind": "developer", "label": "Omar Haddad"},
+        {"id": "U0AA1OMAR01", "kind": "developer", "label": "a team member"},
         {"id": "pod-data", "kind": "pod", "label": "Data Pod"},
         {"id": "CHK-8", "kind": "task", "label": "CHK-8"},
         {"id": "U-missing", "kind": None, "label": None},

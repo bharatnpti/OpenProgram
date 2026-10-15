@@ -152,11 +152,15 @@ export function committedBy(scope: Scope): string | null {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-/** Under the team's date: the item it comes from, and how many open ones have none. "CHK-4 · 6 without a date". */
+/** What the team's own date means, said wherever it shows (the Timeline's words). */
+export const TEAM_DATE_HINT =
+  "The latest finish date the team gave (ETA or due date) across the open requirements";
+
+/** Under the team's own date: the item it comes from, and how many open ones have none. "CHK-4 · 6 have no date". */
 export function teamWords(team: Scope["team"]): string {
   const parts = [
     team.latest_key,
-    team.undated > 0 ? `${team.undated} without a date` : null,
+    team.undated > 0 ? `${team.undated} ${team.undated === 1 ? "has" : "have"} no date` : null,
   ].filter((part): part is string => Boolean(part));
   return parts.join(" · ") || `latest of ${team.dated} dated`;
 }

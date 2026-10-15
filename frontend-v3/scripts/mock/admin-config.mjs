@@ -547,6 +547,10 @@ const SPECS = [
         placeholder: "customfield_10016",
         help: "The custom field that holds story points. Leave it empty to count requirements instead.",
       }),
+      f("severity_field", "Severity field", "text", {
+        placeholder: "customfield_10050",
+        help: "The custom field that holds a bug's severity, if you use one. Leave it empty if you don't.",
+      }),
     ],
   },
   {

@@ -101,6 +101,11 @@ class HttpConnectionTester:
             )
             fields = await _json_list(client, f"{credentials.api}/field", "Jira")
         number_fields = _number_fields(fields)
+        severity_fields = _severity_fields(fields)
+        suggestions = {
+            "story_points_field": number_fields,
+            "severity_field": severity_fields,
+        }
         details = [
             ("Server", str(info.get("serverTitle") or credentials.base_url)),
             ("Version", str(info.get("version") or "unknown")),
@@ -112,13 +117,21 @@ class HttpConnectionTester:
                 ok=False,
                 message=f"Signed in, but Jira has no number field {chosen}.",
                 details=tuple(details),
-                suggestions={"story_points_field": number_fields},
+                suggestions=suggestions,
+            )
+        severity = values.get("severity_field")
+        if severity and severity not in {option.value for option in severity_fields}:
+            return ConnectionCheck(
+                ok=False,
+                message=f"Signed in, but Jira has no select or text field {severity}.",
+                details=tuple(details),
+                suggestions=suggestions,
             )
         return ConnectionCheck(
             ok=True,
             message="Connected to Jira.",
             details=tuple(details),
-            suggestions={"story_points_field": number_fields},
+            suggestions=suggestions,
         )
 
     async def _gitlab(self, values: Mapping[str, str]) -> ConnectionCheck:
@@ -372,6 +385,38 @@ def _number_fields(fields: list[object]) -> tuple[FieldOption, ...]:
     def rank(option: FieldOption) -> tuple[int, str]:
         label = option.label.lower()
         return (0 if "point" in label or "estimate" in label else 1, label)
+
+    return tuple(sorted(options, key=rank))
+
+
+# Custom field types a severity can be kept in: a select (single or multiple)
+# or a text field.
+_SEVERITY_FIELD_TYPES = frozenset({"option", "string"})
+
+
+def _severity_fields(fields: list[object]) -> tuple[FieldOption, ...]:
+    """Jira's custom select and text fields, severity-looking ones first."""
+    options: list[FieldOption] = []
+    for item in fields:
+        if not isinstance(item, Mapping):
+            continue
+        field_id = item.get("id")
+        name = item.get("name")
+        schema = item.get("schema")
+        if not isinstance(field_id, str) or not isinstance(name, str):
+            continue
+        if not field_id.startswith("customfield_") or not isinstance(schema, Mapping):
+            continue
+        kind = schema.get("type")
+        if kind == "array":
+            kind = schema.get("items")
+        if kind not in _SEVERITY_FIELD_TYPES:
+            continue
+        options.append(FieldOption(value=field_id, label=f"{name} ({field_id})"))
+
+    def rank(option: FieldOption) -> tuple[int, str]:
+        label = option.label.lower()
+        return (0 if "severity" in label else 1, label)
 
     return tuple(sorted(options, key=rank))
 

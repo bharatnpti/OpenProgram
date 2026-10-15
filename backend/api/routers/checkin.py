@@ -53,7 +53,7 @@ async def get_my_status(
     as_of: date | None = None,
 ) -> MyStatusResponse:
     _ensure_own_work(principal)
-    effective_as_of = as_of or date.today()
+    effective_as_of = as_of or registry.tenant_today()
     status = await service.my_status(principal.tenant_id, principal.subject, effective_as_of)
     if status is None:
         raise await _status_not_available(registry, principal)
@@ -73,7 +73,7 @@ async def confirm_my_status(
     as_of: date | None = None,
 ) -> MyStatusResponse:
     _ensure_own_work(principal)
-    effective_as_of = as_of or date.today()
+    effective_as_of = as_of or registry.tenant_today()
     status = await service.confirm(principal.tenant_id, principal.subject, effective_as_of)
     if status is None:
         raise await _status_not_available(registry, principal)
@@ -94,7 +94,7 @@ async def correct_my_status(
     as_of: date | None = None,
 ) -> MyStatusResponse:
     _ensure_own_work(principal)
-    effective_as_of = as_of or date.today()
+    effective_as_of = as_of or registry.tenant_today()
     blocker_reports = (
         tuple(
             BlockerReport(
@@ -158,7 +158,7 @@ async def update_my_task(
     write-back gates; the ETA never reaches the tracker.
     """
     _ensure_own_work(principal)
-    effective_as_of = as_of or date.today()
+    effective_as_of = as_of or registry.tenant_today()
     try:
         result = await service.update(
             principal.tenant_id,

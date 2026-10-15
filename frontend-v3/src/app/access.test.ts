@@ -4,8 +4,12 @@ import { test } from "node:test";
 import {
   accessOf,
   capabilitiesFor,
+  guardNeeds,
+  legacyPath,
   pageOf,
   paletteTargets,
+  podProjectFor,
+  readsHygiene,
   readsReadiness,
   redirectFor,
   redirectToast,
@@ -14,31 +18,99 @@ import {
 } from "./access.ts";
 import { developerTree, scrumMasterTree } from "../features/delivery/ownTree.fixture.ts";
 import type { OwnLinks } from "../features/delivery/ownTree.ts";
+import { shownGroups } from "./nav.ts";
 import { rolePriority, type AppRole } from "./roleWords.ts";
 
 const access = (role: AppRole, chatEnabled = false) => accessOf({ lens: [role], chatEnabled });
-const tabs = (role: AppRole, chatEnabled = false) =>
-  (Object.entries(access(role, chatEnabled).pages) as [Page, boolean][])
+const pages = (role: AppRole) =>
+  (Object.entries(access(role).pages) as [Page, boolean][])
     .filter(([, on]) => on)
     .map(([page]) => page);
 
-test("each role is offered the tabs of PROPOSAL §2, Chat only where it is served", () => {
-  // Delivery for everyone since 2026-10-10: each person drills down their own part.
-  assert.deepEqual(tabs("dev"), ["today", "delivery", "reports"]);
-  assert.deepEqual(tabs("sm"), ["today", "delivery", "signals", "coordination", "reports"]);
-  assert.deepEqual(tabs("po"), ["today", "delivery", "signals", "coordination", "reports"]);
-  assert.deepEqual(tabs("mgr"), ["today", "delivery", "signals", "coordination", "reports"]);
-  assert.deepEqual(tabs("exec"), ["today", "delivery", "signals", "coordination", "reports"]);
-  assert.deepEqual(tabs("admin"), [
-    "today",
-    "delivery",
-    "signals",
-    "coordination",
-    "reports",
-    "admin",
+test("each role is offered the sidebar's pages, in the sidebar's order", () => {
+  assert.deepEqual(pages("dev"), ["today", "checkin", "projects"]);
+  for (const role of ["sm", "po", "mgr"] as const) {
+    assert.deepEqual(
+      pages(role),
+      ["today", "checkin", "requests", "projects", "flow", "ora", "people"],
+      role,
+    );
+  }
+  // No names for an executive: Requests as counts, no People.
+  assert.deepEqual(pages("exec"), ["today", "checkin", "requests", "projects", "flow", "ora"]);
+  assert.equal(pages("admin").length, 8);
+  // The built-in chat is a column of Check-in, never a page of its own.
+  assert.deepEqual(access("dev", true).pages, access("dev").pages);
+  assert.equal(access("dev", true).checkin.chat, true);
+  assert.equal(access("exec").checkin.chat, false);
+});
+
+test("the sidebar's groups hold only offered pages, and Delivery is the one item Projects", () => {
+  const groups = (role: AppRole) =>
+    shownGroups(access(role)).map((group) => [group.label, group.items.map((item) => item.label)]);
+  assert.deepEqual(groups("dev"), [
+    ["Daily", ["Today", "Check-in"]],
+    ["Delivery", ["Projects"]],
   ]);
-  assert.deepEqual(tabs("dev", true), ["today", "delivery", "reports", "chat"]);
-  assert.ok(tabs("exec", true).includes("chat"));
+  assert.deepEqual(groups("exec"), [
+    ["Daily", ["Today", "Check-in", "Requests"]],
+    ["Delivery", ["Projects"]],
+    ["Insight", ["Review flow", "Ask Ora"]],
+  ]);
+  assert.deepEqual(groups("admin"), [
+    ["Daily", ["Today", "Check-in", "Requests"]],
+    ["Delivery", ["Projects"]],
+    ["Insight", ["Review flow", "Ask Ora"]],
+    ["Setup", ["People & roles", "Admin"]],
+  ]);
+  // The nav is built from the access map alone: it never grows with the projects.
+  const lengths = (["dev", "sm", "po", "mgr", "exec", "admin"] as const).map(
+    (role) => shownGroups(access(role)).flatMap((group) => group.items).length,
+  );
+  assert.deepEqual(lengths, [3, 7, 7, 7, 6, 8]);
+});
+
+test("the hub: every tab at every level for the readers of project lists", () => {
+  const every = { all: [...TABS], project: [...TABS], pod: [...TABS] };
+  for (const role of ["sm", "po", "mgr", "exec", "admin"] as const) {
+    assert.deepEqual(access(role).hub.tabs, every, role);
+    assert.equal(access(role).hub.bulk, true, role);
+  }
+  // A developer: their own projects' day reports; a project's questions, gates and
+  // day report; their own pod's dates and morning. No project's dates.
+  assert.deepEqual(access("dev").hub.tabs, {
+    all: ["reports"],
+    project: ["warnings", "scope", "reports"],
+    pod: ["date", "warnings"],
+  });
+  assert.equal(access("dev").hub.bulk, false);
+  // Roles combine: a developer who is also a scrum master reads every tab.
+  assert.deepEqual(accessOf({ lens: ["dev", "sm"], chatEnabled: false }).hub.tabs, every);
+});
+
+test("the hub: a scrum master's All level is their pods' projects; names are kept from an executive", () => {
+  assert.deepEqual(
+    (["dev", "sm", "po", "mgr", "exec", "admin"] as const).map((role) => access(role).hub.allScope),
+    ["own", "own", "every", "every", "every", "every"],
+  );
+  assert.deepEqual(
+    (["dev", "sm", "po", "mgr", "exec", "admin"] as const).map((role) => [
+      access(role).hub.countsOnly,
+      access(role).hub.podMinPeople,
+      access(role).hub.portfolioHealth,
+    ]),
+    [
+      [false, 0, false],
+      [false, 0, false],
+      [false, 0, false],
+      [false, 0, true],
+      // An executive opens only the pods of five people or more.
+      [true, 5, true],
+      [false, 0, true],
+    ],
+  );
+  // An executive who also manages reads names.
+  assert.equal(accessOf({ lens: ["exec", "mgr"], chatEnabled: false }).hub.countsOnly, false);
 });
 
 test("an executive's Delivery lists no pods; a manager's and an admin's list every kind", () => {
@@ -117,14 +189,14 @@ test("Coordination: no board for an executive, and each role's own scope and bri
 test("Overall: a developer has only gates and questions; escalation is a link for an admin", () => {
   assert.deepEqual(access("dev").overall, {
     forecast: false,
-    podDates: false,
+    timeline: false,
     requirements: false,
     risks: false,
     escalationLink: false,
   });
   assert.deepEqual(access("sm").overall, {
     forecast: false,
-    podDates: true,
+    timeline: true,
     requirements: false,
     risks: true,
     escalationLink: false,
@@ -137,28 +209,46 @@ test("Overall: a developer has only gates and questions; escalation is a link fo
 test("held roles combine under a real sign-in: a product owner and scrum master gets both", () => {
   const both = accessOf({ lens: ["po", "sm"], chatEnabled: false });
   assert.equal(both.coordination.boardScope, "projects");
-  assert.equal(both.overall.podDates, true);
+  assert.equal(both.overall.timeline, true);
+  assert.equal(both.hub.allScope, "every");
   assert.equal(capabilitiesFor(["po", "sm"]).canReadPodDetail, true);
 });
 
-test("pages by path", () => {
-  assert.equal(pageOf("/delivery/pod/pod-payments"), "delivery");
-  assert.equal(pageOf("/delivery"), "delivery");
-  assert.equal(pageOf("/signals"), "signals");
-  assert.equal(pageOf("/coordination"), "coordination");
+test("pages by path: All projects is Projects; an old address belongs to no page", () => {
+  assert.equal(pageOf("/today"), "today");
+  assert.equal(pageOf("/check-in"), "checkin");
+  assert.equal(pageOf("/projects"), "projects");
+  assert.equal(pageOf("/projects/project-checkout/warnings"), "projects");
+  assert.equal(pageOf("/portfolio/date"), "projects");
   assert.equal(pageOf("/admin"), "admin");
-  assert.equal(pageOf("/chat"), "chat");
-  assert.equal(pageOf("/today"), null);
-  assert.equal(pageOf("/reports/project-checkout/daily"), null);
+  for (const old of [
+    "/pods/pod-payments",
+    "/warnings",
+    "/scope",
+    "/reports",
+    "/reports/briefs",
+    "/delivery/pod/pod-payments",
+    "/signals",
+    "/coordination",
+    "/chat",
+    "/",
+  ]) {
+    assert.equal(pageOf(old), null, old);
+  }
+  assert.equal(pageOf("/constructor"), null, "no inherited key is a page");
 });
+
+const TABS = ["date", "warnings", "scope", "reports"] as const;
 
 const directory = {
   podProjects: (id: string) =>
     id === "pod-payments" || id === "pod-storefront"
       ? ["project-checkout"]
-      : id === "pod-data"
-        ? ["project-insights"]
-        : [],
+      : id === "pod-shared"
+        ? ["project-insights", "project-identity"]
+        : id === "pod-data"
+          ? ["project-insights"]
+          : [],
   workstreamProjects: (id: string) =>
     id === "ws-payments" ? ["project-checkout"] : id === "ws-datalake" ? ["project-insights"] : [],
 };
@@ -197,73 +287,273 @@ const OWN: Partial<Record<AppRole, OwnLinks>> = {
       })[id] ?? null,
   },
 };
-const go = (role: AppRole, path: string, chatEnabled = false) => {
-  const [pathname, search = ""] = path.split("?");
-  return redirectFor(
-    { pathname, search: search ? `?${search}` : "" },
-    access(role, chatEnabled),
-    capabilitiesFor([role]),
-    { ...directory, own: OWN[role] ?? null },
-  );
+const where = (link: string) => {
+  const [beforeHash, hash] = link.split("#");
+  const [pathname, search = ""] = beforeHash.split("?");
+  return { pathname, search: search ? `?${search}` : "", hash: hash ? `#${hash}` : "" };
 };
-const to = (role: AppRole, path: string, chatEnabled = false) =>
-  go(role, path, chatEnabled)?.to ?? "(shown)";
+const go = (role: AppRole, link: string) =>
+  redirectFor(where(link), access(role), capabilitiesFor([role]), {
+    ...directory,
+    own: OWN[role] ?? null,
+  });
+const to = (role: AppRole, link: string) => go(role, link)?.to ?? "(shown)";
+const ROLES: AppRole[] = ["dev", "sm", "po", "mgr", "exec", "admin"];
 
-test("the redirect table of PROPOSAL §7.2, row by row", () => {
+test("the sidebar's own items, and the old ones it left, every one with a home (manager)", () => {
+  const rows: [string, string][] = [
+    // Will we make the date?, Pods, Early warnings, Scope control and Reports left the sidebar.
+    ["/portfolio", "/portfolio/date"],
+    ["/portfolio?program=program-digital&q=pay", "/portfolio/date?program=program-digital&q=pay"],
+    ["/portfolio/nowhere", "/portfolio/date"],
+    ["/warnings", "/portfolio/warnings"],
+    ["/warnings?project=project-checkout", "/projects/project-checkout/warnings"],
+    ["/scope", "/portfolio/scope"],
+    ["/scope?project=project-checkout", "/projects/project-checkout/scope"],
+    ["/reports", "/portfolio/reports"],
+    ["/reports/briefs", "/portfolio/reports"],
+    ["/reports/briefs?brief=exec", "/portfolio/reports?brief=exec"],
+    ["/pods", "/projects"],
+    ["/pods/pod-payments", "/projects/project-checkout/pods/pod-payments/date"],
+    [
+      "/pods/pod-payments#checkins",
+      "/projects/project-checkout/pods/pod-payments/warnings#checkins",
+    ],
+    [
+      "/pods/pod-payments#blockers",
+      "/projects/project-checkout/pods/pod-payments/warnings#blockers",
+    ],
+    ["/pods/pod-payments#status", "/projects/project-checkout/pods/pod-payments/warnings#status"],
+    ["/pods/pod-nowhere", "/projects"],
+    // A project page's sections before the tabs.
+    ["/projects/project-checkout", "/projects/project-checkout/date"],
+    ["/projects/project-checkout#timeline", "/projects/project-checkout/date#timeline"],
+    ["/projects/project-checkout#stages", "/projects/project-checkout/date#stages"],
+    [
+      "/projects/project-checkout?row=pod:pod-payments",
+      "/projects/project-checkout/date?row=pod:pod-payments",
+    ],
+    ["/projects/project-checkout#work", "/projects/project-checkout/date#work"],
+    ["/projects/project-checkout#warnings", "/projects/project-checkout/warnings#warnings"],
+    ["/projects/project-checkout#questions", "/projects/project-checkout/warnings#questions"],
+    ["/projects/project-checkout#scope", "/projects/project-checkout/scope#scope"],
+    ["/projects/project-checkout#gates", "/projects/project-checkout/scope#gates"],
+    ["/projects/project-checkout/daily", "/projects/project-checkout/reports"],
+    ["/projects/project-checkout/overall", "/projects/project-checkout/date"],
+    ["/projects/project-checkout/nowhere", "/projects/project-checkout/date"],
+    [
+      "/projects/project-checkout/pods/pod-payments",
+      "/projects/project-checkout/pods/pod-payments/date",
+    ],
+    [
+      "/projects/project-checkout/pods/pod-payments#blockers",
+      "/projects/project-checkout/pods/pod-payments/warnings#blockers",
+    ],
+    // From before the sidebar.
+    ["/delivery", "/projects"],
+    ["/delivery/program/program-digital", "/portfolio/date?program=program-digital"],
+    ["/delivery/project/project-checkout", "/projects/project-checkout/date"],
+    ["/delivery/pod/pod-payments", "/projects/project-checkout/pods/pod-payments/date"],
+    [
+      "/delivery/workstream/ws-payments",
+      "/projects/project-checkout/date?workstream=ws-payments#work",
+    ],
+    ["/delivery/workstream/ws-lonely", "/projects"],
+    ["/reports/project-checkout/overall", "/projects/project-checkout/date"],
+    [
+      "/reports/project-checkout/overall?release=rel-1",
+      "/projects/project-checkout/date?release=rel-1",
+    ],
+    ["/reports/project-checkout", "/projects/project-checkout/reports"],
+    ["/signals?view=risks", "/portfolio/warnings"],
+    ["/signals?view=drift", "/portfolio/warnings"],
+    ["/signals?view=flow&scope=pod:pod-payments&days=90", "/flow?scope=pod:pod-payments&days=90"],
+    ["/signals", "/portfolio/warnings"],
+    ["/coordination", "/requests"],
+    ["/coordination?requests=own", "/requests?requests=own"],
+    ["/coordination?brief=exec", "/portfolio/reports?brief=exec"],
+    ["/coordination?brief=all&requests=own", "/portfolio/reports?brief=all"],
+    ["/chat", "/check-in"],
+    ["/today?pod=pod-payments", "/projects/project-checkout/pods/pod-payments/date"],
+    ["/today?project=project-checkout", "/projects/project-checkout/date"],
+    ["/risks", "/portfolio/warnings"],
+    ["/ask", "/ora"],
+  ];
+  for (const [link, next] of rows) assert.equal(to("mgr", link), next, link);
+});
+
+test("the hub's own addresses are shown as they are, for every role that has the tab", () => {
+  for (const role of ROLES) {
+    const tabs = access(role).hub.tabs;
+    for (const tab of tabs.all)
+      assert.equal(to(role, `/portfolio/${tab}`), "(shown)", `${role} ${tab}`);
+    for (const tab of tabs.project) {
+      assert.equal(to(role, `/projects/project-checkout/${tab}`), "(shown)", `${role} ${tab}`);
+    }
+    for (const tab of tabs.pod) {
+      assert.equal(
+        to(role, `/projects/project-checkout/pods/pod-payments/${tab}`),
+        "(shown)",
+        `${role} ${tab}`,
+      );
+    }
+    assert.equal(to(role, "/projects"), "(shown)", `${role}: the landing resolves by role`);
+  }
+});
+
+test("a sent day report's link lands on its project's Reports, an executive's on its date", () => {
+  for (const link of [
+    "/reports/project-checkout/daily?report=rep-1",
+    "/reports/project-checkout/daily?report=rep-1&asOf=2026-10-02",
+    "/reports/project-checkout/daily",
+  ]) {
+    const [, query = ""] = link.split("?");
+    for (const role of ROLES.filter((one) => one !== "exec")) {
+      assert.equal(
+        to(role, link),
+        `/projects/project-checkout/reports${query ? `?${query}` : ""}`,
+        `${role} ${link}`,
+      );
+    }
+  }
+  // No day report for an executive: its project's date, the viewing day kept, the pick dropped.
+  assert.equal(access("exec").reports.daily, false);
+  assert.equal(
+    to("exec", "/reports/project-checkout/daily?report=rep-1"),
+    "/projects/project-checkout/date",
+  );
+  assert.equal(
+    to("exec", "/reports/project-checkout/daily?report=rep-1&asOf=2026-10-02"),
+    "/projects/project-checkout/date?asOf=2026-10-02",
+  );
+  assert.equal(to("exec", "/reports/project-checkout"), "/projects/project-checkout/date");
+  assert.equal(to("exec", "/projects/project-checkout/daily"), "/projects/project-checkout/date");
+  // Reports is still theirs: the briefs, at every level.
+  assert.equal(to("exec", "/reports"), "/portfolio/reports");
+  assert.equal(to("exec", "/reports/briefs?brief=exec"), "/portfolio/reports?brief=exec");
+  assert.equal(to("exec", "/projects/project-checkout/reports"), "(shown)");
+  // An executive who also holds another role reads the report as that role.
+  assert.equal(accessOf({ lens: ["exec", "po"], chatEnabled: false }).reports.daily, true);
+});
+
+test("a sent impact link lands on the date tab at the same row and anchor, for every role", () => {
+  // impact_service wrote `/reports/<p>/overall?row=<kind>:<id>#timeline` into sent messages.
+  const sent = "/reports/project-checkout/overall?row=pod:pod-payments#timeline";
+  const landed = "/projects/project-checkout/date?row=pod:pod-payments#timeline";
+  for (const role of ["sm", "po", "mgr", "exec", "admin"] as const) {
+    assert.equal(to(role, sent), landed, role);
+  }
+  // A developer reads no project dates: their own project's first tab, the link's rest kept.
+  assert.equal(
+    to("dev", sent),
+    "/projects/project-checkout/warnings?row=pod:pod-payments#timeline",
+  );
+  // Encoded parameters are kept as written, and the viewing day goes along.
+  assert.equal(
+    to(
+      "mgr",
+      "/reports/project-checkout/overall?row=project%3Aproject-checkout&asOf=2026-10-02#timeline",
+    ),
+    "/projects/project-checkout/date?row=project%3Aproject-checkout&asOf=2026-10-02#timeline",
+  );
+});
+
+test("a pod's link opens on the viewer's own project of it, else its first", () => {
+  const links = { ...directory, own: OWN.sm ?? null };
+  assert.equal(podProjectFor("pod-payments", links), "project-checkout");
+  // A pod on two projects: the one the person is on comes first.
+  assert.equal(podProjectFor("pod-shared", links), "project-identity");
+  assert.equal(podProjectFor("pod-shared", { ...directory, own: null }), "project-insights");
+  assert.equal(podProjectFor("pod-nowhere", links), null);
+  assert.equal(
+    to("sm", "/pods/pod-shared#blockers"),
+    "/projects/project-identity/pods/pod-shared/warnings#blockers",
+  );
+  assert.equal(to("mgr", "/pods/pod-shared"), "/projects/project-insights/pods/pod-shared/date");
+});
+
+test("each role's links land on the closest level and tab it has", () => {
   const rows: [string, string, string, string, string][] = [
     // link, developer, scrum master, product owner, executive
+    ["/portfolio", "/portfolio/reports", "/portfolio/date", "/portfolio/date", "/portfolio/date"],
+    ["/portfolio/date", "/portfolio/reports", "(shown)", "(shown)", "(shown)"],
     [
-      "/delivery/pod/pod-payments",
+      "/warnings",
+      "/portfolio/reports",
+      "/portfolio/warnings",
+      "/portfolio/warnings",
+      "/portfolio/warnings",
+    ],
+    [
+      // A developer's own project: no dates, their first tab there.
+      "/projects/project-checkout",
+      "/projects/project-checkout/warnings",
+      "/projects/project-checkout/date",
+      "/projects/project-checkout/date",
+      "/projects/project-checkout/date",
+    ],
+    [
+      "/projects/project-checkout/date",
+      "/projects/project-checkout/warnings",
       "(shown)",
       "(shown)",
       "(shown)",
-      "/delivery/project/project-checkout",
+    ],
+    [
+      // Another project: a developer reads its day report.
+      "/projects/project-insights/warnings",
+      "/projects/project-insights/reports",
+      "(shown)",
+      "(shown)",
+      "(shown)",
+    ],
+    [
+      "/delivery/project/project-insights",
+      "/projects/project-insights/reports",
+      "/projects/project-insights/date",
+      "/projects/project-insights/date",
+      "/projects/project-insights/date",
+    ],
+    [
+      "/pods/pod-payments",
+      "/projects/project-checkout/pods/pod-payments/date",
+      "/projects/project-checkout/pods/pod-payments/date",
+      "/projects/project-checkout/pods/pod-payments/date",
+      "/projects/project-checkout/pods/pod-payments/date",
     ],
     [
       // A developer's neighbouring pod is a name in their tree: its project instead.
-      "/delivery/pod/pod-storefront",
-      "/delivery/project/project-checkout",
-      "(shown)",
-      "(shown)",
-      "/delivery/project/project-checkout",
+      "/pods/pod-storefront",
+      "/projects/project-checkout/warnings",
+      "/projects/project-checkout/pods/pod-storefront/date",
+      "/projects/project-checkout/pods/pod-storefront/date",
+      "/projects/project-checkout/pods/pod-storefront/date",
     ],
     [
-      // Outside their part of the tree: where the role read it before it had Delivery.
-      "/delivery/pod/pod-data",
-      "/delivery",
-      "/today?pod=pod-data",
-      "/today?project=project-insights",
-      "/delivery/project/project-insights",
+      // Outside their part of the tree.
+      "/pods/pod-data",
+      "/projects/project-insights/reports",
+      "/projects/project-insights/pods/pod-data/date",
+      "/projects/project-insights/pods/pod-data/date",
+      "/projects/project-insights/pods/pod-data/date",
     ],
-    ["/delivery/project/project-checkout", "(shown)", "(shown)", "(shown)", "(shown)"],
     [
-      "/delivery/project/project-insights",
-      "/reports/project-insights/daily",
-      "/reports/project-insights/overall",
-      "/today?project=project-insights",
+      "/projects/project-checkout/pods/pod-payments/scope",
+      "/projects/project-checkout/pods/pod-payments/date",
       "(shown)",
-    ],
-    ["/delivery/program/program-digital", "/delivery", "/delivery", "/delivery", "(shown)"],
-    [
-      "/delivery/workstream/ws-payments",
-      "/delivery/project/project-checkout",
-      "/delivery/project/project-checkout",
-      "/delivery/project/project-checkout",
+      "(shown)",
       "(shown)",
     ],
     [
-      "/delivery/workstream/ws-datalake",
-      "/delivery",
-      "/delivery",
-      "/today?project=project-insights",
-      "(shown)",
+      "/signals?view=risks",
+      "/portfolio/reports",
+      "/portfolio/warnings",
+      "/portfolio/warnings",
+      "/portfolio/warnings",
     ],
-    ["/delivery", "(shown)", "(shown)", "(shown)", "(shown)"],
-    ["/signals?view=risks", "/today", "/signals?view=flow", "/signals?view=flow", "(shown)"],
-    ["/signals", "/today", "(shown)", "(shown)", "(shown)"],
-    ["/coordination", "/today#asks", "(shown)", "(shown)", "(shown)"],
-    ["/admin", "/today", "/today", "/today", "/today"],
-    ["/chat", "/today", "/today", "/today", "/today"],
+    ["/signals", "/today", "/portfolio/warnings", "/portfolio/warnings", "/portfolio/warnings"],
+    ["/coordination", "/today#asks", "/requests", "/requests", "/requests"],
+    ["/chat", "/check-in", "/check-in", "/check-in", "/check-in"],
   ];
   for (const [link, dev, sm, po, exec] of rows) {
     assert.deepEqual(
@@ -274,130 +564,147 @@ test("the redirect table of PROPOSAL §7.2, row by row", () => {
   }
 });
 
-test("until the person's tree is read, a Delivery link is left to the page", () => {
-  const before = (role: AppRole, path: string) =>
-    redirectFor({ pathname: path, search: "" }, access(role), capabilitiesFor([role]), directory);
-  for (const role of ["dev", "sm", "po"] as const) {
-    assert.equal(before(role, "/delivery/pod/pod-data"), null, role);
-    assert.equal(before(role, "/delivery/project/project-insights"), null, role);
+test("a page the role is not offered opens the closest one it has", () => {
+  const rows: [string, string, string, string, string][] = [
+    // link, developer, scrum master, product owner, executive
+    ["/requests", "/today#asks", "(shown)", "(shown)", "(shown)"],
+    ["/flow", "/today", "(shown)", "(shown)", "(shown)"],
+    ["/ora", "/today", "(shown)", "(shown)", "(shown)"],
+    ["/people", "/projects", "(shown)", "(shown)", "/today"],
+    ["/admin", "/today", "/today", "/today", "/today"],
+    ["/projects", "(shown)", "(shown)", "(shown)", "(shown)"],
+    ["/check-in", "(shown)", "(shown)", "(shown)", "(shown)"],
+  ];
+  for (const [link, dev, sm, po, exec] of rows) {
+    assert.deepEqual(
+      [to("dev", link), to("sm", link), to("po", link), to("exec", link)],
+      [dev, sm, po, exec],
+      link,
+    );
   }
-});
-
-test("the day report's link opens its own page for every role, so none is redirected", () => {
-  const roles: AppRole[] = ["dev", "sm", "po", "mgr", "exec", "admin"];
   for (const link of [
-    "/reports/project-checkout/daily?report=rep-1",
-    "/reports/project-checkout/daily?report=rep-1&asOf=2026-10-02",
-    "/reports/project-checkout/daily",
-  ]) {
-    for (const role of roles) assert.equal(to(role, link), "(shown)", `${role} ${link}`);
-  }
-});
-
-test("a day report sent with the old link (the project's Delivery page) reaches a page the role has", () => {
-  // Those reports linked `<console>/delivery/project/<id>`. A project of the person's
-  // opens in their Delivery; another is sent to the report or the project they may read.
-  const roles: AppRole[] = ["dev", "sm", "po", "mgr", "exec", "admin"];
-  assert.deepEqual(
-    roles.map((role) => to(role, "/delivery/project/project-checkout")),
-    ["(shown)", "(shown)", "(shown)", "(shown)", "(shown)", "(shown)"],
-  );
-  const other = "/delivery/project/project-insights";
-  assert.deepEqual(
-    roles.map((role) => to(role, other)),
-    [
-      "/reports/project-insights/daily",
-      "/reports/project-insights/overall",
-      "/today?project=project-insights",
-      "(shown)",
-      "(shown)",
-      "(shown)",
-    ],
-  );
-  assert.equal(go("dev", other)?.missing, null, "the report stands in for it: no toast");
-  assert.equal(go("sm", other)?.missing, null);
-  assert.equal(
-    to("dev", "/delivery/project/project%2Finsights?asOf=2026-10-02"),
-    "/reports/project%2Finsights/daily?asOf=2026-10-02",
-    "an id that was encoded in the link stays encoded, and the viewing day goes along",
-  );
-});
-
-test("a manager is shown every page but Admin; an admin every page", () => {
-  for (const link of [
-    "/delivery/pod/pod-payments",
-    "/delivery/program/program-digital",
-    "/signals?view=risks",
-    "/coordination",
+    "/requests",
+    "/people",
+    "/portfolio/warnings",
+    "/projects/project-data/scope",
   ]) {
     assert.equal(to("mgr", link), "(shown)", link);
     assert.equal(to("admin", link), "(shown)", link);
   }
   assert.equal(to("mgr", "/admin"), "/today");
   assert.equal(to("admin", "/admin"), "(shown)");
-  assert.equal(to("dev", "/chat", true), "(shown)");
 });
 
-test("only a link that lands on plain Today names the page it asked for", () => {
-  assert.equal(go("dev", "/signals")?.missing, "signals");
-  assert.equal(go("sm", "/admin")?.missing, "admin");
-  assert.equal(go("dev", "/coordination")?.missing, null, "Your asks stands in for it");
-  // Every role has Delivery: a Delivery link never lands on Today with a note.
-  for (const role of ["dev", "sm", "po"] as const) {
-    for (const link of [
-      "/delivery/program/program-digital",
-      "/delivery/pod/pod-data",
-      "/delivery/pod/pod-lonely",
-    ]) {
-      assert.equal(go(role, link)?.missing, null, `${role} ${link}`);
-    }
-  }
-  assert.equal(go("sm", "/signals?view=risks")?.missing, null);
+test("until the person's tree is read, a project or pod link is left to the page", () => {
+  const before = (role: AppRole, path: string) =>
+    redirectFor(where(path), access(role), capabilitiesFor([role]), directory)?.to ?? "(shown)";
+  // Only the tab is placed; whether the project is theirs waits for the tree.
+  assert.equal(before("dev", "/projects/project-insights"), "/projects/project-insights/warnings");
+  assert.equal(before("dev", "/projects/project-insights/warnings"), "(shown)");
+  assert.equal(before("dev", "/projects/project-checkout/pods/pod-data/date"), "(shown)");
+  // An old address still moves at once.
   assert.equal(
-    go("exec", "/delivery/pod/pod-payments")?.missing,
-    null,
-    "its project stands in for it",
+    before("dev", "/delivery/pod/pod-data"),
+    "/projects/project-insights/pods/pod-data/date",
   );
 });
 
-test("a pod or workstream no project holds goes to the closest page that is left", () => {
-  assert.equal(to("po", "/delivery/pod/pod-lonely"), "/delivery");
-  assert.equal(to("po", "/delivery/workstream/ws-lonely"), "/delivery");
-  assert.equal(to("sm", "/delivery/pod/pod-lonely"), "/today?pod=pod-lonely");
-  assert.equal(to("exec", "/delivery/pod/pod-lonely"), "/delivery");
-  assert.equal(to("po", "/delivery"), "(shown)");
-  assert.equal(to("mgr", "/delivery"), "(shown)");
-});
-
-test("Signals views that were dropped open the role's own view; drift joined the risks", () => {
-  assert.equal(to("mgr", "/signals?view=drift"), "/signals?view=risks");
-  assert.equal(to("sm", "/signals?view=drift"), "/signals?view=flow");
-  assert.equal(to("mgr", "/signals?view=everything"), "/signals");
-  assert.equal(to("po", "/signals?view=feed&days=90"), "/signals?days=90");
-  assert.equal(to("po", "/signals?view=flow&scope=pod:pod-payments"), "(shown)");
+test("only a link that lands on plain Today names the page it asked for", () => {
+  assert.equal(go("dev", "/flow")?.missing, "flow");
+  assert.equal(go("dev", "/signals")?.missing, "flow");
+  assert.equal(go("sm", "/admin")?.missing, "admin");
+  assert.equal(go("exec", "/people")?.missing, "people");
+  // Something of the role's own stands in for these: no toast.
+  assert.equal(go("dev", "/requests")?.missing, null, "Your asks on Today");
+  assert.equal(go("dev", "/people")?.missing, null, "their pod's page has its people");
+  assert.equal(go("dev", "/warnings")?.missing, null, "their day reports");
+  assert.equal(go("exec", "/pods")?.missing, null);
+  assert.equal(go("exec", "/pods/pod-payments")?.missing, null, "its project stands in");
+  for (const role of ["dev", "sm", "po"] as const) {
+    for (const link of ["/delivery/program/program-digital", "/delivery/pod/pod-data"]) {
+      assert.equal(go(role, link)?.missing, null, `${role} ${link}`);
+    }
+  }
 });
 
 test("the viewing day goes along with every redirect, before the hash", () => {
   assert.equal(to("dev", "/coordination?asOf=2026-10-02"), "/today?asOf=2026-10-02#asks");
   assert.equal(
-    to("sm", "/delivery/pod/pod-data?asOf=2026-10-02"),
-    "/today?pod=pod-data&asOf=2026-10-02",
+    to("sm", "/today?pod=pod-data&asOf=2026-10-02"),
+    "/projects/project-insights/pods/pod-data/date?asOf=2026-10-02",
   );
   assert.equal(
     to("dev", "/delivery/pod/pod-storefront?asOf=2026-10-02"),
-    "/delivery/project/project-checkout?asOf=2026-10-02",
+    "/projects/project-checkout/warnings?asOf=2026-10-02",
   );
   assert.equal(
     to("sm", "/signals?view=risks&asOf=2026-10-02"),
-    "/signals?view=flow&asOf=2026-10-02",
+    "/portfolio/warnings?asOf=2026-10-02",
   );
   assert.equal(to("dev", "/admin?tab=gates&asOf=2026-10-02"), "/today?asOf=2026-10-02");
+  assert.equal(
+    to("mgr", "/delivery/workstream/ws-payments?asOf=2026-10-02"),
+    "/projects/project-checkout/date?asOf=2026-10-02&workstream=ws-payments#work",
+  );
+  assert.equal(
+    to("po", "/projects/project-checkout?asOf=2026-10-02&release=rel-1"),
+    "/projects/project-checkout/date?asOf=2026-10-02&release=rel-1",
+  );
+});
+
+test("legacy addresses alone: current ones are not moved, ids stay encoded", () => {
+  const legacy = (link: string, role: AppRole = "mgr") =>
+    legacyPath(where(link), access(role), directory);
+  for (const current of [
+    "/today",
+    "/projects",
+    "/projects/p-1",
+    "/projects/p-1/date",
+    "/projects/p-1/pods/d-1/warnings",
+    "/portfolio",
+    "/portfolio/reports",
+  ]) {
+    assert.equal(legacy(current), null, current);
+  }
+  assert.equal(legacy("/today?asOf=2026-10-02"), null);
+  assert.equal(legacy("/delivery/project/project%2Finsights"), "/projects/project%2Finsights");
+  assert.equal(legacy("/today?project=a%20b"), "/projects/a%20b");
+  assert.equal(legacy("/reports/a%20b/daily"), "/projects/a%20b/reports");
+});
+
+test("what the guard reads before it places a link", () => {
+  const needs = (role: AppRole, link: string) => guardNeeds(where(link), access(role));
+  assert.deepEqual(needs("dev", "/projects/p-1"), { tree: true, pods: false, workstreams: false });
+  assert.deepEqual(needs("dev", "/projects/p-1/pods/d-1/date"), {
+    tree: true,
+    pods: false,
+    workstreams: false,
+  });
+  // A pod's old link opens on the viewer's own project of it: every role reads the tree.
+  assert.deepEqual(needs("dev", "/pods/d-1"), { tree: true, pods: true, workstreams: false });
+  assert.deepEqual(needs("mgr", "/pods/d-1"), { tree: true, pods: true, workstreams: false });
+  assert.deepEqual(needs("mgr", "/projects/p-1/date"), {
+    tree: false,
+    pods: false,
+    workstreams: false,
+  });
+  assert.deepEqual(needs("exec", "/delivery/workstream/w-1"), {
+    tree: false,
+    pods: false,
+    workstreams: true,
+  });
+  assert.deepEqual(needs("po", "/reports/p-1/overall"), {
+    tree: true,
+    pods: false,
+    workstreams: false,
+  });
+  assert.deepEqual(needs("sm", "/today"), { tree: false, pods: false, workstreams: false });
 });
 
 test("the toast says what was opened instead, and which other role of theirs has the page", () => {
   assert.equal(
-    redirectToast("signals", "Developer"),
-    "Opened Today: Signals isn't part of the developer view.",
+    redirectToast("flow", "Developer"),
+    "Opened Today: Review flow isn't part of the developer view.",
   );
   assert.equal(
     redirectToast("admin", "Scrum Master"),
@@ -406,35 +713,37 @@ test("the toast says what was opened instead, and which other role of theirs has
   assert.equal(roleOfferingPage("admin", ["mgr", "admin"], "mgr", false, rolePriority), "admin");
   assert.equal(roleOfferingPage("admin", ["mgr"], "mgr", false, rolePriority), null);
   assert.equal(
-    roleOfferingPage("signals", ["dev", "mgr"], "dev", false, rolePriority),
+    roleOfferingPage("flow", ["dev", "mgr"], "dev", false, rolePriority),
     "mgr",
     "the most senior role that has it",
   );
-  assert.equal(roleOfferingPage("chat", ["dev", "sm"], "dev", false, rolePriority), null);
+  assert.equal(roleOfferingPage("people", ["dev", "sm"], "dev", false, rolePriority), "sm");
+  assert.equal(roleOfferingPage("admin", ["dev", "sm"], "dev", false, rolePriority), null);
 });
 
-test("palette rows go to Delivery's panel of each kind the role's Delivery lists", () => {
+test("palette rows open each thing in the hub, where the role has it", () => {
   const targets = (role: AppRole) => {
-    const t = paletteTargets(access(role));
+    const t = paletteTargets(access(role), directory.workstreamProjects);
     return {
       program: t.program?.("p1") ?? null,
       project: t.project?.("p2") ?? null,
-      workstream: t.workstream?.("w1") ?? null,
-      pod: t.pod?.("d1") ?? null,
-      person: t.person?.("d1") ?? null,
+      workstream: t.workstream?.("ws-payments") ?? null,
+      pod: t.pod?.("d1", ["p2"]) ?? null,
+      person: t.person?.("d1", ["p2"]) ?? null,
     };
   };
   assert.deepEqual(targets("mgr"), {
-    program: "/delivery/program/p1",
-    project: "/delivery/project/p2",
-    workstream: "/delivery/workstream/w1",
-    pod: "/delivery/pod/d1",
-    person: "/delivery/pod/d1",
+    program: "/portfolio/date?program=p1",
+    project: "/projects/p2",
+    workstream: "/projects/project-checkout/date?workstream=ws-payments#work",
+    pod: "/projects/p2/pods/d1/date",
+    person: "/projects/p2/pods/d1/date",
   });
+  // An executive's pods open only from five people up, which the pod bar knows: no pod rows.
   assert.deepEqual(targets("exec"), {
-    program: "/delivery/program/p1",
-    project: "/delivery/project/p2",
-    workstream: "/delivery/workstream/w1",
+    program: "/portfolio/date?program=p1",
+    project: "/projects/p2",
+    workstream: "/projects/project-checkout/date?workstream=ws-payments#work",
     pod: null,
     person: null,
   });
@@ -444,14 +753,20 @@ test("palette rows go to Delivery's panel of each kind the role's Delivery lists
       targets(role),
       {
         program: null,
-        project: "/delivery/project/p2",
+        project: "/projects/p2",
         workstream: null,
-        pod: "/delivery/pod/d1",
-        person: "/delivery/pod/d1",
+        pod: "/projects/p2/pods/d1/date",
+        person: "/projects/p2/pods/d1/date",
       },
       role,
     );
   }
+  // A pod with no project known keeps its old address, which the router places.
+  assert.equal(paletteTargets(access("mgr")).pod?.("d1"), "/pods/d1");
+  assert.equal(
+    paletteTargets(access("mgr")).workstream?.("ws-lonely"),
+    "/delivery/workstream/ws-lonely",
+  );
 });
 
 test("the assistant floats on every tab for the aggregate readers, never for a developer", () => {
@@ -495,4 +810,19 @@ test("release readiness: a scrum master asks only for a project one of their pod
   }
   assert.equal(readsReadiness(access("dev"), "project-checkout", developerTree), false);
   assert.equal(readsReadiness(access("po"), "", undefined), false);
+});
+
+test("jira hygiene: the readiness board's readers, a developer none, an executive no actions", () => {
+  assert.deepEqual(access("dev").hygiene, { board: false, everyProject: false, act: false });
+  assert.deepEqual(access("exec").hygiene, { board: true, everyProject: true, act: false });
+  assert.deepEqual(access("sm").hygiene, { board: true, everyProject: false, act: true });
+  for (const role of ["po", "mgr", "admin"] as const) {
+    assert.deepEqual(access(role).hygiene, { board: true, everyProject: true, act: true }, role);
+  }
+  // A scrum master reads it only for a project one of their own pods works on.
+  assert.equal(readsHygiene(access("sm"), "project-checkout", scrumMasterTree), true);
+  assert.equal(readsHygiene(access("sm"), "project-insights", scrumMasterTree), false);
+  assert.equal(readsHygiene(access("sm"), "project-checkout", undefined), false);
+  assert.equal(readsHygiene(access("exec"), "project-insights", undefined), true);
+  assert.equal(readsHygiene(access("dev"), "project-checkout", developerTree), false);
 });

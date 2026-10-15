@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, tzinfo
 from enum import StrEnum
 
+from core.application.people_words import SMALL_GROUP_LINE, SMALL_GROUP_PROGRAM_LINE
 from core.application.rollup_service import NO_WORK_REASON
 from core.domain.graph import (
     EdgeKind,
@@ -214,7 +215,8 @@ class AttentionView:
     rag: Rag
     headline: str
     detail: str | None
-    checkins: CheckinCount
+    #: None for a program too small for the reader to count its people.
+    checkins: CheckinCount | None
     signals: tuple[AttentionSignal, ...]
 
 
@@ -236,6 +238,11 @@ class AttentionDay:
     owners: Mapping[str, str] = field(default_factory=dict)
     tracker: str = "the issue tracker"
     vcs: str = "Git"
+    #: Pods, projects and programs too small for this reader to count their
+    #: people on, each with the line said in place of its counts
+    #: (where its people are counted instead). Empty for anyone who reads
+    #: people (``portfolio_privacy.counted_day`` sets it).
+    small_groups: Mapping[str, str] = field(default_factory=dict)
 
     @classmethod
     def build(
@@ -449,6 +456,8 @@ def cell_reasons(
 def _team_reasons(day: AttentionDay, status: NodeStatus) -> CellReasons:
     cell = status.entity_ref
     people = _people_of(day, cell)
+    if people and cell.id in day.small_groups:
+        return _small_group_reasons(day, status)
     if status.rag is Rag.UNKNOWN:
         if not people:
             noun = cell.kind.value
@@ -489,6 +498,36 @@ def _team_reasons(day: AttentionDay, status: NodeStatus) -> CellReasons:
     return CellReasons(
         reason=_short(day, drivers, cell, people),
         reasons=_lines(day, drivers, cell, people) + _dependency_lines(status),
+    )
+
+
+#: A small group's short reason, under its colour, when nothing on its work drives it.
+_SMALL_SHORT = {
+    SMALL_GROUP_LINE: "Counted with the project",
+    SMALL_GROUP_PROGRAM_LINE: "Counted with the program",
+}
+_ALONE = "No check-in counts shown"
+
+
+def _small_group_reasons(day: AttentionDay, status: NodeStatus) -> CellReasons:
+    """A pod, project or program of fewer than five people, for a reader who counts
+    none of them on it.
+
+    No "2 of 3 haven't answered": its people's updates are counted in the group
+    above it that is large enough, which its line names. What is on its work
+    (blockers, blocked tasks, drift, dates) is said as for any group, and its
+    colour stays.
+    """
+    cell = status.entity_ref
+    line = day.small_groups[cell.id]
+    drivers = [driver for driver in _drivers(day, status) if driver.kind not in _PEOPLE_KINDS]
+    dependencies = _dependency_lines(status)
+    if not drivers:
+        reason = "No open blockers" if status.rag is Rag.GREEN else _SMALL_SHORT.get(line, _ALONE)
+        return CellReasons(reason=reason, reasons=(line, *dependencies))
+    return CellReasons(
+        reason=_short(day, drivers, cell, ()),
+        reasons=(*_lines(day, drivers, cell, ()), line, *dependencies),
     )
 
 
@@ -715,7 +754,10 @@ def attention_view(
     """
     tiles = _tiles(day, program_id)
     rag = _worst(tile.rag for tile in tiles)
-    people = _team_people(day, program_id)
+    # A program of fewer than five people, for a reader who counts none of them:
+    # no check-in counts and no driver about people, only its work.
+    small = program_id is not None and program_id in day.small_groups
+    people = () if small else _team_people(day, program_id)
     count = _checkin_count(day, people)
     if not clock:
         count = CheckinCount(
@@ -723,6 +765,8 @@ def attention_view(
         )
     program = day.statuses.get((NodeKind.PROGRAM, program_id)) if program_id else None
     drivers = _program_drivers(day, program, tiles)
+    if small:
+        drivers = [driver for driver in drivers if driver.kind not in _PEOPLE_KINDS]
     headline, detail = _headline(day, rag, drivers, tiles, count, people, risks, drift, zone)
     signals = _signals(
         day, program_id, drivers, count, people, risks, drift, blocker_ages or {}, zone
@@ -733,7 +777,7 @@ def attention_view(
         rag=rag,
         headline=headline,
         detail=detail,
-        checkins=count,
+        checkins=None if small else count,
         signals=signals,
     )
 
@@ -804,8 +848,10 @@ def _headline(
                 f"Green on the last updates: {waiting} of {count.asked} haven't answered "
                 f"{_checkin_words(day)} yet{_asked_suffix(count, zone)}."
             )
-        else:
+        elif people:
             sentence = f"Green: {_everyone(len(people))} confirmed with no open blockers."
+        else:
+            sentence = "Green: no open blockers."
         return sentence, _also(findings)
     groups = _ranked_groups(day, drivers, tiles, rag)
     if not groups:
@@ -1132,7 +1178,9 @@ def _signals(
             continue
         link = program
         if kind in _PEOPLE_KINDS and len(same) == 1:
-            link = _pod_link(same[0].pod_ids) or program
+            # One person's pod is pointed at only where it is large enough to count.
+            pods = tuple(pod for pod in same[0].pod_ids if pod not in day.small_groups)
+            link = _pod_link(pods) or program
         found.append(
             AttentionSignal(
                 kind=kind.value,

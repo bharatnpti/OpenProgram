@@ -1,6 +1,6 @@
 """A follow-ups list the model wrote into the answer never reaches the reader as text.
 
-In a QA round Ora's third answer ended on the raw line
+In a QA run Ora's third answer ended on the raw line
 'follow_ups: ["What is Noah Weber's workload?", ...]' inside the bubble: the
 reply's answer field held the list, the reply had no follow_ups field, and the
 parser cut a "References:" line but not this one. The console then offered its

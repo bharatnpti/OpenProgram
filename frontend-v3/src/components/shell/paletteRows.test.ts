@@ -13,6 +13,7 @@ import { fullPodIds } from "../../features/delivery/ownTree.ts";
 import {
   askRow,
   directoryRows,
+  hubTabRows,
   matchRows,
   noPodNote,
   ownRows,
@@ -70,20 +71,24 @@ const directory = {
   ],
 };
 
-test("for a manager every node opens its Delivery panel, and an empty workstream is left out", () => {
+test("for a manager every node opens in the hub, and an empty workstream is left out", () => {
   const rows = directoryRows(directory, manager);
   assert.deepEqual(
     rows.map((row) => [row.label, row.hint, row.to]),
     [
-      ["Digital Platform Program", "Program", "/delivery/program/program-platform"],
-      [
-        "Checkout Revamp",
-        "Project · Digital Platform Program",
-        "/delivery/project/project-checkout",
-      ],
+      ["Digital Platform Program", "Program", "/portfolio/date?program=program-platform"],
+      ["Checkout Revamp", "Project · Digital Platform Program", "/projects/project-checkout"],
       ["Payments API", "Workstream · Checkout Revamp", "/delivery/workstream/ws-payments"],
-      ["Storefront Pod", "Pod · Checkout Revamp", "/delivery/pod/pod-storefront"],
-      ["Payments Pod", "Pod · Checkout Revamp", "/delivery/pod/pod-payments"],
+      [
+        "Storefront Pod",
+        "Pod · Checkout Revamp",
+        "/projects/project-checkout/pods/pod-storefront/date",
+      ],
+      [
+        "Payments Pod",
+        "Pod · Checkout Revamp",
+        "/projects/project-checkout/pods/pod-payments/date",
+      ],
     ],
   );
 });
@@ -135,8 +140,16 @@ test("a person opens their pod; someone in no pod or with no name is not offered
   assert.deepEqual(
     rows.map((row) => [row.label, row.hint, row.to]),
     [
-      ["Asha Rao", "Person · Payments Pod and 1 more", "/delivery/pod/pod-payments"],
-      ["Kai Thompson", "Backend Engineer · Payments Pod", "/delivery/pod/pod-payments"],
+      [
+        "Asha Rao",
+        "Person · Payments Pod and 1 more",
+        "/projects/project-checkout/pods/pod-payments/date",
+      ],
+      [
+        "Kai Thompson",
+        "Backend Engineer · Payments Pod",
+        "/projects/project-checkout/pods/pod-payments/date",
+      ],
     ],
   );
 });
@@ -184,15 +197,15 @@ test("a person is found by any of their pods, and the row names the pod that mat
   const asha = rows.find((row) => row.label === "Asha Rao");
   // Alphabetically Identity Pod is her first pod, so by default that is what the row opens.
   assert.equal(asha?.hint, "Person · Identity Pod and 1 more");
-  assert.equal(asha?.to, "/delivery/pod/pod-identity");
+  assert.equal(asha?.to, "/pods/pod-identity");
 
   const found = matchRows(rows, "pay");
   assert.deepEqual(
     found.map((row) => [row.label, row.hint, row.to]),
-    [["Asha Rao", "Person · Payments Pod and 1 more", "/delivery/pod/pod-payments"]],
+    [["Asha Rao", "Person · Payments Pod and 1 more", "/pods/pod-payments"]],
   );
   // A query that matches their first pod leaves the row as it is.
-  assert.equal(matchRows(rows, "identity")[0].to, "/delivery/pod/pod-identity");
+  assert.equal(matchRows(rows, "identity")[0].to, "/pods/pod-identity");
   assert.deepEqual(
     matchRows(rows, "asha pay").map((row) => row.label),
     ["Asha Rao"],
@@ -217,10 +230,10 @@ const rowsFor = (role: AppRole) =>
     ...peopleRows(crew, directory.pods, targetsOf(role).person),
   ].map((row) => [row.kind, row.label, row.to]);
 
-test("an executive gets programs, projects and workstreams in Delivery, and no pods or people", () => {
+test("an executive gets programs, projects and workstreams, and no pods or people", () => {
   assert.deepEqual(rowsFor("exec"), [
-    ["program", "Digital Platform Program", "/delivery/program/program-platform"],
-    ["project", "Checkout Revamp", "/delivery/project/project-checkout"],
+    ["program", "Digital Platform Program", "/portfolio/date?program=program-platform"],
+    ["project", "Checkout Revamp", "/projects/project-checkout"],
     ["workstream", "Payments API", "/delivery/workstream/ws-payments"],
   ]);
 });
@@ -242,33 +255,53 @@ const status = (tone: string, words: string) => ({ kind: "status", tone, words }
 test("a developer's palette lists their project and own pod; a neighbour's pod opens nothing", () => {
   assert.deepEqual(ownFor("dev", developerTree), [
     // No colour for the project, as the navigator draws none: not a grey "unknown".
-    ["project", "Checkout Revamp", "/delivery/project/project-checkout", { kind: "plain" }],
-    ["pod", "Payments Pod", "/delivery/pod/pod-payments", status("danger", "Off track")],
+    ["project", "Checkout Revamp", "/projects/project-checkout", { kind: "plain" }],
+    [
+      "pod",
+      "Payments Pod",
+      "/projects/project-checkout/pods/pod-payments/date",
+      status("danger", "Off track"),
+    ],
     // Their pod's people, whose check-ins are on that pod's panel.
-    ["person", "Asha Rao", "/delivery/pod/pod-payments", { kind: "person" }],
-    ["person", "Kai Thompson", "/delivery/pod/pod-payments", { kind: "person" }],
+    ["person", "Asha Rao", "/projects/project-checkout/pods/pod-payments/date", { kind: "person" }],
+    [
+      "person",
+      "Kai Thompson",
+      "/projects/project-checkout/pods/pod-payments/date",
+      { kind: "person" },
+    ],
   ]);
 });
 
 test("a scrum master's palette lists their projects and every pod; people only in pods they run", () => {
   assert.deepEqual(ownFor("sm", scrumMasterTree), [
+    ["project", "Checkout Revamp", "/projects/project-checkout", status("danger", "Off track")],
+    ["project", "Identity Platform", "/projects/project-identity", status("warning", "At risk")],
     [
-      "project",
-      "Checkout Revamp",
-      "/delivery/project/project-checkout",
+      "pod",
+      "Payments Pod",
+      "/projects/project-checkout/pods/pod-payments/date",
       status("danger", "Off track"),
     ],
     [
-      "project",
-      "Identity Platform",
-      "/delivery/project/project-identity",
+      "pod",
+      "Storefront Pod",
+      "/projects/project-checkout/pods/pod-storefront/date",
+      status("success", "On track"),
+    ],
+    [
+      "pod",
+      "Identity Pod",
+      "/projects/project-identity/pods/pod-identity/date",
       status("warning", "At risk"),
     ],
-    ["pod", "Payments Pod", "/delivery/pod/pod-payments", status("danger", "Off track")],
-    ["pod", "Storefront Pod", "/delivery/pod/pod-storefront", status("success", "On track")],
-    ["pod", "Identity Pod", "/delivery/pod/pod-identity", status("warning", "At risk")],
-    ["person", "Asha Rao", "/delivery/pod/pod-payments", { kind: "person" }],
-    ["person", "Kai Thompson", "/delivery/pod/pod-payments", { kind: "person" }],
+    ["person", "Asha Rao", "/projects/project-checkout/pods/pod-payments/date", { kind: "person" }],
+    [
+      "person",
+      "Kai Thompson",
+      "/projects/project-checkout/pods/pod-payments/date",
+      { kind: "person" },
+    ],
   ]);
 });
 
@@ -280,6 +313,30 @@ test("a product owner's palette lists their project and its pods, and no people"
       ["pod", "Payments Pod"],
       ["pod", "Storefront Pod"],
     ],
+  );
+});
+
+test("the All level's tabs are screens: a search for a question finds it across projects", () => {
+  const all = accessOf({ lens: ["mgr"], chatEnabled: false }).hub.tabs.all;
+  const rows = hubTabRows(all);
+  assert.deepEqual(
+    rows.map((row) => [row.label, row.to]),
+    [
+      ["Will we make the date?", "/portfolio/date"],
+      ["Early warnings", "/portfolio/warnings"],
+      ["Scope control", "/portfolio/scope"],
+      ["Reports", "/portfolio/reports"],
+    ],
+  );
+  assert.deepEqual(
+    matchRows(rows, "warn").map((row) => row.to),
+    ["/portfolio/warnings"],
+  );
+  assert.ok(rows.every((row) => row.kind === "screen" && row.hint.startsWith("All projects")));
+  // A developer's All level is the day reports only.
+  assert.deepEqual(
+    hubTabRows(accessOf({ lens: ["dev"], chatEnabled: false }).hub.tabs.all).map((row) => row.to),
+    ["/portfolio/reports"],
   );
 });
 

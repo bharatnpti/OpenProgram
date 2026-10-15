@@ -343,12 +343,11 @@ def _snapshot_to_view(snapshot: _WorkItemSnapshot, as_of: date) -> WorkItemFlowV
     )
 
 
-def _age_days(snapshot: _WorkItemSnapshot, as_of: date | None = None) -> int | None:
+def _age_days(snapshot: _WorkItemSnapshot, as_of: date) -> int | None:
     reference_at = snapshot.last_transition_at or snapshot.created_at
     if reference_at is None:
         return None
-    reference_date = as_of or date.today()
-    return max(0, (reference_date - reference_at.date()).days)
+    return max(0, (as_of - reference_at.date()).days)
 
 
 def _age_days_from_datetime(reference_at: datetime | None, as_of: date) -> int | None:

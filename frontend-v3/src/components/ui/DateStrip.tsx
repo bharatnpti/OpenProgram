@@ -17,6 +17,7 @@ import {
   forecastTone,
   historyWords,
   missingDate,
+  TEAM_DATE_HINT,
   teamTone,
   teamWords,
   verdictChip,
@@ -158,7 +159,7 @@ export function DateCells({
           </>
         )}
       </Cell>
-      <Cell label="Team says" tone={teamSays}>
+      <Cell label="Team's own date" hint={TEAM_DATE_HINT} tone={teamSays}>
         {team.latest ? (
           <>
             <p className={cn(BIG, TONE_TEXT[teamSays])}>{formatDate(team.latest)}</p>
@@ -171,7 +172,9 @@ export function DateCells({
           <>
             <p className={NONE}>No ETA or due date</p>
             {inScope && team.undated > 0 ? (
-              <p className={SUB}>{team.undated} open without a date</p>
+              <p className={SUB}>
+                {team.undated} {team.undated === 1 ? "has" : "have"} no date
+              </p>
             ) : null}
           </>
         )}
@@ -182,11 +185,14 @@ export function DateCells({
 
 function Cell({
   label,
+  hint,
   quiet = false,
   tone = "neutral",
   children,
 }: {
   label: string;
+  /** What the cell's date means, on hover. */
+  hint?: string;
   /** No forecast to show yet: the cell is grey, and never coloured. */
   quiet?: boolean;
   /** A forecast against the committed date, or a missing date: the cell is tinted in it. */
@@ -195,7 +201,10 @@ function Cell({
 }) {
   return (
     <div className={cn("min-w-0 rounded-2xl p-3", quiet ? "bg-grey-fill" : TONE_FILL[tone])}>
-      <dt className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary">
+      <dt
+        title={hint}
+        className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary"
+      >
         {label}
       </dt>
       <dd className="mt-1">{children}</dd>

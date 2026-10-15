@@ -1,9 +1,11 @@
 """Requirements by delivery stage, the stage mapping behind them, and the forecast's minimum.
 
 A project's requirements view needs read_project_progress, like the project's
-progress. The stage mapping and the working days of history a forecast needs
-are runtime config: reading or changing them needs manage_config. The tenant
-always comes from the principal.
+progress; one pod's part of it (``pod_id``) counts the requirements below the
+pod, and an executive reads no pod of fewer than five people on its own. The
+stage mapping and the working days of history a forecast needs are runtime
+config: reading or changing them needs manage_config. The tenant always comes
+from the principal.
 """
 
 from __future__ import annotations
@@ -14,9 +16,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from api.dependencies import (
+    as_of_or_tenant_today,
     get_current_principal,
     get_delivery_service,
     get_forecast_service,
+    get_registry,
 )
 from api.dtos import (
     DeliveryStagesResponse,
@@ -26,6 +30,7 @@ from api.dtos import (
     ObservedStatusResponse,
     RequirementsResponse,
 )
+from api.people_projection import PeopleWordsDep, for_reader
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.delivery_service import (
     DEFAULT_TIMELINE_DAYS,
@@ -33,10 +38,12 @@ from core.application.delivery_service import (
     DeliveryService,
 )
 from core.application.forecast_service import ForecastService
+from core.application.pod_level import ensure_pod_level, pod_part
 from core.domain.auth import Principal
 from core.domain.delivery import StageMapping, StageMappingError, validated_mapping
 from core.domain.errors import AuthorizationDenied, GraphNotFound
 from core.domain.forecast import ForecastSettingsError
+from infra.registry import ServiceRegistry
 
 router = APIRouter(tags=["delivery"])
 
@@ -47,7 +54,9 @@ async def project_requirements(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DeliveryService, Depends(get_delivery_service)],
     forecasts: Annotated[ForecastService, Depends(get_forecast_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    words: PeopleWordsDep,
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
+    registry: Annotated[ServiceRegistry, Depends(get_registry)],
     days: Annotated[
         int | None,
         Query(
@@ -60,6 +69,9 @@ async def project_requirements(
         ),
     ] = None,
     release_id: Annotated[str | None, Query(description="One release of the project.")] = None,
+    pod_id: Annotated[
+        str | None, Query(description="One pod's part: the requirements below the pod.")
+    ] = None,
 ) -> RequirementsResponse:
     _ensure(principal, Capability.READ_PROJECT_PROGRESS)
     rule = await forecasts.forecast_settings(principal.tenant_id)
@@ -68,14 +80,32 @@ async def project_requirements(
     timeline_days = days if days is not None else max(DEFAULT_TIMELINE_DAYS, rule.window_days)
     try:
         release = await forecasts.release(principal.tenant_id, release_id) if release_id else None
+        part = None
+        if pod_id:
+            graph = registry.graph_repository()
+            pod = await ensure_pod_level(graph, principal, pod_id, as_of)
+            part = await pod_part(
+                graph=graph,
+                delivery=service,
+                forecasts=forecasts,
+                tenant_id=principal.tenant_id,
+                project_id=project_id,
+                pod=pod,
+                as_of=as_of,
+                release=release,
+            )
         view = await service.requirements(
-            principal.tenant_id, project_id, as_of, days=timeline_days, release=release
+            principal.tenant_id, project_id, as_of, days=timeline_days, release=release, pod=part
         )
+    except AuthorizationDenied as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except GraphNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return RequirementsResponse.from_view(
+    response = RequirementsResponse.from_view(
         view, timeline_days=timeline_days, forecast_needed_days=rule.min_sample_days
     )
+    # An executive reads each requirement's assignee as their team.
+    return for_reader(response, words)
 
 
 @router.get("/config/delivery/stages", response_model=DeliveryStagesResponse)

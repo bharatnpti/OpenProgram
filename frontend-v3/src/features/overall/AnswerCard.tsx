@@ -40,9 +40,20 @@ function ReadinessReason({ lines }: { lines: string[] }) {
   );
 }
 
-/** The sentence at the top of the card, with the verdict's chip before it when it adds one. */
-function Headline({ scope, text }: { scope: ScopeDeliveryResponse; text: string }) {
-  const chip = answerChip(scope);
+/**
+ * The sentence at the top of the card, with the verdict's chip before it when it
+ * adds one; `withChip` off where the page's header already shows the verdict.
+ */
+function Headline({
+  scope,
+  text,
+  withChip = true,
+}: {
+  scope: ScopeDeliveryResponse;
+  text: string;
+  withChip?: boolean;
+}) {
+  const chip = withChip ? answerChip(scope) : null;
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       {chip ? (
@@ -62,9 +73,18 @@ function Headline({ scope, text }: { scope: ScopeDeliveryResponse; text: string 
  * strip's cause, moved up), how much is done, and under it the date strip's
  * three cells with Change date for those who may. It replaces the strip's red
  * cause box, its list of reasons, which restated the cells, and the Completion
- * card. For a release picked above, the release's.
+ * card. For a release picked above, the release's. `chip` off where the page's
+ * header carries the verdict's pill, so the colour is said once.
  */
-export function ProjectAnswer({ projectId, releaseId }: { projectId: string; releaseId: string }) {
+export function ProjectAnswer({
+  projectId,
+  releaseId,
+  chip = true,
+}: {
+  projectId: string;
+  releaseId: string;
+  chip?: boolean;
+}) {
   const access = useReportAccess();
   const delivery = useDelivery(projectId);
   // The same read as the requirements section below (one request): the share by story points.
@@ -97,7 +117,7 @@ export function ProjectAnswer({ projectId, releaseId }: { projectId: string; rel
       >
         {scope ? (
           <VizCard edge={answerEdge(scope)} className="gap-3">
-            <Headline scope={scope} text={scopeAnswer(scope, subject)} />
+            <Headline scope={scope} text={scopeAnswer(scope, subject)} withChip={chip} />
             <p className="text-[13px] text-grey-secondary">
               {answerMeta(scope, release ? subject : "the whole project", points)}
             </p>
@@ -140,7 +160,7 @@ export function ProjectAnswer({ projectId, releaseId }: { projectId: string; rel
 /**
  * A scrum master's answer line, for each of the project's pods they run (the
  * pod read's `can_set_dates`): its verdict and why. Their Today shows the pod's
- * dates in full; here the pod sits against the others, in "Dates by pod" below.
+ * dates in full; here the pod sits against the others, on the Timeline below.
  */
 export function ScrumMasterAnswer({ projectId }: { projectId: string }) {
   const projects = useProjects();
@@ -163,8 +183,8 @@ export function ScrumMasterAnswer({ projectId }: { projectId: string }) {
         <VizCard key={scope.scope_id} edge={answerEdge(scope)} className="gap-3">
           <Headline scope={scope} text={scopeAnswer(scope, `${scope.name}, the pod you run,`)} />
           <p className="text-[13px] text-grey-secondary">
-            Your Today shows its dates in full. Here it sits against the other pods and the
-            project&apos;s date.
+            Your Today shows its dates in full. The Timeline below sets it against the other pods
+            and the project&apos;s date.
           </p>
         </VizCard>
       ))}

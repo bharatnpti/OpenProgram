@@ -32,6 +32,7 @@ from core.domain.integrations import (
     CalendarEvent,
     Commit,
     Issue,
+    IssueChange,
     IssueState,
     Project,
     PullRequest,
@@ -115,6 +116,9 @@ async def assert_issue_tracker_contract(
     assert all(isinstance(sprint, Sprint) for sprint in sprints)
     issue = await provider.get_issue("demo", "PO-1")
     assert isinstance(issue, Issue)
+    changes = await provider.list_issue_changes("demo", "PO-1", None)
+    assert all(isinstance(change, IssueChange) for change in changes)
+    assert [change.at for change in changes] == sorted(change.at for change in changes)
     assert await provider.list_active_for(user)
     assert await provider.find_user_by_email("demo", "nobody@example.invalid") is None
     if known_email is not None:
@@ -1152,6 +1156,16 @@ async def assert_sync_cursor_repository_contract(repository: SyncCursorRepositor
         SyncCursorRecord(connector="jira", scope="project:PO", cursor=cursor),
     ]
     assert await repository.list_cursors("missing-tenant") == []
+
+    # A swap records only from the value it expects; None expects no cursor.
+    assert await repository.swap_cursor("demo", "marker", "issue:PO-1", None, cursor)
+    assert not await repository.swap_cursor("demo", "marker", "issue:PO-1", None, other)
+    assert not await repository.swap_cursor("demo", "marker", "issue:PO-1", "stale", other)
+    assert await repository.get_cursor("demo", "marker", "issue:PO-1") == cursor
+    assert await repository.swap_cursor("demo", "marker", "issue:PO-1", "cursor-1", other)
+    assert await repository.get_cursor("demo", "marker", "issue:PO-1") == other
+    assert not await repository.swap_cursor("demo", "marker", "issue:PO-2", "cursor-1", other)
+    assert await repository.get_cursor("demo", "marker", "issue:PO-2") == SyncCursor()
 
 
 async def assert_conversation_repository_contract(repository: ConversationRepository) -> None:

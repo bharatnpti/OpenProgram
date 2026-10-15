@@ -101,6 +101,7 @@ export type IdentityLinkUpdateRequest = components["schemas"]["IdentityLinkUpdat
 export type IdentityAutoMatchResponse = components["schemas"]["IdentityAutoMatchResponse"];
 export type IdentityAutoMatchMemberDto = components["schemas"]["IdentityAutoMatchMemberDto"];
 export type UnmappedMemberResponse = components["schemas"]["UnmappedMemberResponse"];
+export type IdentityCountsResponse = components["schemas"]["IdentityCountsResponse"];
 export type BriefKind = components["schemas"]["BriefKind"];
 export type NarrativeBriefResponse = components["schemas"]["NarrativeBriefResponse"];
 export type NarrativeBriefsResponse = components["schemas"]["NarrativeBriefsResponse"];
@@ -109,6 +110,12 @@ export type WriteBackConsent = components["schemas"]["WriteBackConsent"];
 export type WritebackConsentResponse = components["schemas"]["WritebackConsentResponse"];
 export type WritebackConsentUpdateRequest = components["schemas"]["WritebackConsentUpdateRequest"];
 export type TenantWritebackResponse = components["schemas"]["TenantWritebackResponse"];
+export type CheckinFillResponse = components["schemas"]["CheckinFillResponse"];
+export type CheckinFillUpdateRequest = components["schemas"]["CheckinFillUpdateRequest"];
+export type ObservedTaskDto = components["schemas"]["ObservedTaskDto"];
+export type CheckinCoverageDto = components["schemas"]["CheckinCoverageDto"];
+export type CheckinCoverageCauseDto = components["schemas"]["CheckinCoverageCauseDto"];
+export type NoDataCause = CheckinCoverageCauseDto["cause"];
 export type WriteBackGateSource = components["schemas"]["WriteBackGateSource"];
 export type JiraWritesResponse = components["schemas"]["JiraWritesResponse"];
 export type JiraWritesUpdateRequest = components["schemas"]["JiraWritesUpdateRequest"];
@@ -160,9 +167,21 @@ export type ProjectDeliveryResponse = components["schemas"]["ProjectDeliveryResp
 export type ScopeDeliveryResponse = components["schemas"]["ScopeDeliveryResponse"];
 export type ForecastHistoryResponse = components["schemas"]["ForecastHistoryResponse"];
 export type ForecastDayResponse = components["schemas"]["ForecastDayResponse"];
+export type PlanningBaselinesResponse = components["schemas"]["PlanningBaselinesResponse"];
+export type PlanningBaselineResponse = components["schemas"]["PlanningBaselineResponse"];
+export type PlanningCompleteRequest = components["schemas"]["PlanningCompleteRequest"];
 export type CommitmentResponse = components["schemas"]["CommitmentResponse"];
 export type DeliveryDateRequest = components["schemas"]["DeliveryDateRequest"];
 export type PodDeliveryResponse = components["schemas"]["PodDeliveryResponse"];
+export type TimelineResponse = components["schemas"]["TimelineResponse"];
+export type TimelineRowResponse = components["schemas"]["TimelineRowResponse"];
+export type TimelineMarkerResponse = components["schemas"]["TimelineMarkerResponse"];
+export type TimelineMarkerItemResponse = components["schemas"]["TimelineMarkerItemResponse"];
+export type DeliveryImpactResponse = components["schemas"]["DeliveryImpactResponse"];
+export type ImpactDriverResponse = components["schemas"]["ImpactDriverResponse"];
+export type ImpactItemResponse = components["schemas"]["ImpactItemResponse"];
+export type PeriodKind = components["schemas"]["PeriodKind"];
+export type Measure = components["schemas"]["Measure"];
 export type ReleaseResponse = components["schemas"]["ReleaseResponse"];
 export type ReleaseRequest = components["schemas"]["ReleaseRequest"];
 export type ReleaseCandidateResponse = components["schemas"]["ReleaseCandidateResponse"];
@@ -249,11 +268,12 @@ export interface PortfolioFeedItemResponse {
   source: string;
   kind: string;
   summary: string;
+  /** Null for an executive when the event is about a person: a member id names them too. */
   entity_ref: {
     tenant_id: string;
     kind: string;
     id: string;
-  };
+  } | null;
   observed_at: string;
   details: Record<string, unknown>;
   /** Who entity_ref is, by name, when it is a person; never a raw chat id. */
@@ -347,3 +367,84 @@ export type ReadinessUrgencyKind = components["schemas"]["UrgencyKind"];
 export type ReadinessAppliesTo = components["schemas"]["AppliesTo"];
 export type ReadinessSeverity = components["schemas"]["Severity"];
 export type ReadinessStrength = components["schemas"]["Strength"];
+
+// Jira hygiene: the tenant's per-issue rules and the issues that break them.
+export type HygieneBoardResponse = components["schemas"]["HygieneBoardResponse"];
+export type HygieneFindingResponse = components["schemas"]["HygieneFindingResponse"];
+export type HygieneRuleRowDto = components["schemas"]["HygieneRuleRowDto"];
+export type HygieneRunResponse = components["schemas"]["HygieneRunResponse"];
+export type HygieneHistoryResponse = components["schemas"]["HygieneHistoryResponse"];
+export type HygieneConfigResponse = components["schemas"]["HygieneConfigResponse"];
+export type HygieneSettingsDto = components["schemas"]["HygieneSettingsDto"];
+export type HygieneRuleDto = components["schemas"]["HygieneRuleDto"];
+export type HygieneConditionDto = components["schemas"]["HygieneConditionDto"];
+export type HygieneSelectDto = components["schemas"]["HygieneSelectDto"];
+export type HygieneOwnerDto = components["schemas"]["HygieneOwnerDto"];
+export type HygienePreviewResponse = components["schemas"]["HygienePreviewResponse"];
+export type HygienePreviewScopeDto = components["schemas"]["HygienePreviewScopeDto"];
+export type HygieneConditionKind = components["schemas"]["ConditionKind"];
+export type HygieneIssueField = components["schemas"]["IssueField"];
+export type HygieneOwnerKind = components["schemas"]["OwnerKind"];
+export type HygieneRuleScope = components["schemas"]["RuleScope"];
+export type HygieneRuleSeverity = components["schemas"]["RuleSeverity"];
+export type HygieneRuleNeed = components["schemas"]["RuleNeed"];
+export type HygieneStageFilter = components["schemas"]["StageFilter"];
+export type HygieneState = components["schemas"]["HygieneState"];
+
+// Profiles per pod membership: who brings what to each pod.
+export type ProfileResponse = components["schemas"]["ProfileResponse"];
+export type ProfileUpdateRequest = components["schemas"]["ProfileUpdateRequest"];
+export type MemberProfileResponse = components["schemas"]["MemberProfileResponse"];
+export type PodProfilesResponse = components["schemas"]["PodProfilesResponse"];
+export type ProfileSuggestionResponse = components["schemas"]["ProfileSuggestionResponse"];
+export type MembershipProfileResponse = components["schemas"]["MembershipProfileResponse"];
+export type SetProfileRequest = components["schemas"]["SetProfileRequest"];
+export type ProfileReviewItemResponse = components["schemas"]["ProfileReviewItemResponse"];
+export type ProfileReviewResponse = components["schemas"]["ProfileReviewResponse"];
+export type AcceptProfilesRequest = components["schemas"]["AcceptProfilesRequest"];
+export type AcceptProfilesResponse = components["schemas"]["AcceptProfilesResponse"];
+
+// Today and Check-in: Jira changes waiting for the person's yes,
+// their own conversation, who must act on a project, and the day's counts.
+export type JiraChangesResponse = components["schemas"]["JiraChangesResponse"];
+export type JiraChangeDto = components["schemas"]["JiraChangeDto"];
+export type JiraChangeGateDto = components["schemas"]["JiraChangeGateDto"];
+export type JiraChangeAnswerRequest = components["schemas"]["JiraChangeAnswerRequest"];
+export type JiraChangeAnswerResponse = components["schemas"]["JiraChangeAnswerResponse"];
+export type ConversationResponse = components["schemas"]["ConversationResponse"];
+export type ConversationTurnDto = components["schemas"]["ConversationTurnDto"];
+export type ProjectAsksResponse = components["schemas"]["ProjectAsksResponse"];
+export type ProjectAskDto = components["schemas"]["ProjectAskDto"];
+export type TodayCountsResponse = components["schemas"]["TodayCountsResponse"];
+export type RepliesCountDto = components["schemas"]["RepliesCountDto"];
+
+// The portfolio's bulk reads: Will we make the date?, Scope control, Early warnings.
+export type PortfolioDeliveryResponse = components["schemas"]["PortfolioDeliveryResponse"];
+export type PortfolioProjectDto = components["schemas"]["PortfolioProjectDto"];
+export type PortfolioPodDto = components["schemas"]["PortfolioPodDto"];
+export type PortfolioReleaseDto = components["schemas"]["PortfolioReleaseDto"];
+export type PortfolioMarkDto = components["schemas"]["PortfolioMarkDto"];
+export type PortfolioProgramDto = components["schemas"]["PortfolioProgramDto"];
+export type VerdictCountsDto = components["schemas"]["VerdictCountsDto"];
+export type AgainstPlanDto = components["schemas"]["AgainstPlanDto"];
+export type VerdictFilter = components["schemas"]["VerdictFilter"];
+export type PortfolioSort = components["schemas"]["PortfolioSort"];
+export type PortfolioScopeResponse = components["schemas"]["PortfolioScopeResponse"];
+export type ScopeProjectDto = components["schemas"]["ScopeProjectDto"];
+export type ScopeFindingDto = components["schemas"]["ScopeFindingDto"];
+export type ScopeRuleCountDto = components["schemas"]["ScopeRuleCountDto"];
+export type PortfolioWarningsResponse = components["schemas"]["PortfolioWarningsResponse"];
+export type WarningGroupDto = components["schemas"]["WarningGroupDto"];
+export type WarningItemDto = components["schemas"]["WarningItemDto"];
+export type WarningPodDto = components["schemas"]["WarningPodDto"];
+export type OwnerSaysDto = components["schemas"]["OwnerSaysDto"];
+export type WarningKind = components["schemas"]["WarningKind"];
+
+// Requests and pods: a request's trail, the board as counts, a pod's ladder.
+export type RequestTrailResponse = components["schemas"]["RequestTrailResponse"];
+export type RequestTrailStepDto = components["schemas"]["RequestTrailStepDto"];
+export type RequestCountsResponse = components["schemas"]["RequestCountsResponse"];
+export type CheckinRungDto = components["schemas"]["CheckinRungDto"];
+export type CheckinDeveloperDto = components["schemas"]["CheckinDeveloperDto"];
+export type ProjectCheckinCoverageResponse =
+  components["schemas"]["ProjectCheckinCoverageResponse"];

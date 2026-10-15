@@ -209,7 +209,7 @@ async def test_resolving_from_the_console_also_closes_the_copies() -> None:
     assert await _resolved_by(store) == {r1.id: ASHA, r2.id: ASHA}
 
 
-# --- a resolved ask tells its requester once, per ask (V2 A3) -------------------
+# --- a resolved ask tells its requester once, per ask -------------------
 
 # Zoe asked Noah to review CHK-12 on 7 Oct and he resolved it that day. On 11 Oct
 # she asked again; Noah acknowledged and resolved the new request, and Zoe was

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  accountCounts,
   autoMatchSummary,
   buildIdentityUpdate,
   formFromLink,
@@ -106,5 +107,20 @@ test("auto-match names who it filled in and with what", () => {
       ],
     }),
     "Filled in 2 members: Raj Iyer (chat id and Jira email), Elena Fischer (chat id).",
+  );
+});
+
+test("the Directory counts who the check-in cannot reach and whose day Jira cannot tell", () => {
+  assert.equal(
+    accountCounts({ members: 14, without_chat_id: 0, without_jira_account: 1 }),
+    "Every member has a chat id · 1 member has no Jira account.",
+  );
+  assert.equal(
+    accountCounts({ members: 14, without_chat_id: 2, without_jira_account: 3 }),
+    "2 members have no chat id · 3 members have no Jira account.",
+  );
+  assert.equal(
+    accountCounts({ members: 0, without_chat_id: 0, without_jira_account: 0 }),
+    "No members yet.",
   );
 });
