@@ -6,6 +6,7 @@ import {
   colourReasons,
   defaultPod,
   ladderLine,
+  nudgeColumns,
   nudgeState,
   podLine,
   podOptions,
@@ -187,4 +188,19 @@ test("Why this colour leaves the blockers to Blockers and waits", () => {
     kept.map((item: { description: string }) => item.description),
     ["2 not replied.", "Task CHK-1 needs attention."],
   );
+});
+
+test("who needs a nudge adds the check-in time for a schedule reader and Ask for an admin", () => {
+  assert.deepEqual(nudgeColumns({ schedule: false, askNow: false }), [
+    "Person",
+    "Check-in",
+    "Asked and reminded",
+  ]);
+  assert.deepEqual(nudgeColumns({ schedule: true, askNow: true }), [
+    "Person",
+    "Check-in",
+    "Asked and reminded",
+    "Their check-in time",
+    "Ask for a check-in",
+  ]);
 });

@@ -77,7 +77,7 @@ export function PodWarnings({ projectId, podId }: { projectId: string; podId: st
       sections.push({
         id: "checkins",
         label: "Nudges",
-        element: <NudgeList read={checkins} day={day} />,
+        element: <NudgeList read={checkins} day={day} askNow={access.pages.admin} />,
       });
     }
     sections.push({

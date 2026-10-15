@@ -78,6 +78,21 @@ export function ladderLine(person: Person, time: Time = formatTime): string {
 }
 
 /** "09:30 Europe/Berlin": a person's own check-in time, in their zone. */
+/**
+ * Who needs a nudge's columns: the person, their check-in, the reminders, then
+ * their check-in time where the reader keeps schedules (an admin, the pod's own
+ * scrum master) and Ask for a check-in for an admin.
+ */
+export function nudgeColumns(parts: { schedule: boolean; askNow: boolean }): string[] {
+  return [
+    "Person",
+    "Check-in",
+    "Asked and reminded",
+    ...(parts.schedule ? ["Their check-in time"] : []),
+    ...(parts.askNow ? ["Ask for a check-in"] : []),
+  ];
+}
+
 export function scheduleWords(
   person: Pick<CheckinDeveloperDto, "checkin_time" | "timezone">,
 ): string | null {

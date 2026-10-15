@@ -6,8 +6,9 @@ import { Panel } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
 import { coverageParts } from "../../lib/observedWords";
 import { CellLabel, StackedTable, stackCell, stackRow } from "../coordination/StackedTable";
+import { AskNow } from "../admin/AskNow";
 import { CoverageNoData } from "../today/CoverageNoData";
-import { ladderLine, nudgeState, scheduleWords } from "./podWords";
+import { ladderLine, nudgeColumns, nudgeState, scheduleWords } from "./podWords";
 
 /**
  * Who needs a nudge: for the roles that already read a pod's check-ins (a
@@ -15,15 +16,20 @@ import { ladderLine, nudgeState, scheduleWords } from "./podWords";
  * the ladder saw it: replied and when, filled from Jira, or no reply yet, and
  * the rungs that went out (the reminder to them, their scrum master told, their
  * manager told), with times. Check-in time and zone for an admin and the pod's
- * own scrum master only. By name, never ranked, no count across days.
+ * own scrum master only. For an admin (`askNow`), each person's Ask now: the
+ * same action as Admin › Check-ins, with a yes first. By name, never ranked, no
+ * count across days.
  */
 export function NudgeList({
   read,
   day,
+  askNow = false,
 }: {
   read: UseQueryResult<PodCheckinsResponse>;
   /** "today", or "on Mon 5 Oct" while a past day is shown. */
   day: string;
+  /** An admin asks a person for today's check-in at once. */
+  askNow?: boolean;
 }) {
   const board = read.data;
   const people = board?.developers ?? [];
@@ -52,12 +58,7 @@ export function NudgeList({
       >
         <StackedTable
           caption={`Each person's check-in ${day}, and the reminders that went out`}
-          columns={[
-            "Person",
-            "Check-in",
-            "Asked and reminded",
-            ...(schedule ? ["Their check-in time"] : []),
-          ]}
+          columns={nudgeColumns({ schedule, askNow })}
         >
           {people.map((person) => {
             const state = nudgeState(person, board?.as_of ?? "");
@@ -82,6 +83,11 @@ export function NudgeList({
                   <td className={`${stackCell} whitespace-nowrap`}>
                     <CellLabel>Their check-in time</CellLabel>
                     {time ?? "—"}
+                  </td>
+                ) : null}
+                {askNow ? (
+                  <td className={`${stackCell} md:text-right`}>
+                    <AskNow memberId={person.developer_id} name={person.developer_name} />
                   </td>
                 ) : null}
               </tr>
