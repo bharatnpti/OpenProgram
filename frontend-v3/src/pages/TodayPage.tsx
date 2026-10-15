@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../api/client";
-import { projectPath } from "../app/links";
+import { portfolioPath, projectPath } from "../app/links";
 import { useRole } from "../app/role";
 import { useReadOnly, useShownDay } from "../app/viewingDate";
 import { Greeting } from "../components/ui/Bits";
@@ -80,7 +80,7 @@ export function TodayPage() {
                 counts={counts.data}
                 isLoading={counts.isLoading}
                 error={counts.error}
-                link={warningsLink(access.pages.warnings, subject)}
+                link={warningsLink(access.hub.portfolioHealth, subject)}
               />
             </div>
           </>
@@ -113,7 +113,7 @@ function warningsLink(
   warningsPage: boolean,
   subject: TodaySubject,
 ): { to: string; text: string } | null {
-  if (warningsPage) return { to: "/warnings", text: "Review warnings" };
+  if (warningsPage) return { to: portfolioPath("warnings"), text: "Review warnings" };
   const projectId =
     subject.kind === "project"
       ? subject.projectId

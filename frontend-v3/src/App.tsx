@@ -14,14 +14,10 @@ const page = <K extends string>(load: () => Promise<Record<K, ComponentType>>, n
 const TodayPage = page(() => import("./pages/TodayPage"), "TodayPage");
 const CheckinPage = page(() => import("./pages/CheckinPage"), "CheckinPage");
 const RequestsPage = page(() => import("./pages/RequestsPage"), "RequestsPage");
-const PortfolioPage = page(() => import("./pages/PortfolioPage"), "PortfolioPage");
-const ProjectPage = page(() => import("./pages/ProjectPage"), "ProjectPage");
-const PodPage = page(() => import("./pages/PodPage"), "PodPage");
-const RisksPage = page(() => import("./pages/RisksPage"), "RisksPage");
-const ScopePage = page(() => import("./pages/ScopePage"), "ScopePage");
-const ReportsHomePage = page(() => import("./pages/ReportsHomePage"), "ReportsHomePage");
-const BriefsPage = page(() => import("./pages/BriefsPage"), "BriefsPage");
-const DailyPage = page(() => import("./pages/DailyPage"), "DailyPage");
+const ProjectsLanding = page(() => import("./pages/HubPage"), "ProjectsLanding");
+const HubPage = lazy(() =>
+  import("./pages/HubPage").then((module) => ({ default: module.HubPage })),
+);
 const FlowPage = page(() => import("./pages/FlowPage"), "FlowPage");
 const OraPage = page(() => import("./pages/OraPage"), "OraPage");
 const PeoplePage = page(() => import("./pages/PeoplePage"), "PeoplePage");
@@ -30,26 +26,24 @@ const AdminPage = page(() => import("./pages/AdminPage"), "AdminPage");
 /*
  * The sidebar's pages (app/nav.ts):
  *
- *   /today                          what needs me today, per role
- *   /check-in                       my own check-in and tasks; the built-in chat on a local tenant
- *   /requests                       who is waiting on whom
- *   /portfolio                      will we make the date? (?program= picks one)
- *   /projects[/:projectId]          one project; bare opens the worst of mine
- *   /pods[/:podId]                  one pod; bare opens my own
- *   /warnings                       early warnings across projects
- *   /scope                          scope control (?project= picks one)
- *   /reports                        the day reports; /reports/briefs the briefs
- *   /reports/:projectId/daily       the end-of-day report (?report= picks one)
- *   /flow                           review flow
- *   /ora                            Ask Ora, full page
- *   /people                         people & roles
- *   /admin                          runtime configuration (admin)
+ *   /today                                    what needs me today, per role
+ *   /check-in                                 my own check-in and tasks
+ *   /requests                                 who is waiting on whom
+ *   /projects                                 the Projects hub; opens by role
+ *     /portfolio/:tab                         All projects
+ *     /projects/:projectId/:tab               one project
+ *     /projects/:projectId/pods/:podId/:tab   one pod, its part of that project
+ *                                             (tabs: date, warnings, scope, reports)
+ *   /flow                                     review flow
+ *   /ora                                      Ask Ora, full page
+ *   /people                                   people & roles
+ *   /admin                                    runtime configuration (admin)
  *
- * Every address from before the sidebar (/delivery/…, /signals, /coordination,
- * /chat, /reports/:id/overall, /today?pod=…) opens where it lives now, its query
- * and hash kept (app/access.ts `legacyPath`, applied by app/RouteGuard): links
- * in messages already sent must keep working. Any page takes ?asOf=YYYY-MM-DD to
- * show a past day (app/ViewingDateProvider).
+ * Every address from before the hub (/pods/…, /warnings, /scope, /reports/…,
+ * /delivery/…, /signals, /coordination, /chat, /today?pod=…) opens where it
+ * lives now, its query and hash kept (app/access.ts `legacyPath`, applied by
+ * app/RouteGuard): links in messages already sent must keep working. Any page
+ * takes ?asOf=YYYY-MM-DD to show a past day (app/ViewingDateProvider).
  */
 export function App() {
   return (
@@ -83,16 +77,10 @@ function AppRoutes() {
         <Route path="/today" element={<TodayPage />} />
         <Route path="/check-in" element={<CheckinPage />} />
         <Route path="/requests" element={<RequestsPage />} />
-        <Route path="/portfolio" element={<PortfolioPage />} />
-        <Route path="/projects" element={<ProjectPage />} />
-        <Route path="/projects/:projectId" element={<ProjectPage />} />
-        <Route path="/pods" element={<PodPage />} />
-        <Route path="/pods/:podId" element={<PodPage />} />
-        <Route path="/warnings" element={<RisksPage />} />
-        <Route path="/scope" element={<ScopePage />} />
-        <Route path="/reports" element={<ReportsHomePage />} />
-        <Route path="/reports/briefs" element={<BriefsPage />} />
-        <Route path="/reports/:projectId/daily" element={<DailyPage />} />
+        <Route path="/projects" element={<ProjectsLanding />} />
+        <Route path="/portfolio/:tab?" element={<HubPage level="all" />} />
+        <Route path="/projects/:projectId/:tab?" element={<HubPage level="project" />} />
+        <Route path="/projects/:projectId/pods/:podId/:tab?" element={<HubPage level="pod" />} />
         <Route path="/flow" element={<FlowPage />} />
         <Route path="/ora" element={<OraPage />} />
         <Route path="/people" element={<PeoplePage />} />

@@ -123,7 +123,9 @@ test("Admin shows current configuration; the banner says so, and what else stays
   assert.equal(showsCurrentState("/administration"), false);
   assert.equal(showsCurrentState("/today"), false);
   assert.match(viewingDateNote("/admin"), /current configuration/);
-  assert.match(viewingDateNote("/reports/project-checkout/daily"), /today's/);
+  assert.match(viewingDateNote("/projects/project-checkout/reports"), /today's/);
+  assert.match(viewingDateNote("/portfolio/reports"), /Briefs are shown as they are now/);
+  assert.match(viewingDateNote("/projects/project-checkout/date"), /^Read-only/);
   assert.match(viewingDateNote("/requests"), /as they are now/);
   assert.match(viewingDateNote("/check-in"), /as it is now/);
   assert.match(viewingDateNote("/delivery/pod/pod-payments"), /^Read-only/);

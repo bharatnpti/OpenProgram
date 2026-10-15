@@ -1,35 +1,47 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
-import { apiClient } from "../api/client";
-import { useReportProjects } from "../app/directory";
-import { dailyPath, projectPath } from "../app/links";
-import { useRole } from "../app/role";
-import { PanelState, SectionHeader } from "../components/PanelState";
-import { dayReportCountWords } from "../features/daily/reportView";
-import { ProjectStatus } from "../features/reports/ProjectStatus";
-import { ReportSetupDialog } from "../features/reports/ReportSetupDialog";
-import { ReportsTabs } from "../features/reports/ReportsTabs";
-import { Pill } from "../components/ui/Pill";
-import { ragSeverity } from "../lib/status";
+import { apiClient } from "../../api/client";
+import { useReportProjects } from "../../app/directory";
+import { dailyPath, projectPath } from "../../app/links";
+import { useRole } from "../../app/role";
+import { PanelState } from "../../components/PanelState";
+import { Pill } from "../../components/ui/Pill";
+import { dayReportCountWords } from "../../features/daily/reportView";
+import { TabIntro } from "../../features/hub/TabIntro";
+import { Briefs } from "../../features/reports/Briefs";
+import { ProjectStatus } from "../../features/reports/ProjectStatus";
+import { ReportSetupDialog } from "../../features/reports/ReportSetupDialog";
+import { ragSeverity } from "../../lib/status";
 
 /**
- * Every project with its day report one click away, and its Project page (the
- * state since it started, which was Overall). The dates are said once, on Will
- * we make the date? (the Portfolio), never again here: one live forecast read per
- * card was what that page's bulk read replaced. A developer sees the
- * projects of their own pods (every project when they are in none). Whoever may
- * set reports up can start one here.
+ * All projects › Reports (`/portfolio/reports`): every project with its day
+ * reports one click away, and the briefs. The dates are said once, on the
+ * date tab, never again here. A developer sees the projects of their own pods
+ * (every project when they are in none); whoever may set reports up can start
+ * one here. An executive reads no day report: the briefs only.
  */
-export function ReportsHomePage() {
-  const { canSetUpDayReports } = useRole();
+export function PortfolioReports() {
+  const { access, canSetUpDayReports } = useRole();
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-8">
+      {access.reports.daily ? (
+        <DayReports canSetUp={canSetUpDayReports} />
+      ) : (
+        <TabIntro tab="reports" meta="Briefs written from the day's facts, newest first." />
+      )}
+      {access.coordination.briefs ? <Briefs kind={access.coordination.defaultBrief} /> : null}
+    </div>
+  );
+}
+
+function DayReports({ canSetUp }: { canSetUp: boolean }) {
   // The same list the project picker inside a project's reports offers.
   const shown = useReportProjects();
   const reports = useQuery({
     queryKey: ["day-reports", "all"],
     queryFn: () => apiClient.dayReports(),
   });
-
   const sorted = [...shown.listed].sort(
     (a, b) => ragSeverity(b.rag) - ragSeverity(a.rag) || a.name.localeCompare(b.name),
   );
@@ -37,21 +49,20 @@ export function ReportsHomePage() {
     (reports.data ?? []).filter((report) => report.project_id === projectId);
 
   return (
-    <>
-      <SectionHeader
-        title="Reports"
+    <section aria-label="Day reports">
+      <TabIntro
+        tab="reports"
         meta={
           shown.own
             ? "The end-of-day report of your pods' projects, worst first."
             : "Each project's end-of-day report, worst first."
         }
         actions={
-          canSetUpDayReports ? (
+          canSetUp ? (
             <ReportSetupDialog trigger={<Pill size="sm">Set up a day report</Pill>} />
           ) : undefined
         }
       />
-      <ReportsTabs />
       <PanelState
         isLoading={shown.isLoading}
         error={shown.error}
@@ -81,7 +92,7 @@ export function ReportsHomePage() {
                     to={dailyPath(project.id)}
                     className="inline-flex h-9 items-center rounded-full bg-ink px-4 text-[13px] font-bold text-white no-underline hover:bg-ink-hover"
                   >
-                    Daily
+                    Day reports
                   </Link>
                   <Link
                     to={projectPath(project.id)}
@@ -95,6 +106,6 @@ export function ReportsHomePage() {
           })}
         </ul>
       </PanelState>
-    </>
+    </section>
   );
 }

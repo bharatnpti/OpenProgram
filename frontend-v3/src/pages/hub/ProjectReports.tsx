@@ -1,27 +1,50 @@
 import { useQuery } from "@tanstack/react-query";
 import { useId, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
-import { apiClient } from "../api/client";
-import { useRole } from "../app/role";
-import { PanelState } from "../components/PanelState";
-import { Pill } from "../components/ui/Pill";
-import { ReportHeader } from "../features/daily/ReportHeader";
-import { noDayReportWords } from "../features/daily/reportView";
-import { ReportPreview } from "../features/daily/ReportPreview";
-import { RunHistory } from "../features/daily/RunHistory";
-import { ReportSetupDialog } from "../features/reports/ReportSetupDialog";
-import { ReportsHeader } from "../features/reports/ReportsHeader";
-import { cn } from "../lib/utils";
+import { apiClient } from "../../api/client";
+import { useRole } from "../../app/role";
+import { PanelState } from "../../components/PanelState";
+import { Pill } from "../../components/ui/Pill";
+import { ReportHeader } from "../../features/daily/ReportHeader";
+import { noDayReportWords } from "../../features/daily/reportView";
+import { ReportPreview } from "../../features/daily/ReportPreview";
+import { RunHistory } from "../../features/daily/RunHistory";
+import { TabIntro } from "../../features/hub/TabIntro";
+import { Briefs } from "../../features/reports/Briefs";
+import { ReportSetupDialog } from "../../features/reports/ReportSetupDialog";
+import { cn } from "../../lib/utils";
 
 /**
- * The end-of-day report as its readers get it: drawn as pictures from the report
- * itself, with the text Send now sends one toggle away. A project can have several
- * (the whole project, or one release of it); `?report=` picks one. Every role reads
- * the same report: nothing in it is news to anyone the message reaches.
+ * Project › Reports (`/projects/:projectId/reports`): the project's day
+ * reports, then its weekly briefs. A day report is drawn as pictures from the
+ * report itself, with the text Send now sends one toggle away. A project can
+ * have several (the whole project, or one release of it); `?report=` picks
+ * one. Every reader reads the same report: nothing in it is news to anyone the
+ * message reaches. An executive reads no day report: the briefs only.
  */
-export function DailyPage() {
-  const { projectId = "" } = useParams();
+export function ProjectReports({ projectId }: { projectId: string }) {
+  const { access } = useRole();
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-8">
+      {access.reports.daily ? (
+        <DayReport projectId={projectId} />
+      ) : (
+        <TabIntro tab="reports" meta="This project's briefs, written from the day's facts." />
+      )}
+      {access.coordination.briefs ? (
+        <Briefs
+          kind="weekly_project"
+          scopeId={projectId}
+          title="Briefs for this project"
+          empty="No weekly brief for this project yet. They are written from the week's facts on a schedule."
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function DayReport({ projectId }: { projectId: string }) {
   const [search, setSearch] = useSearchParams();
   const { canSetUpDayReports } = useRole();
   const [showText, setShowText] = useState(false);
@@ -45,8 +68,8 @@ export function DailyPage() {
   const selected = list.find((report) => report.report_id === search.get("report")) ?? list[0];
 
   return (
-    <>
-      <ReportsHeader projectId={projectId} />
+    <section aria-label="Day report">
+      <TabIntro tab="reports" />
       <PanelState
         isLoading={reports.isLoading}
         error={reports.error}
@@ -86,15 +109,24 @@ export function DailyPage() {
                         ? "border-ink bg-ink text-white"
                         : "border-grey-border text-grey-body hover:bg-grey-fill",
                     )}
-                    onClick={() => setSearch({ report: report.report_id }, { replace: true })}
+                    onClick={() =>
+                      setSearch(
+                        (current) => {
+                          // The viewing day and the release are the hub's; keep them.
+                          const next = new URLSearchParams(current);
+                          next.set("report", report.report_id);
+                          return next;
+                        },
+                        { replace: true },
+                      )
+                    }
                   >
                     {report.release_name ?? report.name}
                   </button>
                 ))}
               </nav>
             ) : null}
-            {/* The report's page in the dark theme turns as Overall's does (.op-viz). */}
-            <div className="op-viz grid grid-cols-[minmax(0,1fr)] gap-5">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
               <ReportHeader
                 report={selected}
                 preview={{
@@ -113,6 +145,6 @@ export function DailyPage() {
           </div>
         ) : null}
       </PanelState>
-    </>
+    </section>
   );
 }

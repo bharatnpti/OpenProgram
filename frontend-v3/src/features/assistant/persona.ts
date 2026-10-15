@@ -2,7 +2,7 @@
 // page, and how an answer's sources and a refusal read. Pure, with type imports
 // and pure modules by their .ts path, so `node --test` runs it as written.
 import type { AskSourceResponse } from "../../api/schema";
-import type { Page, PaletteTargets } from "../../app/access";
+import type { PaletteTargets } from "../../app/access";
 import { actionError } from "../../lib/errors.ts";
 import { greetingWord, spaced } from "../../lib/words.ts";
 
@@ -59,38 +59,67 @@ export function assistantGreeting(first: string | null | undefined, now: Date = 
 /** What the page being looked at shows, when it shows one thing. */
 export type AskSubject = { kind: "program" | "project" | "workstream" | "pod"; name: string };
 
+/**
+ * What the screen asks about, which picks the questions: a sidebar page, or in
+ * the Projects hub the tab at All projects (`portfolio` is its date), a
+ * project (`projects`, any tab but Reports) or a pod (`pods`).
+ */
+export type AskPage =
+  | "today"
+  | "checkin"
+  | "requests"
+  | "portfolio"
+  | "projects"
+  | "pods"
+  | "warnings"
+  | "scope"
+  | "reports"
+  | "flow"
+  | "ora"
+  | "people"
+  | "admin";
+
 /** Where the person is: the page, its view, and the one thing it shows. */
 export type AskPlace = {
-  page: Page;
-  /** Reports: "daily" inside a project's day report, "briefs" on the briefs, else null. */
+  page: AskPage;
+  /** Reports: "daily" on a project's day reports, "briefs" on All projects' reports, else null. */
   view: string | null;
   subject: AskSubject | null;
 };
 
-/** Each page's first path segment (app/access.ts keeps the same map; this module stays pure). */
-const PAGES: Record<string, Page> = {
+/** Each sidebar page's first path segment. */
+const PAGES: Record<string, AskPage> = {
   today: "today",
   "check-in": "checkin",
   requests: "requests",
-  portfolio: "portfolio",
-  projects: "projects",
-  pods: "pods",
-  warnings: "warnings",
-  scope: "scope",
-  reports: "reports",
   flow: "flow",
   ora: "ora",
   people: "people",
   admin: "admin",
 };
 
+const ALL_TABS: Record<string, AskPage> = {
+  date: "portfolio",
+  warnings: "warnings",
+  scope: "scope",
+  reports: "reports",
+};
+
 /** The page a path is, with its view; an address no page owns reads as Today. */
 export function placeOf(pathname: string): Omit<AskPlace, "subject"> {
-  const [, first = "", second = "", third = ""] = pathname.split("/");
-  const page = Object.prototype.hasOwnProperty.call(PAGES, first) ? PAGES[first] : "today";
-  if (page === "reports") {
-    return { page, view: second === "briefs" ? "briefs" : third === "daily" ? "daily" : null };
+  const [, first = "", second = "", third = "", fourth = ""] = pathname.split("/");
+  if (first === "portfolio") {
+    const page = ALL_TABS[second] ?? "portfolio";
+    return { page, view: page === "reports" ? "briefs" : null };
   }
+  if (first === "projects") {
+    if (!second) return { page: "projects", view: null };
+    if (third === "pods" && fourth) return { page: "pods", view: null };
+    return third === "reports"
+      ? { page: "reports", view: "daily" }
+      : { page: "projects", view: null };
+  }
+  const page = Object.prototype.hasOwnProperty.call(PAGES, first) ? PAGES[first] : "today";
   return { page, view: null };
 }
 

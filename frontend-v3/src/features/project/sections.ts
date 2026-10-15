@@ -1,8 +1,8 @@
-// The Project page's sections, in one place: Overall's
-// sections and Delivery's project panel merged, date first, then scope, quality,
-// questions and warnings, and the work last. The page draws the sections it has,
-// in this order; a section a role cannot use is not drawn. A new section joins
-// by its key here and one element in pages/ProjectPage.tsx. No imports, so
+// A project's sections, tab by tab, in one place: Overall's sections and
+// Delivery's project panel, each said once, on the tab whose question it
+// answers. A tab draws the sections it has, in this order; a section a role
+// cannot use is not drawn. A new section joins by its key here and one
+// element in its tab's view (pages/hub/Project*.tsx). No imports, so
 // `node --test` runs it.
 
 export type ProjectSection =
@@ -10,48 +10,50 @@ export type ProjectSection =
   | "answer"
   /** The timeline, What changed for the picked row, and why its date moved. */
   | "timeline"
-  /** One line of the planning baseline and Jira hygiene, linking to Scope control. */
-  | "scope"
   /** Requirements by stage. */
   | "requirements"
+  /** Pods, Jira and repositories, people, progress and today's health. */
+  | "work"
+  /** This project's early warnings. */
+  | "warnings"
+  | "questions"
+  /** The planning baseline: what joined after planning, Mark planning complete. */
+  | "baseline"
   /** The gates per requirement. */
   | "gates"
   /** Release readiness, under the gates. */
   | "readiness"
-  | "questions"
-  /** This project's early warnings, linking to Early warnings. */
-  | "warnings"
-  /** Pods, Jira and repositories, people, progress and today's health. */
-  | "work";
+  /** Jira hygiene. */
+  | "hygiene";
 
-export const PROJECT_ORDER: readonly ProjectSection[] = [
-  "answer",
-  "timeline",
-  "scope",
-  "requirements",
-  "gates",
-  "readiness",
-  "questions",
-  "warnings",
-  "work",
-];
+/** Each tab's sections, in the order they are drawn. */
+export const TAB_SECTIONS = {
+  date: ["answer", "timeline", "requirements", "work"],
+  warnings: ["warnings", "questions"],
+  scope: ["baseline", "gates", "readiness", "hygiene"],
+} as const satisfies Record<string, readonly ProjectSection[]>;
+
+export type SectionTab = keyof typeof TAB_SECTIONS;
 
 /** The in-page index: each anchor and its word, in the page's order. */
 export const PROJECT_ANCHORS: readonly { section: ProjectSection; id: string; label: string }[] = [
-  { section: "timeline", id: "timeline", label: "Date" },
-  { section: "scope", id: "scope", label: "Scope" },
+  { section: "timeline", id: "timeline", label: "Timeline" },
   { section: "requirements", id: "stages", label: "Stages" },
-  { section: "gates", id: "gates", label: "Gates" },
-  { section: "questions", id: "questions", label: "Questions" },
-  { section: "warnings", id: "warnings", label: "Warnings" },
   { section: "work", id: "work", label: "Work" },
+  { section: "warnings", id: "warnings", label: "Warnings" },
+  { section: "questions", id: "questions", label: "Questions" },
+  { section: "baseline", id: "baseline", label: "Against the plan" },
+  { section: "gates", id: "gates", label: "Gates" },
+  { section: "readiness", id: "readiness", label: "Readiness" },
+  { section: "hygiene", id: "hygiene", label: "Jira hygiene" },
 ];
 
-/** The sections to draw, in the page's order: those the page has an element for. */
+/** A tab's sections to draw, in its order: those the tab has an element for. */
 export function projectSections<T>(
+  tab: SectionTab,
   elements: Partial<Record<ProjectSection, T | null | false | undefined>>,
 ): { key: ProjectSection; element: T }[] {
-  return PROJECT_ORDER.flatMap((key) => {
+  return TAB_SECTIONS[tab].flatMap((key) => {
     const element = elements[key];
     return element === null || element === false || element === undefined ? [] : [{ key, element }];
   });

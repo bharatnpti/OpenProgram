@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
 import type { DirectoryItemResponse, ScopeDeliveryResponse } from "../../api/schema";
-import { podPath, projectPath } from "../../app/links";
+import { podPath, podTabPath, portfolioPath, projectPath } from "../../app/links";
 import { useRole } from "../../app/role";
 import { PanelState } from "../../components/PanelState";
 import { DateCells } from "../../components/ui/DateStrip";
@@ -27,9 +27,9 @@ export function TodayAnswer({ subject }: { subject: TodaySubject }) {
           >
             See {subject.name}&apos;s timeline and causes →
           </Link>
-          {access.pages.portfolio && subject.scope === "portfolio" ? (
+          {access.hub.tabs.all.includes("date") && subject.scope === "portfolio" ? (
             <Link
-              to="/portfolio"
+              to={portfolioPath("date")}
               className="inline-flex min-h-11 items-center font-bold sm:min-h-0"
             >
               Will we make the date? Every project →
@@ -82,7 +82,7 @@ function PodAnswer({ pod }: { pod: DirectoryItemResponse }) {
           ))}
           <p className="text-[13px]">
             <Link
-              to={podPath(pod.id)}
+              to={parts[0] ? podTabPath(parts[0].project_id, pod.id, "warnings") : podPath(pod.id)}
               className="inline-flex min-h-11 items-center font-bold sm:min-h-0"
             >
               Open {pod.name} →
@@ -94,7 +94,7 @@ function PodAnswer({ pod }: { pod: DirectoryItemResponse }) {
   );
 }
 
-function PodPart({
+export function PodPart({
   scope,
   subject,
   project,

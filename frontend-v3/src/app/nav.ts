@@ -33,29 +33,10 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Delivery",
     items: [
       {
-        to: "/portfolio",
-        page: "portfolio",
-        label: "Will we make the date?",
-        hint: "Every project's dates, worst first",
-      },
-      {
         to: "/projects",
         page: "projects",
         label: "Projects",
-        hint: "Everything about one project",
-      },
-      { to: "/pods", page: "pods", label: "Pods", hint: "One team's day" },
-      {
-        to: "/warnings",
-        page: "warnings",
-        label: "Early warnings",
-        hint: "What Jira and Git say before people do",
-      },
-      {
-        to: "/scope",
-        page: "scope",
-        label: "Scope control",
-        hint: "What joined after planning, and Jira hygiene",
+        hint: "Dates, warnings, scope and reports, for all projects, one or a pod",
       },
     ],
   },
@@ -63,7 +44,6 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "insight",
     label: "Insight",
     items: [
-      { to: "/reports", page: "reports", label: "Reports", hint: "Day reports and briefs" },
       { to: "/flow", page: "flow", label: "Review flow", hint: "Where work waits in review" },
       { to: "/ora", page: "ora", label: ASK_LABEL, hint: "Ask anything in plain words" },
     ],
@@ -90,20 +70,14 @@ export const NAV: NavItem[] = NAV_GROUPS.flatMap((group) => group.items);
  * The groups this role is offered, each with only its offered pages; a group
  * with none is left out. No struck-through item for the rest.
  */
-export function shownGroups(access: Pick<Access, "pages" | "reports">): NavGroup[] {
+export function shownGroups(access: Pick<Access, "pages">): NavGroup[] {
   return NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => access.pages[item.page]).map((item) => shown(item, access)),
+    items: group.items.filter((item) => access.pages[item.page]),
   })).filter((group) => group.items.length > 0);
 }
 
-/** An item as this role reads it: Reports without day reports is the briefs. */
-function shown(item: NavItem, access: Pick<Access, "reports">): NavItem {
-  if (item.page !== "reports" || access.reports.daily) return item;
-  return { ...item, to: "/reports/briefs", hint: "Briefs written from the day's facts" };
-}
-
 /** The destinations this role is offered, flat: the palette's screens. */
-export function shownNav(access: Pick<Access, "pages" | "reports">): NavItem[] {
+export function shownNav(access: Pick<Access, "pages">): NavItem[] {
   return shownGroups(access).flatMap((group) => group.items);
 }

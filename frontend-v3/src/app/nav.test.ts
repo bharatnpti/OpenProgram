@@ -10,12 +10,12 @@ import type { AppRole } from "./roleWords.ts";
 const ROLES: AppRole[] = ["dev", "sm", "po", "mgr", "exec", "admin"];
 const access = (role: AppRole) => accessOf({ lens: [role], chatEnabled: false });
 
-test("the sidebar is four groups, thirteen pages, each with its own address and page", () => {
+test("the sidebar is four groups, eight pages, each with its own address and page", () => {
   assert.deepEqual(
     NAV_GROUPS.map((group) => group.label),
     ["Daily", "Delivery", "Insight", "Setup"],
   );
-  assert.equal(NAV.length, 13);
+  assert.equal(NAV.length, 8);
   assert.equal(new Set(NAV.map((item) => item.to)).size, NAV.length);
   for (const item of NAV) assert.equal(pageOf(item.to), item.page, item.to);
   // No sidebar address is an old one: nothing the nav draws is ever redirected for its role.
@@ -43,7 +43,7 @@ test("⌘K offers the role's own pages, in the sidebar's order, and nothing else
   }
   assert.deepEqual(
     screenRows(shownNav(access("dev"))).map((row) => row.label),
-    ["Today", "Check-in", "Projects", "Pods", "Reports"],
+    ["Today", "Check-in", "Projects"],
   );
 });
 
@@ -61,5 +61,6 @@ test("the past-day picker reaches every page: each keeps the viewing day, Admin 
   }
   // The project and pod pages follow the day like the rest.
   assert.equal(showsCurrentState("/projects/project-checkout"), false);
-  assert.equal(showsCurrentState("/pods/pod-payments"), false);
+  assert.equal(showsCurrentState("/projects/project-checkout/pods/pod-payments/date"), false);
+  assert.equal(showsCurrentState("/portfolio/warnings"), false);
 });

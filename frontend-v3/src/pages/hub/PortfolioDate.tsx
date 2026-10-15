@@ -1,39 +1,41 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import type { PortfolioProjectDto } from "../api/schema";
-import { usePrograms } from "../app/directory";
-import { useRole } from "../app/role";
-import { useViewingDate } from "../app/viewingDate";
-import { PanelState, SectionHeader } from "../components/PanelState";
-import { Pill } from "../components/ui/Pill";
-import { formatTime } from "../lib/format";
-import { BarLegend } from "../features/portfolio/ProjectBar";
-import { ProjectCard } from "../features/portfolio/ProjectCard";
-import { PortfolioTiles } from "../features/portfolio/PortfolioTiles";
-import { usePortfolio } from "../features/portfolio/usePortfolio";
-import { WindowedList } from "../features/portfolio/WindowedList";
+import type { PortfolioProjectDto } from "../../api/schema";
+import { usePrograms } from "../../app/directory";
+import { useRole } from "../../app/role";
+import { useViewingDate } from "../../app/viewingDate";
+import { PanelState } from "../../components/PanelState";
+import { TabIntro } from "../../features/hub/TabIntro";
+import { Pill } from "../../components/ui/Pill";
+import { formatTime } from "../../lib/format";
+import { BarLegend } from "../../features/portfolio/ProjectBar";
+import { ProjectCard } from "../../features/portfolio/ProjectCard";
+import { PortfolioTiles } from "../../features/portfolio/PortfolioTiles";
+import { usePortfolio } from "../../features/portfolio/usePortfolio";
+import { WindowedList } from "../../features/portfolio/WindowedList";
 import {
   asOfWords,
   byProgramme,
   filtersOf,
   programmeLine,
   toggledVerdict,
-} from "../features/portfolio/portfolioWords";
+} from "../../features/portfolio/portfolioWords";
 
 type Row =
   | { kind: "programme"; id: string; name: string; line: string | null; count: number }
   | { kind: "project"; project: PortfolioProjectDto };
 
 /**
- * Will we make the date? (`/portfolio`): every project the person reads, worst
+ * All projects › Will we make the date? (`/portfolio/date`), the landing of
+ * every reader of project lists: every project the person reads, worst
  * first, from the kept forecast rows in one read a page, never a live
  * forecast per project. The count tiles are the filters; search and the
  * programme stay in the URL (`?q=`, `?verdict=`, `?program=`). Programmes group
  * the list for the readers of programmes (manager, executive, admin). Past a
  * hundred projects only the cards near the screen are drawn.
  */
-export function PortfolioPage() {
+export function PortfolioDate() {
   const { canReadPortfolio } = useRole();
   const { chosen, today } = useViewingDate();
   const [search, setSearch] = useSearchParams();
@@ -90,8 +92,8 @@ export function PortfolioPage() {
     .join(" ");
 
   return (
-    <div className="op-viz">
-      <SectionHeader title="Will we make the date?" meta={meta} />
+    <div>
+      <TabIntro tab="date" meta={meta} />
 
       <div className="mb-5 flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1 basis-[240px]">

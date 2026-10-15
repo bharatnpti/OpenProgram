@@ -46,14 +46,20 @@ test("the greeting names the person and the time of day, and no one when nobody 
   assert.equal(assistantGreeting("", evening), "Good evening — what would you like to know?");
 });
 
-test("the page is read from the path, with its view", () => {
+test("the page is read from the path, with its view; in the hub, the level and the tab", () => {
   assert.deepEqual(placeOf("/today"), { page: "today", view: null });
-  assert.deepEqual(placeOf("/reports/p-1/daily"), { page: "reports", view: "daily" });
-  assert.deepEqual(placeOf("/reports"), { page: "reports", view: null });
-  assert.deepEqual(placeOf("/reports/briefs"), { page: "reports", view: "briefs" });
-  assert.deepEqual(placeOf("/warnings"), { page: "warnings", view: null });
   assert.deepEqual(placeOf("/check-in"), { page: "checkin", view: null });
-  assert.deepEqual(placeOf("/pods/x"), { page: "pods", view: null });
+  // All projects: each tab asks its own questions.
+  assert.deepEqual(placeOf("/portfolio/date"), { page: "portfolio", view: null });
+  assert.deepEqual(placeOf("/portfolio/warnings"), { page: "warnings", view: null });
+  assert.deepEqual(placeOf("/portfolio/scope"), { page: "scope", view: null });
+  assert.deepEqual(placeOf("/portfolio/reports"), { page: "reports", view: "briefs" });
+  // A project, its day reports, and a pod of it.
+  assert.deepEqual(placeOf("/projects/p-1/date"), { page: "projects", view: null });
+  assert.deepEqual(placeOf("/projects/p-1/warnings"), { page: "projects", view: null });
+  assert.deepEqual(placeOf("/projects/p-1/reports"), { page: "reports", view: "daily" });
+  assert.deepEqual(placeOf("/projects/p-1/pods/x/warnings"), { page: "pods", view: null });
+  assert.deepEqual(placeOf("/projects"), { page: "projects", view: null });
   assert.deepEqual(placeOf("/somewhere"), { page: "today", view: null });
 });
 

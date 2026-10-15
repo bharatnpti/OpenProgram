@@ -15,6 +15,7 @@ import { RagDot } from "../ui/Bits";
 import {
   askRow,
   directoryRows,
+  hubTabRows,
   matchRows,
   noPodNote,
   ownRows,
@@ -167,6 +168,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
     const found = matchRows(
       [
         ...screenRows(shownNav(roleState.access)),
+        ...hubTabRows(roleState.access.hub.tabs.all),
         ...(asks && ask.key === "ask" ? [ask] : []),
         ...nodes,
         ...(own && !tree.data ? [] : peopleRows(named, peoplePods, targets.person)),

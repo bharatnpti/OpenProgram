@@ -38,8 +38,8 @@ export function ProjectWork({
   namesOnly?: boolean;
 }) {
   const { access } = useRole();
-  // An executive reads every project but no pod: the one role with names kept out.
-  const executive = access.pages.portfolio && !access.pages.pods;
+  // A counts-only reader (an executive) reads every project, but no names.
+  const executive = access.hub.countsOnly;
   const progress = useQuery({
     queryKey: ["project", project?.id ?? "", "progress"],
     queryFn: () => apiClient.projectProgress(project?.id ?? ""),
@@ -82,7 +82,7 @@ export function ProjectWork({
                 <li key={pod.id}>
                   {pod.opens ? (
                     <Link
-                      to={podPath(pod.id)}
+                      to={podPath(pod.id, undefined, project?.id)}
                       className="flex min-h-10 items-center gap-2 rounded-xl px-2 py-1.5 text-[15px] font-bold text-ink no-underline hover:bg-grey-fill"
                     >
                       <RagDot rag={pod.rag} />

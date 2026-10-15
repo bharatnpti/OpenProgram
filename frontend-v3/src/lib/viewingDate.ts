@@ -163,13 +163,16 @@ export function viewingDateNote(pathname: string): string {
   if (showsCurrentState(pathname)) {
     return "Admin always shows the current configuration, and changes here apply now.";
   }
-  if (/^\/reports\/[^/]+\/daily$/.test(pathname)) {
+  if (/^\/projects\/[^/]+\/reports$/.test(pathname)) {
     return "Day reports are built live, so the report below is today's. Nothing can be changed while you look back.";
   }
   if (pathname === "/requests") {
     return "Requests are shown as they are now. Nothing can be changed while you look back.";
   }
-  if (pathname === "/reports/briefs") {
+  if (
+    pathname === "/portfolio/reports" ||
+    /^\/projects\/[^/]+\/pods\/[^/]+\/reports$/.test(pathname)
+  ) {
     return "Briefs are shown as they are now. Nothing can be changed while you look back.";
   }
   if (pathname === "/check-in") {

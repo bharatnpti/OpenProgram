@@ -10,6 +10,7 @@ import { HeaderLogo } from "../components/shell/HeaderLogo";
 import { TabTitle } from "../components/shell/TabTitle";
 import { ViewingDateBanner, ViewingDateControl } from "../components/shell/ViewingDate";
 import { Assistant } from "../features/assistant/Assistant";
+import { parseHub } from "../features/hub/hubPaths";
 import { cn } from "../lib/utils";
 import { usePods, useProjects } from "./directory";
 import { shownGroups } from "./nav";
@@ -172,19 +173,17 @@ export function Layout() {
 function SideNav() {
   const { access } = useRole();
   const { pathname } = useLocation();
-  const [, section, rawId] = pathname.split("/");
-  const id = rawId ? safeDecode(rawId) : "";
+  const hub = parseHub(pathname);
   const projects = useProjects();
   const pods = usePods();
-  const openName = (page: string) => {
-    if (!id) return null;
-    if (page === "projects" && section === "projects") {
-      return projects.data?.find((item) => item.id === id)?.name ?? null;
-    }
-    if (page === "pods" && section === "pods") {
-      return pods.data?.find((item) => item.id === id)?.name ?? null;
-    }
-    return null;
+  // The project open in the hub, and its pod, each one line under Projects.
+  const openNames = (page: string): string[] => {
+    if (page !== "projects" || !hub || hub.place.level === "all") return [];
+    const { place } = hub;
+    const project = projects.data?.find((item) => item.id === place.projectId)?.name;
+    const pod =
+      place.level === "pod" ? pods.data?.find((item) => item.id === place.podId)?.name : undefined;
+    return [project, pod].filter((name): name is string => Boolean(name));
   };
   return (
     <nav aria-label="Main" className="grid gap-5">
@@ -195,7 +194,9 @@ function SideNav() {
           </p>
           <ul className="grid gap-0.5">
             {group.items.map((item) => {
-              const name = openName(item.page);
+              const names = openNames(item.page);
+              // Projects is the hub: it stays lit at every level, All projects included.
+              const lit = item.page === "projects" && hub !== null;
               return (
                 <li key={item.to}>
                   <NavLink
@@ -203,7 +204,7 @@ function SideNav() {
                     className={({ isActive }) =>
                       cn(
                         "relative flex min-h-10 items-center rounded-xl px-3 py-2 text-[14px] font-bold no-underline",
-                        isActive
+                        isActive || lit
                           ? "bg-grey-fill text-ink before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-magenta"
                           : "text-grey-body hover:bg-grey-fill hover:text-ink",
                       )
@@ -211,11 +212,15 @@ function SideNav() {
                   >
                     {item.label}
                   </NavLink>
-                  {name ? (
-                    <p className="truncate py-1 pl-6 pr-2 text-[12.5px] text-grey-secondary">
+                  {names.map((name, index) => (
+                    <p
+                      key={`${index}:${name}`}
+                      className="truncate py-0.5 pr-2 text-[12.5px] text-grey-secondary"
+                      style={{ paddingLeft: `${24 + index * 12}px` }}
+                    >
                       {name}
                     </p>
-                  ) : null}
+                  ))}
                 </li>
               );
             })}
@@ -224,12 +229,4 @@ function SideNav() {
       ))}
     </nav>
   );
-}
-
-function safeDecode(segment: string): string {
-  try {
-    return decodeURIComponent(segment);
-  } catch {
-    return segment;
-  }
 }

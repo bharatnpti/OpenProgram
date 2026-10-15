@@ -70,16 +70,24 @@ const directory = {
   ],
 };
 
-test("for a manager every node opens its Delivery panel, and an empty workstream is left out", () => {
+test("for a manager every node opens in the hub, and an empty workstream is left out", () => {
   const rows = directoryRows(directory, manager);
   assert.deepEqual(
     rows.map((row) => [row.label, row.hint, row.to]),
     [
-      ["Digital Platform Program", "Program", "/portfolio?program=program-platform"],
+      ["Digital Platform Program", "Program", "/portfolio/date?program=program-platform"],
       ["Checkout Revamp", "Project · Digital Platform Program", "/projects/project-checkout"],
       ["Payments API", "Workstream · Checkout Revamp", "/delivery/workstream/ws-payments"],
-      ["Storefront Pod", "Pod · Checkout Revamp", "/pods/pod-storefront"],
-      ["Payments Pod", "Pod · Checkout Revamp", "/pods/pod-payments"],
+      [
+        "Storefront Pod",
+        "Pod · Checkout Revamp",
+        "/projects/project-checkout/pods/pod-storefront/date",
+      ],
+      [
+        "Payments Pod",
+        "Pod · Checkout Revamp",
+        "/projects/project-checkout/pods/pod-payments/date",
+      ],
     ],
   );
 });
@@ -131,8 +139,16 @@ test("a person opens their pod; someone in no pod or with no name is not offered
   assert.deepEqual(
     rows.map((row) => [row.label, row.hint, row.to]),
     [
-      ["Asha Rao", "Person · Payments Pod and 1 more", "/pods/pod-payments"],
-      ["Kai Thompson", "Backend Engineer · Payments Pod", "/pods/pod-payments"],
+      [
+        "Asha Rao",
+        "Person · Payments Pod and 1 more",
+        "/projects/project-checkout/pods/pod-payments/date",
+      ],
+      [
+        "Kai Thompson",
+        "Backend Engineer · Payments Pod",
+        "/projects/project-checkout/pods/pod-payments/date",
+      ],
     ],
   );
 });
@@ -213,9 +229,9 @@ const rowsFor = (role: AppRole) =>
     ...peopleRows(crew, directory.pods, targetsOf(role).person),
   ].map((row) => [row.kind, row.label, row.to]);
 
-test("an executive gets programs, projects and workstreams in Delivery, and no pods or people", () => {
+test("an executive gets programs, projects and workstreams, and no pods or people", () => {
   assert.deepEqual(rowsFor("exec"), [
-    ["program", "Digital Platform Program", "/portfolio?program=program-platform"],
+    ["program", "Digital Platform Program", "/portfolio/date?program=program-platform"],
     ["project", "Checkout Revamp", "/projects/project-checkout"],
     ["workstream", "Payments API", "/delivery/workstream/ws-payments"],
   ]);
@@ -239,10 +255,20 @@ test("a developer's palette lists their project and own pod; a neighbour's pod o
   assert.deepEqual(ownFor("dev", developerTree), [
     // No colour for the project, as the navigator draws none: not a grey "unknown".
     ["project", "Checkout Revamp", "/projects/project-checkout", { kind: "plain" }],
-    ["pod", "Payments Pod", "/pods/pod-payments", status("danger", "Off track")],
+    [
+      "pod",
+      "Payments Pod",
+      "/projects/project-checkout/pods/pod-payments/date",
+      status("danger", "Off track"),
+    ],
     // Their pod's people, whose check-ins are on that pod's panel.
-    ["person", "Asha Rao", "/pods/pod-payments", { kind: "person" }],
-    ["person", "Kai Thompson", "/pods/pod-payments", { kind: "person" }],
+    ["person", "Asha Rao", "/projects/project-checkout/pods/pod-payments/date", { kind: "person" }],
+    [
+      "person",
+      "Kai Thompson",
+      "/projects/project-checkout/pods/pod-payments/date",
+      { kind: "person" },
+    ],
   ]);
 });
 
@@ -250,11 +276,31 @@ test("a scrum master's palette lists their projects and every pod; people only i
   assert.deepEqual(ownFor("sm", scrumMasterTree), [
     ["project", "Checkout Revamp", "/projects/project-checkout", status("danger", "Off track")],
     ["project", "Identity Platform", "/projects/project-identity", status("warning", "At risk")],
-    ["pod", "Payments Pod", "/pods/pod-payments", status("danger", "Off track")],
-    ["pod", "Storefront Pod", "/pods/pod-storefront", status("success", "On track")],
-    ["pod", "Identity Pod", "/pods/pod-identity", status("warning", "At risk")],
-    ["person", "Asha Rao", "/pods/pod-payments", { kind: "person" }],
-    ["person", "Kai Thompson", "/pods/pod-payments", { kind: "person" }],
+    [
+      "pod",
+      "Payments Pod",
+      "/projects/project-checkout/pods/pod-payments/date",
+      status("danger", "Off track"),
+    ],
+    [
+      "pod",
+      "Storefront Pod",
+      "/projects/project-checkout/pods/pod-storefront/date",
+      status("success", "On track"),
+    ],
+    [
+      "pod",
+      "Identity Pod",
+      "/projects/project-identity/pods/pod-identity/date",
+      status("warning", "At risk"),
+    ],
+    ["person", "Asha Rao", "/projects/project-checkout/pods/pod-payments/date", { kind: "person" }],
+    [
+      "person",
+      "Kai Thompson",
+      "/projects/project-checkout/pods/pod-payments/date",
+      { kind: "person" },
+    ],
   ]);
 });
 
