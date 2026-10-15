@@ -3,21 +3,9 @@
 // and oldest warning first. Type imports, and runtime imports by their .ts
 // path, so `node --test` runs it as written.
 import type { PortfolioWarningsResponse, Rag, WarningItemDto, WarningKind } from "../../api/schema";
-import { ownerSourceWords } from "../../lib/checkinWords.ts";
 import { plural } from "../../lib/words.ts";
 
-/**
- * What the owner last said in their own status, where the reader sees the
- * owner (the server leaves it out for a reader who sees the team instead), and
- * the pods the warning sits in.
- */
-type OwnerSays = { text: string; source?: string | null; on?: string | null };
-export type ListedWarning = WarningItemDto & {
-  pods?: { id: string; name: string }[];
-  owner_says?: OwnerSays | null;
-};
-
-export type ProjectRow = ListedWarning & { group: WarningKind };
+export type ProjectRow = WarningItemDto & { group: WarningKind };
 
 export type ProjectWarnings = {
   projectId: string;
@@ -37,7 +25,7 @@ export function byProject(view: Pick<PortfolioWarningsResponse, "groups">): Proj
   const projects = new Map<string, ProjectWarnings>();
   for (const group of view.groups) {
     if (group.counts_only) continue;
-    for (const item of group.items as ListedWarning[]) {
+    for (const item of group.items) {
       let project = projects.get(item.project_id);
       if (!project) {
         project = {
@@ -87,20 +75,6 @@ export const KIND_WORDS: Record<WarningKind, string> = {
 /** Drift: what Jira and Git say against what was reported, or against each other. */
 export function isDrift(kind: WarningKind): boolean {
   return kind === "tools_disagree" || kind === "done_in_code";
-}
-
-/**
- * What the owner says, in their own words where they replied: "Noah says:
- * waiting on finance (replied)". Null where the reader sees no owner.
- */
-export function ownerSaysLine(item: Pick<ListedWarning, "owner" | "owner_says">): string | null {
-  const said = item.owner_says?.text?.trim();
-  if (!said || !item.owner) return null;
-  const first = item.owner.split(" ")[0] || item.owner;
-  const how = item.owner_says?.source
-    ? ownerSourceWords(item.owner_says.source as Parameters<typeof ownerSourceWords>[0])
-    : null;
-  return how ? `${first} says: ${said} (${how})` : `${first} says: ${said}`;
 }
 
 /** "3 warnings", a project's count in its heading. */

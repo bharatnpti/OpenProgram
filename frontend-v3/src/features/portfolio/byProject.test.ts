@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import type { WarningGroupDto, WarningItemDto } from "../../api/schema";
-import { byProject, countedApart, isDrift, ownerSaysLine, projectCount } from "./byProject.ts";
+import { byProject, countedApart, isDrift, projectCount } from "./byProject.ts";
 
 const item = (overrides: Partial<WarningItemDto> = {}): WarningItemDto => ({
   id: "i",
@@ -20,6 +20,8 @@ const item = (overrides: Partial<WarningItemDto> = {}): WarningItemDto => ({
   severity: "amber",
   evidence_url: null,
   watermelon: false,
+  pods: [],
+  owner_says: null,
   ...overrides,
 });
 
@@ -82,24 +84,29 @@ describe("warnings by project", () => {
   });
 });
 
-describe("what the owner says", () => {
-  test("their first name, their words and how they said them", () => {
-    assert.equal(
-      ownerSaysLine({
-        owner: "Noah Weber",
-        owner_says: { text: "Waiting on finance", source: "confirmed", on: "2026-10-14" },
-      }),
-      "Noah says: Waiting on finance (replied)",
-    );
-    assert.equal(
-      ownerSaysLine({ owner: "Noah Weber", owner_says: { text: "Waiting on finance" } }),
-      "Noah says: Waiting on finance",
-    );
-  });
-
-  test("nothing where the reader sees no owner, or the owner said nothing", () => {
-    assert.equal(ownerSaysLine({ owner: null, owner_says: { text: "x" } }), null);
-    assert.equal(ownerSaysLine({ owner: "Noah Weber", owner_says: null }), null);
-    assert.equal(ownerSaysLine({ owner: "Noah Weber", owner_says: { text: "  " } }), null);
+describe("what the owner says, by project", () => {
+  test("each row keeps the owner's words and the pods the read sent, for the shared fold", () => {
+    const says = { text: "Waiting on finance", source: "confirmed" as const, on: "2026-10-14" };
+    const [project] = byProject({
+      groups: [
+        group({
+          kind: "review_stuck",
+          items: [
+            item({
+              id: "a",
+              owner: "Noah Weber",
+              owner_says: says,
+              pods: [{ id: "pod-pay", name: "Payments Pod" }],
+            }),
+            item({ id: "b", owner: null, owner_team: "Payments Pod" }),
+          ],
+        }),
+      ],
+    });
+    assert.deepEqual(project.items.find((row) => row.id === "a")?.owner_says, says);
+    assert.deepEqual(project.items.find((row) => row.id === "a")?.pods, [
+      { id: "pod-pay", name: "Payments Pod" },
+    ]);
+    assert.equal(project.items.find((row) => row.id === "b")?.owner_says, null);
   });
 });

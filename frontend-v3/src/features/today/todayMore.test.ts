@@ -50,6 +50,8 @@ const item = (overrides: Partial<WarningItemDto>): WarningItemDto => ({
   severity: "amber",
   evidence_url: null,
   watermelon: false,
+  pods: [],
+  owner_says: null,
   ...overrides,
 });
 

@@ -5,13 +5,14 @@ import type { PortfolioWarningsResponse } from "../../api/schema";
 import { RagDot } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
 import { projectTabPath } from "../../app/links";
+import { ItemPods, OwnerSaysFold } from "../warnings/WarningGroups";
+import { WARNING_LINKS } from "../warnings/warningLinks";
 import { ageWords, itemLine, ownerWords } from "../warnings/warningWords";
 import {
   byProject,
   countedApart,
   isDrift,
   KIND_WORDS,
-  ownerSaysLine,
   projectCount,
   type ProjectRow,
 } from "./byProject";
@@ -98,8 +99,6 @@ function ProjectWarningRow({
   item: ProjectRow;
   seenSince: string | null | undefined;
 }) {
-  const says = ownerSaysLine(item);
-  const pods = (item.pods ?? []).map((pod) => pod.name).join(", ");
   return (
     <li className="flex min-w-0 items-start gap-3 border-t border-grey-border py-3 first:border-t-0">
       <RagDot rag={item.severity} className="mt-1.5" />
@@ -127,11 +126,11 @@ function ProjectWarningRow({
           ) : null}
           <span>
             {ownerWords(item, item.group)}
-            {pods ? ` · ${pods}` : ""}
+            <ItemPods item={item} links={WARNING_LINKS} />
             {item.watermelon ? " · owner says on track" : ""}
           </span>
         </p>
-        {says ? <p className="mt-0.5 text-[12px] text-grey-body">{says}</p> : null}
+        <OwnerSaysFold item={item} />
       </div>
       <span className="flex-none text-right text-[12px] font-bold text-grey-secondary tabular-nums">
         {ageWords(item, seenSince)}

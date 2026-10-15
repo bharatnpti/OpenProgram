@@ -2,9 +2,10 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import type { WarningGroupDto, WarningItemDto } from "../../api/schema";
-import { podTabPath, projectTabPath } from "../../app/links";
+import { useRole } from "../../app/role";
 import { RagDot } from "../../components/ui/Bits";
 import { VizPanel } from "../portfolio/VizPanel";
+import { WARNING_LINKS, type WarningLinks } from "./warningLinks";
 import {
   ageWords,
   emptyWords,
@@ -18,18 +19,6 @@ import {
 /** The level a list of warnings is read at: what each row leaves out as said already. */
 export type WarningScope = "all" | "project" | "pod";
 
-/** Where an item's project, and its pod, open: their own early warnings. */
-export type WarningLinks = {
-  project: (item: WarningItemDto) => string;
-  /** Left out: the pods are named, not linked. */
-  pod?: (item: WarningItemDto, podId: string) => string;
-};
-
-const DEFAULT_LINKS: WarningLinks = {
-  project: (item) => projectTabPath(item.project_id, "warnings"),
-  pod: (item, podId) => podTabPath(item.project_id, podId, "warnings"),
-};
-
 /**
  * One kind of warning: its count, and its items oldest first, five then all.
  * Each item is the work item's key, how old it is, one line, who acts on it and
@@ -42,7 +31,7 @@ export function WarningGroup({
   group,
   seenSince,
   scope = "all",
-  links = DEFAULT_LINKS,
+  links = WARNING_LINKS,
 }: {
   group: WarningGroupDto;
   seenSince: string | null | undefined;
@@ -115,7 +104,6 @@ function WarningRow({
   scope: WarningScope;
   links: WarningLinks;
 }) {
-  const says = ownerSays(item);
   return (
     <li className="flex min-w-0 items-start gap-3 border-t border-grey-border py-3 first:border-t-0">
       <RagDot rag={item.severity} className="mt-1.5" />
@@ -145,17 +133,7 @@ function WarningRow({
           ) : null}
           {item.watermelon ? " · owner says on track" : ""}
         </p>
-        {says ? (
-          <details className="mt-0.5">
-            <summary className="cursor-pointer list-none text-[12.5px] font-bold text-grey-body underline underline-offset-2 max-sm:inline-flex max-sm:min-h-11 max-sm:items-center [&::-webkit-details-marker]:hidden">
-              {says.title}
-            </summary>
-            <p className="mt-1.5 rounded-xl bg-grey-fill px-2.5 py-2 text-[12.5px] text-grey-body break-words">
-              {says.text}
-              <span className="mt-1 block text-[11.5px] text-grey-secondary">{says.meta}</span>
-            </p>
-          </details>
-        ) : null}
+        <OwnerSaysFold item={item} />
       </div>
       <span className="flex-none text-right text-[12px] font-bold text-grey-secondary tabular-nums">
         {ageWords(item, seenSince)}
@@ -165,11 +143,34 @@ function WarningRow({
 }
 
 /**
+ * What the owner last said, folded under a warning: "What Ben says", their
+ * words, and where and when they came from. Drawn only where the read sends
+ * the owner's words, which it does only to a reader who sees the owner's name;
+ * a reader who sees counts and teams never gets the fold, whatever comes back.
+ */
+export function OwnerSaysFold({ item }: { item: WarningItemDto }) {
+  const { access } = useRole();
+  const says = access.hub.countsOnly ? null : ownerSays(item);
+  if (!says) return null;
+  return (
+    <details className="mt-0.5">
+      <summary className="cursor-pointer list-none text-[12.5px] font-bold text-grey-body underline underline-offset-2 max-sm:inline-flex max-sm:min-h-11 max-sm:items-center [&::-webkit-details-marker]:hidden">
+        {says.title}
+      </summary>
+      <p className="mt-1.5 rounded-xl bg-grey-fill px-2.5 py-2 text-[12.5px] text-grey-body break-words">
+        {says.text}
+        <span className="mt-1 block text-[11.5px] text-grey-secondary">{says.meta}</span>
+      </p>
+    </details>
+  );
+}
+
+/**
  * The pods an item sits in, after who acts on it: each a link to the pod's own
  * warnings where the page offers one, else its name. The owner's team is the
  * same pod more often than not, and is then not said twice.
  */
-function ItemPods({ item, links }: { item: WarningItemDto; links: WarningLinks }) {
+export function ItemPods({ item, links }: { item: WarningItemDto; links: WarningLinks }) {
   const pods = item.pods.filter((pod) => pod.name !== item.owner_team);
   if (pods.length === 0) return null;
   const toPod = links.pod;
