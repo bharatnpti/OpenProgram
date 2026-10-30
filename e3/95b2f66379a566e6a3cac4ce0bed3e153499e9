@@ -8,6 +8,7 @@ backend/core/application/status_collector.py
   s_583cfb083da3e8::t_db23eb5ea86138 168-170,174-176,188-190,2049,2603,4884-4890
 backend/core/application/ask_service.py
   s_583cfb083da3e8::t_db23eb5ea86138 2205,2208-2209,2213-2214,2469
+  s_d27f8ef4bd0971::t_12d5881a1d743f 2241
 backend/infra/adapters/llm/guard.py
   s_583cfb083da3e8::t_d0c6606a68f132 138
 backend/tests/unit/test_status_parsing.py
@@ -34,6 +35,14 @@ backend/tests/unit/test_ask_service.py
       "agent_id": {
         "tool": "claude",
         "id": "a28600a8-e1a7-4d8a-ac17-9fde5251d793",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_d27f8ef4bd0971": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d63d461a-e54f-4a30-80ef-f72358c9241a",
         "model": "claude-opus-5-5"
       },
       "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
