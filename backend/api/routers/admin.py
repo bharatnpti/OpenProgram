@@ -14,10 +14,9 @@ from api.dtos import (
     WorkflowDispatchResponse,
 )
 from core.application.authorization import AuthorizationPolicy, Capability
-from core.application.config_service import ConfigService
+from core.application.config_service import ConfigService, ConfigValidationError
 from core.domain.auth import Principal
 from core.domain.errors import AuthorizationDenied, GraphNotFound
-from core.domain.graph import NodeKind
 from core.domain.workflows import DeveloperCheckinDispatch, SyncDispatchInput
 from infra.registry import ServiceRegistry
 
@@ -32,7 +31,7 @@ async def dispatch_checkin(
     config_service: Annotated[ConfigService, Depends(get_config_service)],
 ) -> WorkflowDispatchResponse:
     _ensure_admin_dispatch(principal)
-    await _ensure_configured_developer(config_service, request.tenant_id, request.developer_id)
+    await _ensure_checkin_target(config_service, request)
     workflow_id = await registry.workflow_scheduler().dispatch_developer_checkin(
         DeveloperCheckinDispatch(
             tenant_id=request.tenant_id,
@@ -144,12 +143,15 @@ def _ensure_admin_dispatch(principal: Principal) -> None:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
-async def _ensure_configured_developer(
+async def _ensure_checkin_target(
     service: ConfigService,
-    tenant_id: str,
-    developer_id: str,
+    request: CheckinDispatchRequest,
 ) -> None:
     try:
-        await service.get_node(tenant_id, developer_id, NodeKind.DEVELOPER)
+        await service.ensure_member_chat_id(
+            request.tenant_id, request.developer_id, request.chat_external_id
+        )
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConfigValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

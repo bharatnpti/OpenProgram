@@ -45,12 +45,10 @@ Feature: Duplicate replies and invalid simulator IDs
     And the simulator message count is 0
 
   @ms_e2e_023
-  Scenario: Bad chat_external_id does not corrupt member status
+  Scenario: Bad chat_external_id is refused before any DM is sent
     Given the mock Slack simulator stack is running
     And a configured member "U1001" named "Asha Rao" with chat id "U1001"
     And a configured member "U1003" named "Priya Nair" with chat id "U1003"
     When I dispatch a check-in for member "U1003" with chat id "U1001"
-    Then the dispatch response has status code 200
-    When I submit a reply to the bot message for "U1001" with text "Wrong-target reply."
-    Then developer "U1003" should have a confirmed status
-    And developer "U1001" should not have a confirmed status
+    Then the dispatch response has status code 400
+    And the simulator message count is 0
