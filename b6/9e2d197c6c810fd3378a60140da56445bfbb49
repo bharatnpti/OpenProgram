@@ -1,0 +1,87 @@
+backend/core/application/outbound_text.py
+  s_583cfb083da3e8::t_29878db09e15d4 1-44
+backend/infra/adapters/chat/mock_slack.py
+  s_583cfb083da3e8::t_15dfafe1fd2cba 369-370
+  s_583cfb083da3e8::t_eefe710cb1c73e 15,374
+backend/core/domain/errors.py
+  s_583cfb083da3e8::t_3cb0a3bde031bf 43-58
+backend/infra/adapters/llm/litellm_provider.py
+  s_583cfb083da3e8::t_60c9c935f47f67 26,172-173,179-180,206-207
+backend/infra/registry.py
+  s_583cfb083da3e8::t_e5cb013eb4b529 140,344-347,1051-1052,1054-1058,1544-1547
+  s_583cfb083da3e8::t_f8328915c040cf 132
+backend/core/application/status_parsing.py
+  s_583cfb083da3e8::t_b14820baa87fd2 13,35-37,410,419-426
+  s_583cfb083da3e8::t_864ac9208a5d9d 427-428
+backend/core/application/cross_person_service.py
+  s_583cfb083da3e8::t_6fdf0668efce46 22
+  s_583cfb083da3e8::t_171a316e9cb2df 1098-1099
+backend/tests/unit/test_connections.py
+  s_583cfb083da3e8::t_137e0151a68e82 362
+  s_583cfb083da3e8::t_7ef5d5f5d46d70 452-480,481-553
+  s_583cfb083da3e8::t_654b862454d49f 37
+  s_583cfb083da3e8::t_5d846855753c3a 554-555
+backend/tests/unit/test_guardrails.py
+  s_583cfb083da3e8::t_40d5aa8530f329 147,205,237,325-327
+  s_583cfb083da3e8::t_c2e5080fc2fee9 1-135,137-146,148-204,206-236,238-324,328-441
+  s_583cfb083da3e8::t_faf412c017f1c6 136
+backend/core/application/agents/tool_loop.py
+  s_583cfb083da3e8::t_22b5e468b445af 46-50,109-111,123-152,160-163
+docs/guardrails.md
+  s_583cfb083da3e8::t_0f597f64f3e05d 1-23,25-33,35-38,40,42-52,54-77
+  s_583cfb083da3e8::t_aa0010990c0daa 24,39,53
+  s_583cfb083da3e8::t_4301fcd2966ccb 41
+.env.example
+  s_583cfb083da3e8::t_32f50365744445 72-76
+backend/config/settings.py
+  s_583cfb083da3e8::t_f3c88d1270c461 250-256
+  s_583cfb083da3e8::t_6d7eed1e931e04 229-232
+  s_583cfb083da3e8::t_728cb77702e0dd 703-705,709-712
+AGENTS.md
+  s_583cfb083da3e8::t_f8dd13f3bc8990 13-15
+backend/infra/adapters/llm/guard.py
+  s_583cfb083da3e8::t_c828ea333ad201 20,84,131
+  s_583cfb083da3e8::t_69ec4877c27e92 1-19,21-83,85-130,132-140,142
+backend/api/routers/admin.py
+  s_583cfb083da3e8::t_b6cf6e567b339e 34,56,79,101,140,145-151
+backend/core/application/status_collector.py
+  s_583cfb083da3e8::t_2e10a4a67e8310 4868-4875
+  s_583cfb083da3e8::t_6fdf0668efce46 52
+backend/infra/adapters/chat/send_cap.py
+  s_583cfb083da3e8::t_7d1edb091fcfc1 1-88
+backend/infra/adapters/chat/slack.py
+  s_583cfb083da3e8::t_eefe710cb1c73e 17,19,87-88,108,112-114
+backend/infra/adapters/catalog.py
+  s_583cfb083da3e8::t_f8328915c040cf 341
+  s_583cfb083da3e8::t_a415c2bd490535 28,114,152-157,348-352,356-360
+  s_583cfb083da3e8::t_e5cb013eb4b529 71-76
+  s_583cfb083da3e8::t_9493b4b2d9e29b 149-151
+  s_583cfb083da3e8::t_d48a5187c5d7f6 361-362
+  s_583cfb083da3e8::t_ff41ab031b6e55 123,148
+README.md
+  s_583cfb083da3e8::t_f8dd13f3bc8990 16
+backend/core/application/connection_service.py
+  s_583cfb083da3e8::t_7c1c8fbc15a31e 186,362
+  s_583cfb083da3e8::t_dfff5aabe6f7e7 363-387
+backend/api/routers/ask.py
+  s_583cfb083da3e8::t_612eda422cecfe 17,35-40,42-48
+backend/infra/adapters/chat/slack_text.py
+  s_583cfb083da3e8::t_001aed759d2f53 15-18,27-36
+  s_583cfb083da3e8::t_0812c5da9f33ba 37-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b69e2d197c6c810fd3378a60140da56445bfbb49",
+  "prompts": {},
+  "sessions": {
+    "s_583cfb083da3e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a28600a8-e1a7-4d8a-ac17-9fde5251d793",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
