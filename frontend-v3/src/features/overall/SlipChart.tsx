@@ -1,5 +1,5 @@
 import type { ScopeDeliveryResponse } from "../../api/schema";
-import { PanelState, SectionHeader } from "../../components/PanelState";
+import { PanelState } from "../../components/PanelState";
 import { counted, forecastTone } from "../../components/ui/dateStripWords";
 import { formatDay } from "../../lib/format";
 import { readState } from "../../lib/readState";
@@ -10,6 +10,7 @@ import {
   slipDrawable,
   slipFinding,
   slipGeometry,
+  rebuiltNote,
   slipRecord,
   type Phrase,
 } from "./slip";
@@ -17,13 +18,14 @@ import { Legend, LineKey, Swatch, VizCard } from "./viz";
 import { HATCH, SVG_TEXT } from "./vizStyles";
 
 /**
- * O1, "How the date moved": the committed date as a step line, numbered where
- * it was set and moved, over the history forecast's 50% to 85% range as it
- * stood each day. It replaces the "How the date moved" table; its keys say each
- * change in words. Until the date moves or the forecast has history it is one
- * line: the date and why.
+ * The project row's "Band over time" detail, opened from the Timeline: the
+ * committed date as a step line, numbered where it was set and moved, over the
+ * history forecast's 50% to 85% range as it stood each day. The Timeline says
+ * the committed date's moves as ticks and the waterfall says how the band
+ * moved; this is the daily band for whoever wants it, one level down. Until the
+ * date moves or the forecast has history it is one line: the date and why.
  */
-export function SlipSection({ projectId, releaseId }: { projectId: string; releaseId: string }) {
+export function BandOverTime({ projectId, releaseId }: { projectId: string; releaseId: string }) {
   const delivery = useDelivery(projectId);
   const history = useForecastHistory(projectId, releaseId || undefined);
   const data = delivery.query.data;
@@ -32,21 +34,14 @@ export function SlipSection({ projectId, releaseId }: { projectId: string; relea
     : data?.project;
 
   return (
-    <section aria-labelledby="o1-h">
-      <SectionHeader
-        id="o1-h"
-        title="How the date moved"
-        meta="The committed date, and the forecast as it stood each day"
-      />
-      <PanelState
-        {...readState(history.query, delivery.query)}
-        onRetry={() => void history.query.refetch()}
-      >
-        {scope && history.query.data ? (
-          <SlipCard scope={scope} days={history.query.data.days} />
-        ) : null}
-      </PanelState>
-    </section>
+    <PanelState
+      {...readState(history.query, delivery.query)}
+      onRetry={() => void history.query.refetch()}
+    >
+      {scope && history.query.data ? (
+        <SlipCard scope={scope} days={history.query.data.days} />
+      ) : null}
+    </PanelState>
   );
 }
 
@@ -68,7 +63,7 @@ function SlipCard({
   days,
 }: {
   scope: ScopeDeliveryResponse;
-  days: { day: string; p50: string | null; p85: string | null }[];
+  days: { day: string; p50: string | null; p85: string | null; reconstructed?: boolean }[];
 }) {
   // The read's own last day: the day it was asked for, by the server's clock.
   const today = days[days.length - 1]?.day ?? "";
@@ -91,6 +86,7 @@ function SlipCard({
   }
   const g = slipGeometry(changes, days, today);
   const keys = changeKeys(changes);
+  const rebuilt = g.bands.length > 0 ? rebuiltNote(days) : null;
   const band =
     BAND[
       counted(scope) ? forecastTone(scope.target, scope.history.p50, scope.history.p85) : "neutral"
@@ -159,7 +155,7 @@ function SlipCard({
                   stroke={band.stroke}
                   strokeOpacity={0.6}
                 >
-                  <title>Forecast range, 50% to 85% likely, as it stood each day</title>
+                  <title>The likely finish as it stood each day</title>
                 </polygon>
               ))}
               {g.bandStart ? (
@@ -168,7 +164,7 @@ function SlipCard({
                   y={Math.max(g.bandStart.y - 6, top - 2)}
                   style={{ ...SVG_TEXT.amber, fill: band.stroke }}
                 >
-                  Forecast from {formatDay(g.bandStart.day)}
+                  Likely date from {formatDay(g.bandStart.day)}
                 </text>
               ) : null}
               {g.noDate.map((span) => (
@@ -267,7 +263,7 @@ function SlipCard({
                 <Swatch
                   style={{ background: band.fill, boxShadow: `inset 0 0 0 1.5px ${band.stroke}` }}
                 />
-                Forecast, 50% to 85% likely
+                Likely finish
               </span>
             ) : null}
             {g.noDate.length > 0 ? (
@@ -277,6 +273,7 @@ function SlipCard({
               </span>
             ) : null}
           </Legend>
+          {rebuilt ? <p className="text-[12px] text-grey-secondary">{rebuilt}</p> : null}
         </div>
       </div>
     </VizCard>

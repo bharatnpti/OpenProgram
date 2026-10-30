@@ -23,11 +23,22 @@ import type {
   ReadinessRunResponse,
   ReadinessSettingsDto,
   ReadinessSettingsUpdateRequest,
+  HygieneBoardResponse,
+  HygieneConfigResponse,
+  HygieneFindingResponse,
+  HygieneHistoryResponse,
+  HygienePreviewResponse,
+  HygieneRuleDto,
+  HygieneRunResponse,
+  HygieneSettingsDto,
   CommitmentResponse,
   DeliveryDateRequest,
   PodDeliveryResponse,
   ProjectDeliveryResponse,
   ForecastHistoryResponse,
+  PlanningBaselineResponse,
+  PlanningBaselinesResponse,
+  PlanningCompleteRequest,
   ReleaseCandidateResponse,
   ReleaseRequest,
   ReleaseResponse,
@@ -78,9 +89,12 @@ import type {
   IdentityLinkUpdateRequest,
   IdentityAutoMatchResponse,
   UnmappedMemberResponse,
+  IdentityCountsResponse,
   WritebackConsentResponse,
   WritebackConsentUpdateRequest,
   TenantWritebackResponse,
+  CheckinFillResponse,
+  CheckinFillUpdateRequest,
   JiraWritesResponse,
   JiraWritesUpdateRequest,
   DeliveryTreeResponse,
@@ -93,6 +107,15 @@ import type {
   HealthResponse,
   MemberTaskAssignmentRequest,
   PodMemberLinkRequest,
+  AcceptProfilesRequest,
+  AcceptProfilesResponse,
+  MemberProfileResponse,
+  MembershipProfileResponse,
+  PodProfilesResponse,
+  ProfileResponse,
+  ProfileReviewResponse,
+  ProfileUpdateRequest,
+  SetProfileRequest,
   PodBlockersResponse,
   PodCheckinsResponse,
   PodRollupResponse,
@@ -104,6 +127,11 @@ import type {
   PortfolioFeedResponse,
   PortfolioFlowResponse,
   PortfolioRisksResponse,
+  PortfolioDeliveryResponse,
+  PortfolioScopeResponse,
+  PortfolioWarningsResponse,
+  PortfolioSort,
+  VerdictFilter,
   ProgramProjectLinkRequest,
   ProgramTreeResponse,
   ProjectProgressResponse,
@@ -122,6 +150,19 @@ import type {
   SyncStatusResponse,
   BrandingResponse,
   TenantLogoUploadRequest,
+  TimelineResponse,
+  DeliveryImpactResponse,
+  PeriodKind,
+  Measure,
+  ConversationResponse,
+  JiraChangeAnswerRequest,
+  JiraChangeAnswerResponse,
+  JiraChangesResponse,
+  ProjectAsksResponse,
+  TodayCountsResponse,
+  ProjectCheckinCoverageResponse,
+  RequestCountsResponse,
+  RequestTrailResponse,
 } from "./schema";
 import { learnServerToday, withViewingAsOf } from "./asOf";
 import { readNdjson } from "./ndjson";
@@ -356,6 +397,56 @@ export const apiClient = {
     requestJson<ProjectRisksResponse>(withQuery(`/projects/${projectId}/risks`, { as_of: asOf })),
   portfolioRisks: (asOf?: string) =>
     requestJson<PortfolioRisksResponse>(withQuery("/portfolio/risks", { as_of: asOf })),
+  /** Will we make the date?, from the kept forecast rows: one page, worst first. */
+  portfolioDelivery: (query: {
+    q?: string;
+    verdicts?: readonly VerdictFilter[];
+    programId?: string | null;
+    sort?: PortfolioSort;
+    offset?: number;
+    limit?: number;
+  }) => {
+    const search = new URLSearchParams();
+    if (query.q) search.set("q", query.q);
+    (query.verdicts ?? []).forEach((verdict) => search.append("verdict", verdict));
+    if (query.programId) search.set("program_id", query.programId);
+    if (query.sort) search.set("sort", query.sort);
+    if (query.offset) search.set("offset", String(query.offset));
+    if (query.limit) search.set("limit", String(query.limit));
+    const text = search.toString();
+    return requestJson<PortfolioDeliveryResponse>(`/portfolio/delivery${text ? `?${text}` : ""}`);
+  },
+  /**
+   * Scope control: each project against its plan, and the open Jira hygiene findings.
+   * With `podId`, one pod's part: its requirements against the plan, its findings.
+   */
+  portfolioScope: (
+    query: {
+      q?: string;
+      programId?: string | null;
+      projectId?: string | null;
+      podId?: string | null;
+    } = {},
+  ) =>
+    requestJson<PortfolioScopeResponse>(
+      withQuery("/portfolio/scope", {
+        q: query.q,
+        program_id: query.programId ?? undefined,
+        project_id: query.projectId ?? undefined,
+        pod_id: query.podId ?? undefined,
+      }),
+    ),
+  /**
+   * Early warnings across the readable projects, grouped by kind. With `podId`, one
+   * pod's part (a developer reads their own pod's).
+   */
+  portfolioWarnings: (query: { projectId?: string | null; podId?: string | null } = {}) =>
+    requestJson<PortfolioWarningsResponse>(
+      withQuery("/portfolio/warnings", {
+        project_id: query.projectId ?? undefined,
+        pod_id: query.podId ?? undefined,
+      }),
+    ),
   portfolioCrossPersonRequests: (status: CrossPersonRequestStatus | null = "open") =>
     requestJson<CrossPersonRequestsResponse>(
       withQuery("/portfolio/cross-person-requests", {
@@ -372,6 +463,22 @@ export const apiClient = {
       method: "POST",
       body: input,
     }),
+  /** What happened to one ask, and what is due; dated by the viewing day. */
+  crossPersonRequestTrail: (requestId: string) =>
+    requestJson<RequestTrailResponse>(
+      `/cross-person-requests/${encodeURIComponent(requestId)}/trail`,
+    ),
+  /** The requests board as counts: an executive's whole view of it. */
+  crossPersonRequestCounts: () =>
+    requestJson<RequestCountsResponse>("/cross-person-requests/counts"),
+  /** The asks resolved in the days up to the viewing day, newest first. */
+  resolvedCrossPersonRequests: (days?: number) =>
+    requestJson<CrossPersonRequestsResponse>(
+      withQuery("/cross-person-requests/resolved", { days: days?.toString() }),
+    ),
+  /** The day's check-ins across a project's people, as counts. */
+  projectCheckinCoverage: (projectId: string) =>
+    requestJson<ProjectCheckinCoverageResponse>(`/projects/${projectId}/checkin-coverage`),
   ask: (input: AskRequest) =>
     requestJson<AskResponse>("/ask", {
       method: "POST",
@@ -461,10 +568,14 @@ export const apiClient = {
     requestJson<DirectorySyncResponse>("/config/directory/sync", {
       method: "POST",
     }),
-  addMembersFromDirectory: (externalIds: string[]) =>
+  /** Import people; with `placement`, also into that pod with a role and, optionally, a profile. */
+  addMembersFromDirectory: (
+    externalIds: string[],
+    placement?: { pod_id: string; role?: string | null; profile?: string | null },
+  ) =>
     requestJson<ConfigNodeResponse[]>("/config/members/from-directory", {
       method: "POST",
-      body: { external_ids: externalIds } satisfies MemberFromDirectoryRequest,
+      body: { external_ids: externalIds, ...placement } satisfies MemberFromDirectoryRequest,
     }),
   createConfigMember: (input: ConfigNodeCreateRequest) =>
     requestJson<ConfigNodeResponse>("/config/members", { method: "POST", body: input }),
@@ -519,6 +630,38 @@ export const apiClient = {
     }),
   unlinkPodMember: (podId: string, memberId: string) =>
     requestJson<void>(`/config/pods/${podId}/members/${memberId}`, { method: "DELETE" }),
+  /** The tenant's profile catalog: the defaults with its own changes. Everyone reads it. */
+  profiles: () => requestJson<ProfileResponse[]>("/profiles"),
+  saveProfile: (slug: string, body: ProfileUpdateRequest) =>
+    requestJson<ProfileResponse>(`/config/profiles/${encodeURIComponent(slug)}`, {
+      method: "PUT",
+      body,
+    }),
+  /** A pod's people with their role and profile, and whether the caller sets them. */
+  podProfiles: (podId: string) =>
+    requestJson<PodProfilesResponse>(`/pods/${encodeURIComponent(podId)}/profiles`),
+  myProfiles: () => requestJson<MemberProfileResponse[]>("/me/profiles"),
+  /** One membership's profile, its history and a suggestion; also before they join (`role`). */
+  membershipProfile: (podId: string, memberId: string, role?: string) =>
+    requestJson<MembershipProfileResponse>(
+      withQuery(
+        `/config/pods/${encodeURIComponent(podId)}/members/${encodeURIComponent(memberId)}/profile`,
+        { role },
+      ),
+    ),
+  setMembershipProfile: (podId: string, memberId: string, body: SetProfileRequest) =>
+    requestJson<MemberProfileResponse>(
+      `/config/pods/${encodeURIComponent(podId)}/members/${encodeURIComponent(memberId)}/profile`,
+      { method: "PUT", body },
+    ),
+  /** Profiles nobody checked yet, with a suggestion each, in the pods the caller sets. */
+  profileReview: (podId?: string) =>
+    requestJson<ProfileReviewResponse>(withQuery("/config/profiles/review", { pod_id: podId })),
+  acceptProfiles: (body: AcceptProfilesRequest) =>
+    requestJson<AcceptProfilesResponse>("/config/profiles/review/accept", {
+      method: "POST",
+      body,
+    }),
   assignMemberTask: (memberId: string, input: MemberTaskAssignmentRequest) =>
     requestJson<ConfigEdgeResponse>(`/config/members/${memberId}/tasks`, {
       method: "POST",
@@ -554,6 +697,9 @@ export const apiClient = {
       body,
     }),
   configTenantWriteback: () => requestJson<TenantWritebackResponse>("/config/tenant/writeback"),
+  configCheckinFill: () => requestJson<CheckinFillResponse>("/config/checkin-fill"),
+  saveConfigCheckinFill: (body: CheckinFillUpdateRequest) =>
+    requestJson<CheckinFillResponse>("/config/checkin-fill", { method: "PUT", body }),
   jiraWrites: () => requestJson<JiraWritesResponse>("/config/tenant/jira-writes"),
   saveJiraWrites: (body: JiraWritesUpdateRequest) =>
     requestJson<JiraWritesResponse>("/config/tenant/jira-writes", { method: "PUT", body }),
@@ -589,12 +735,20 @@ export const apiClient = {
       method: "POST",
       body,
     }),
-  projectRequirements: (projectId: string, asOf?: string, days?: number, releaseId?: string) =>
+  /** A project's requirements by stage; with `podId`, the ones below that pod. */
+  projectRequirements: (
+    projectId: string,
+    asOf?: string,
+    days?: number,
+    releaseId?: string,
+    podId?: string,
+  ) =>
     requestJson<RequirementsResponse>(
       withQuery(`/projects/${encodeURIComponent(projectId)}/requirements`, {
         as_of: asOf,
         days: days ? String(days) : undefined,
         release_id: releaseId,
+        pod_id: podId,
       }),
     ),
   projectDelivery: (projectId: string, asOf?: string) =>
@@ -610,8 +764,55 @@ export const apiClient = {
         release_id: releaseId,
       }),
     ),
+  /** The project's (or one release's) planning baselines, newest first. */
+  projectBaselines: (projectId: string, releaseId?: string, asOf?: string) =>
+    requestJson<PlanningBaselinesResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/baselines`, {
+        as_of: asOf,
+        release_id: releaseId,
+      }),
+    ),
+  /** Mark planning complete: a new baseline for the project or `body.release_id`. */
+  markPlanningComplete: (projectId: string, body: PlanningCompleteRequest) =>
+    requestJson<PlanningBaselineResponse>(`/projects/${encodeURIComponent(projectId)}/baselines`, {
+      method: "POST",
+      body,
+    }),
   podDelivery: (podId: string, asOf?: string) =>
     requestJson<PodDeliveryResponse>(withAsOf(`/pods/${encodeURIComponent(podId)}/delivery`, asOf)),
+  /** The project's (or one release's) timeline: its row, its releases, then its pods. */
+  projectTimeline: (projectId: string, releaseId?: string, asOf?: string) =>
+    requestJson<TimelineResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/timeline`, {
+        as_of: asOf,
+        release_id: releaseId,
+      }),
+    ),
+  /** A pod's own timeline row, for each project it works on. */
+  podTimeline: (podId: string, asOf?: string) =>
+    requestJson<TimelineResponse>(withAsOf(`/pods/${encodeURIComponent(podId)}/timeline`, asOf)),
+  /** Why a project's, release's or pod's date moved over a period, taken apart. */
+  deliveryImpact: (
+    projectId: string,
+    options: {
+      period: PeriodKind;
+      from?: string;
+      measure?: Measure;
+      releaseId?: string;
+      podId?: string;
+      asOf?: string;
+    },
+  ) =>
+    requestJson<DeliveryImpactResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/delivery/impact`, {
+        period: options.period,
+        from: options.from,
+        measure: options.measure,
+        release_id: options.releaseId,
+        pod_id: options.podId,
+        as_of: options.asOf,
+      }),
+    ),
   setProjectDate: (projectId: string, body: DeliveryDateRequest) =>
     requestJson<CommitmentResponse>(`/projects/${encodeURIComponent(projectId)}/delivery-date`, {
       method: "PUT",
@@ -648,11 +849,13 @@ export const apiClient = {
     requestJson<GateTemplateDto>("/config/gates", { method: "PUT", body }),
   removeGateTemplate: (templateId: string) =>
     requestJson<void>(`/config/gates/${encodeURIComponent(templateId)}`, { method: "DELETE" }),
-  gateBoard: (projectId: string, asOf?: string, releaseId?: string) =>
+  /** A project's requirements against their gates; with `podId`, the ones below that pod. */
+  gateBoard: (projectId: string, asOf?: string, releaseId?: string, podId?: string) =>
     requestJson<GateBoardResponse>(
       withQuery(`/projects/${encodeURIComponent(projectId)}/gates`, {
         as_of: asOf,
         release_id: releaseId,
+        pod_id: podId,
       }),
     ),
   scanGates: (projectId: string, releaseId?: string) =>
@@ -701,6 +904,9 @@ export const apiClient = {
         release_id: releaseId,
       }),
     ),
+  /** A pod's own readiness findings, as its board under each of its projects lists them. */
+  podReadiness: (podId: string) =>
+    requestJson<ReadinessBoardResponse>(`/pods/${encodeURIComponent(podId)}/readiness`),
   runReadiness: (projectId: string, releaseId?: string) =>
     requestJson<ReadinessRunResponse>(
       withQuery(`/projects/${encodeURIComponent(projectId)}/readiness/run`, {
@@ -761,6 +967,60 @@ export const apiClient = {
       method: "POST",
       body: { project_id: projectId, criterion },
     }),
+  // Jira hygiene: the board, Check now, a person's actions, the configuration. Read-only on Jira.
+  projectHygiene: (projectId: string, scope: { releaseId?: string; podId?: string } = {}) =>
+    requestJson<HygieneBoardResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/hygiene`, {
+        release_id: scope.releaseId,
+        pod_id: scope.podId,
+      }),
+    ),
+  runHygiene: (projectId: string, scope: { releaseId?: string; podId?: string } = {}) =>
+    requestJson<HygieneRunResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/hygiene/run`, {
+        release_id: scope.releaseId,
+        pod_id: scope.podId,
+      }),
+      { method: "POST" },
+    ),
+  waiveHygiene: (findingId: string, reason: string) =>
+    requestJson<HygieneFindingResponse>(
+      `/hygiene-findings/${encodeURIComponent(findingId)}/waive`,
+      { method: "POST", body: { reason } },
+    ),
+  setAsideHygiene: (findingId: string, reason: string) =>
+    requestJson<HygieneFindingResponse>(
+      `/hygiene-findings/${encodeURIComponent(findingId)}/not-applicable`,
+      { method: "POST", body: { reason } },
+    ),
+  reopenHygiene: (findingId: string) =>
+    requestJson<HygieneFindingResponse>(
+      `/hygiene-findings/${encodeURIComponent(findingId)}/reopen`,
+      { method: "POST" },
+    ),
+  recheckHygiene: (findingId: string) =>
+    requestJson<HygieneFindingResponse>(
+      `/hygiene-findings/${encodeURIComponent(findingId)}/recheck`,
+      { method: "POST" },
+    ),
+  hygieneHistory: (findingId: string) =>
+    requestJson<HygieneHistoryResponse>(
+      `/hygiene-findings/${encodeURIComponent(findingId)}/history`,
+    ),
+  hygieneConfig: () => requestJson<HygieneConfigResponse>("/config/hygiene"),
+  saveHygieneSettings: (body: HygieneSettingsDto) =>
+    requestJson<HygieneSettingsDto>("/config/hygiene/settings", { method: "PUT", body }),
+  saveHygieneRule: (body: HygieneRuleDto) =>
+    requestJson<HygieneRuleDto>("/config/hygiene/rules", { method: "PUT", body }),
+  removeHygieneRule: (ruleId: string) =>
+    requestJson<void>(`/config/hygiene/rules/${encodeURIComponent(ruleId)}`, {
+      method: "DELETE",
+    }),
+  previewHygieneRule: (projectId: string, rule: HygieneRuleDto) =>
+    requestJson<HygienePreviewResponse>("/config/hygiene/rules/preview", {
+      method: "POST",
+      body: { project_id: projectId, rule },
+    }),
   releases: (projectId: string) =>
     requestJson<ReleaseResponse[]>(`/projects/${encodeURIComponent(projectId)}/releases`),
   releaseCandidates: (projectId: string) =>
@@ -814,6 +1074,8 @@ export const apiClient = {
       body,
     }),
   configUnmappedMembers: () => requestJson<UnmappedMemberResponse[]>("/config/members/unmapped"),
+  configIdentityCounts: () =>
+    requestJson<IdentityCountsResponse>("/config/members/identity-counts"),
   autoMatchConfigIdentityLinks: () =>
     requestJson<IdentityAutoMatchResponse>("/config/members/identity-links/auto-match", {
       method: "POST",
@@ -829,6 +1091,24 @@ export const apiClient = {
         limit: String(limit),
       }),
     ),
+  /** The caller's own Jira changes waiting for their yes, each with the gate a yes would meet. */
+  myJiraChanges: () => requestJson<JiraChangesResponse>("/me/jira-changes"),
+  answerMyJiraChange: (itemId: string, answer: JiraChangeAnswerRequest["answer"]) =>
+    requestJson<JiraChangeAnswerResponse>(`/me/jira-changes/${encodeURIComponent(itemId)}/answer`, {
+      method: "POST",
+      body: { answer },
+    }),
+  /** The caller's own chat conversation of one day, read-only and never refreshing retention. */
+  myConversation: (day: string) =>
+    requestJson<ConversationResponse>(withQuery("/me/conversation", { day })),
+  /** Who must act on a project: the day report's asks, one row per item. */
+  projectAsks: (projectId: string, asOf?: string) =>
+    requestJson<ProjectAsksResponse>(
+      withAsOf(`/projects/${encodeURIComponent(projectId)}/asks`, asOf),
+    ),
+  /** Replies of the day and open warnings over the caller's part (none for a developer). */
+  myTodayCounts: (asOf?: string) =>
+    requestJson<TodayCountsResponse>(withAsOf("/me/today-counts", asOf)),
 };
 
 function withAsOf(path: string, asOf?: string): string {

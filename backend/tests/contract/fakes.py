@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
@@ -10,6 +11,7 @@ from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationTurn
 from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.directory import DirectoryUser
+from core.domain.errors import ProviderUnavailable
 from core.domain.graph import EntityRef, FactEvent
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
@@ -18,6 +20,7 @@ from core.domain.integrations import (
     CalendarEvent,
     Commit,
     Issue,
+    IssueChange,
     IssueText,
     NewIssue,
     Project,
@@ -36,6 +39,7 @@ from core.domain.status import (
     CheckInCorrelation,
     CheckInDay,
     CheckInNudge,
+    CheckInNudgeSent,
     CheckInPreference,
     CheckInScheduleRun,
     CheckInSignals,
@@ -45,7 +49,7 @@ from core.domain.writeback import WriteBackAudit, WriteBackStatus
 from core.ports.directory import DirectoryUserRepository
 from core.ports.repositories import InboundChatEventRepository, TimeSeriesRepository
 from infra.adapters.llm.fake import FakeLlmProvider
-from infra.persistence.in_memory_graph import checkins_on_day
+from infra.persistence.in_memory_graph import checkin_nudges_on_day, checkins_on_day
 
 __all__ = ["FakeLlmProvider"]
 
@@ -77,6 +81,11 @@ class FakeIssueTracker:
     # email -> tracker account id, for find_user_by_email
     user_emails: dict[str, str] = field(default_factory=dict)
     texts: dict[str, IssueText] = field(default_factory=dict)
+    # issue key -> its history; a key in ``failing_changes`` raises instead
+    changes: dict[str, list[IssueChange]] = field(default_factory=dict)
+    failing_changes: set[str] = field(default_factory=set)
+    change_reads: list[tuple[str, datetime | None]] = field(default_factory=list)
+    searches: list[SyncCursor] = field(default_factory=list)
 
     async def list_projects(self, tenant_id: str) -> list[Project]:
         return [project for project in self.projects if project.tenant_id == tenant_id]
@@ -89,6 +98,7 @@ class FakeIssueTracker:
     async def list_issues_for_query(
         self, tenant_id: str, jql: str, cursor: SyncCursor
     ) -> list[Issue]:
+        self.searches.append(cursor)
         project_key = _project_key_from_jql(jql)
         return [
             issue
@@ -107,6 +117,16 @@ class FakeIssueTracker:
 
     async def get_issue(self, tenant_id: str, key: str) -> Issue:
         return self.issues[key]
+
+    async def list_issue_changes(
+        self, tenant_id: str, key: str, since: datetime | None
+    ) -> list[IssueChange]:
+        self.change_reads.append((key, since))
+        if key in self.failing_changes:
+            raise ProviderUnavailable("issue tracker request failed")
+        return [
+            change for change in self.changes.get(key, []) if since is None or change.at > since
+        ]
 
     async def list_active_for(self, assignee: UserRef) -> list[Issue]:
         return [issue for issue in self.issues.values() if issue.assignee == assignee]
@@ -495,6 +515,25 @@ class FakeStatusRepository:
             key=lambda blocker: (blocker.developer_id, blocker.first_seen_on, blocker.blocker_id),
         )
 
+    async def blockers_on_work_items(
+        self, tenant_id: str, work_item_ids: Sequence[str], after: date, until: date
+    ) -> list[DeveloperBlocker]:
+        wanted = set(work_item_ids)
+
+        def within(day: date | None) -> bool:
+            return day is not None and after < day <= until
+
+        return sorted(
+            (
+                blocker
+                for blocker in self.developer_blockers.values()
+                if blocker.tenant_id == tenant_id
+                and blocker.work_item_id in wanted
+                and (within(blocker.first_seen_on) or within(blocker.resolved_on))
+            ),
+            key=lambda blocker: (blocker.first_seen_on, blocker.blocker_id),
+        )
+
     async def has_blocker_rows(self, tenant_id: str, developer_id: str) -> bool:
         return any(
             blocker.tenant_id == tenant_id and blocker.developer_id == developer_id
@@ -534,6 +573,9 @@ class FakeStatusRepository:
 
     async def checkins_on_day(self, tenant_id: str, day: date) -> list[CheckInDay]:
         return checkins_on_day(self.checkins, tenant_id, day)
+
+    async def checkin_nudges_on_day(self, tenant_id: str, day: date) -> list[CheckInNudgeSent]:
+        return checkin_nudges_on_day(self.checkins, self.checkin_nudges.values(), tenant_id, day)
 
     async def purge_checkin_raw_replies_older_than(self, tenant_id: str, cutoff: datetime) -> int:
         cleared = 0
@@ -823,6 +865,20 @@ class FakeSyncCursorRepository:
     ) -> None:
         self.cursors[(tenant_id, connector, scope)] = cursor
 
+    async def swap_cursor(
+        self,
+        tenant_id: str,
+        connector: str,
+        scope: str,
+        expected_value: str | None,
+        cursor: SyncCursor,
+    ) -> bool:
+        key = (tenant_id, connector, scope)
+        if self.cursors.get(key, SyncCursor()).value != expected_value:
+            return False
+        self.cursors[key] = cursor
+        return True
+
     async def list_cursors(self, tenant_id: str) -> list[SyncCursorRecord]:
         return [
             SyncCursorRecord(connector=connector, scope=scope, cursor=cursor)
@@ -859,6 +915,20 @@ class FakeConversationRepository:
         )
         self._touch_turns(matched)
         return matched
+
+    async def peek_turns_for_day(
+        self, tenant_id: str, developer_id: str, on: date
+    ) -> list[ConversationTurn]:
+        return sorted(
+            (
+                turn
+                for turn in self.turns
+                if turn.tenant_id == tenant_id
+                and turn.developer_id == developer_id
+                and turn.conversation_date == on
+            ),
+            key=_conversation_sort_key,
+        )
 
     async def list_recent_turns(
         self,
@@ -1117,6 +1187,7 @@ class FakeWriteBackConfigRepository:
 @dataclass
 class FakeWriteBackAuditRepository:
     audits: dict[str, WriteBackAudit] = field(default_factory=dict)
+    answer_locks: dict[tuple[str, str], asyncio.Lock] = field(default_factory=dict)
 
     async def record(self, audit: WriteBackAudit) -> None:
         self.audits.setdefault(audit.id, audit)
@@ -1167,6 +1238,14 @@ class FakeWriteBackAuditRepository:
         if audit is None or audit.tenant_id != tenant_id:
             return None
         return audit
+
+    @asynccontextmanager
+    async def exclusive_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> AsyncIterator[None]:
+        lock = self.answer_locks.setdefault((tenant_id, correlation_id), asyncio.Lock())
+        async with lock:
+            yield
 
     async def count_applied_writebacks(self, tenant_id: str, since: datetime | None = None) -> int:
         return sum(1 for _ in self._applied(tenant_id, since))

@@ -286,6 +286,10 @@ class ReadinessGap:
     urgency: UrgencyKind
     #: The day it became due soon or worse; an ask's wait counts from here.
     entered_on: date | None = None
+    #: The criterion's profile to ask for the evidence (a catalog slug); empty for none.
+    owner_profile: str = ""
+    #: The fix ask's text for that profile's holder: create or link the evidence.
+    fix_ask: str = ""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -384,6 +388,20 @@ class ReleaseReadinessService:
             ),
             writeback_on=writes.master.on,
         )
+
+    async def asked_profiles(self, tenant_id: str) -> dict[str, tuple[str, ...]]:
+        """The profiles the switched-on criteria ask for, each with those criteria's names.
+
+        Nothing while the agent is off: no criterion asks anyone then.
+        """
+        stored = await self._repository.get_settings(tenant_id)
+        if stored is None or not stored.enabled:
+            return {}
+        asked: dict[str, list[str]] = {}
+        for criterion in await self._repository.list_criteria(tenant_id):
+            if criterion.enabled and criterion.owner_profile and criterion.deleted_at is None:
+                asked.setdefault(criterion.owner_profile, []).append(criterion.name)
+        return {slug: tuple(sorted(names)) for slug, names in asked.items()}
 
     async def jira_writes(self, tenant_id: str) -> JiraWrites:
         """The Jira write switches in force.
@@ -1496,6 +1514,28 @@ class ReleaseReadinessService:
 
     # ---- reading scopes --------------------------------------------------------------
 
+    async def scope_contexts(
+        self, tenant_id: str, project_id: str, today: date
+    ) -> tuple[list[ScopeContext], dict[str, ScopeIssue]]:
+        """A project's scopes as readiness reads them (the project, each release, each
+        pod working on it), and every synced issue by key. Jira hygiene reads the same
+        sets (hygiene_service)."""
+        return await self._project_contexts(tenant_id, project_id, today)
+
+    async def pod_scope_context(
+        self, tenant_id: str, pod_id: str, today: date
+    ) -> tuple[ScopeContext, dict[str, ScopeIssue]]:
+        """One pod's scope as readiness reads it, for a pod's own reads."""
+        return await self._pod_context(tenant_id, pod_id, today)
+
+    async def _assignees(self, tenant_id: str, today: date) -> dict[str, str]:
+        """Each task's assignee in force today, by task id (a member id)."""
+        found: dict[str, str] = {}
+        for edge in await self._graph.list_edges(tenant_id, kind=EdgeKind.ASSIGNED_TO):
+            if edge.is_active_on(today):
+                found.setdefault(edge.to_node_id, edge.from_node_id)
+        return found
+
     async def _project_contexts(
         self, tenant_id: str, project_id: str, today: date
     ) -> tuple[list[ScopeContext], dict[str, ScopeIssue]]:
@@ -1507,7 +1547,8 @@ class ReleaseReadinessService:
         mapping = (await self._delivery.delivery_settings(tenant_id)).settings.mapping
         tasks = await self._graph.list_nodes(tenant_id, NodeKind.TASK)
         titles = {_key(task): task.name for task in tasks}
-        known = {_key(task): _scope_issue(task, mapping, titles) for task in tasks}
+        assignees = await self._assignees(tenant_id, today)
+        known = {_key(task): _scope_issue(task, mapping, titles, assignees) for task in tasks}
         owned = (await owned_project_tasks(self._graph, tenant_id, [project_id], today)).get(
             project_id, ()
         )
@@ -1583,7 +1624,8 @@ class ReleaseReadinessService:
             mapping = (await self._delivery.delivery_settings(tenant_id)).settings.mapping
             tasks = await self._graph.list_nodes(tenant_id, NodeKind.TASK)
             titles = {_key(task): task.name for task in tasks}
-            known = {_key(task): _scope_issue(task, mapping, titles) for task in tasks}
+            assignees = await self._assignees(tenant_id, today)
+            known = {_key(task): _scope_issue(task, mapping, titles, assignees) for task in tasks}
             by_id = {task.id: task for task in tasks}
             mine = [
                 by_id[i] for i in await self._pod_task_ids(tenant_id, pod_id, today) if i in by_id
@@ -1902,6 +1944,8 @@ def _gaps(views: Sequence[FindingView], today: date) -> tuple[ReadinessGap, ...]
             waited_days=waited,
             urgency=finding.urgency.kind,
             entered_on=finding.window_entered_at.date() if finding.window_entered_at else None,
+            owner_profile=criterion.owner_profile,
+            fix_ask=gap_fix_ask(view) if criterion.owner_profile else "",
         )
         order = (
             _URGENCY_ORDER[finding.urgency.kind],
@@ -1950,6 +1994,18 @@ def gap_ask(view: FindingView) -> str:
         key = finding.candidates[0].issue_key
         return f"{view.scope_name}: is {key} the {words}{due}? Link it, or create one"
     return f"{view.scope_name}: no {words} in Jira yet{due}; create it or link one"
+
+
+def gap_fix_ask(view: FindingView) -> str:
+    """The fix ask to the criterion's profile: "Release 1: create or link the security review
+    (due 21 Oct)"."""
+    finding, criterion = view.finding, view.criterion
+    words = name_in_sentence(criterion.name)
+    due = f" (due {_day(finding.urgency.due_on)})" if finding.urgency.due_on else ""
+    if finding.state is FindingState.UNSURE and finding.candidates:
+        key = finding.candidates[0].issue_key
+        return f"{view.scope_name}: link {key} as the {words}, or create one{due}"
+    return f"{view.scope_name}: create or link the {words}{due}"
 
 
 def _now_covers(finding: Finding) -> str:
@@ -2051,7 +2107,12 @@ def _stages(
     return tuple(stages)
 
 
-def _scope_issue(task: GraphNode, mapping: StageMapping, titles: Mapping[str, str]) -> ScopeIssue:
+def _scope_issue(
+    task: GraphNode,
+    mapping: StageMapping,
+    titles: Mapping[str, str],
+    assignees: Mapping[str, str] | None = None,
+) -> ScopeIssue:
     state = _text(task.metadata.get("state"))
     # Only a task the tracker synced carries ``state``; without it ``status`` is a
     # colour a seed or a person set, not the tracker's status (persona_views'
@@ -2060,10 +2121,12 @@ def _scope_issue(task: GraphNode, mapping: StageMapping, titles: Mapping[str, st
     placement = place(mapping, status=status, state=state)
     parent = _text(task.metadata.get("parent_key"))
     updated = task.metadata.get("updated_at")
+    issue_type = _text(task.metadata.get("issue_type"))
+    assignee = (assignees or {}).get(task.id)
     return ScopeIssue(
         key=_key(task),
         title=task.name,
-        issue_type=_text(task.metadata.get("issue_type")),
+        issue_type=issue_type,
         labels=split_names(task.metadata.get("labels")),
         parent_key=parent,
         parent_title=titles.get(parent) if parent else None,
@@ -2071,7 +2134,32 @@ def _scope_issue(task: GraphNode, mapping: StageMapping, titles: Mapping[str, st
         done=state == "done" or placement.stage is DeliveryStage.PRODUCTION,
         counted=placement.stage is not None,
         updated_at=updated if isinstance(updated, str) else None,
+        stage=placement.stage,
+        requirement=placement.stage is not None and mapping.counts_type(issue_type),
+        created_at=_text(task.metadata.get("created_at")),
+        due_date=_text(task.metadata.get("due_date")),
+        story_points=_points(task.metadata.get("story_points")),
+        priority=_text(task.metadata.get("priority")),
+        fix_versions=split_names(task.metadata.get("fix_versions")),
+        components=split_names(task.metadata.get("components")),
+        severity=_text(task.metadata.get("severity")),
+        assignee_id=assignee,
+        assigned=assignee is not None or bool(_text(task.metadata.get("unlinked_assignee_id"))),
+        reporter_id=_text(task.metadata.get("reporter_member_id")),
     )
+
+
+def _points(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
 
 
 def _known_key(issue_key: str, known: Mapping[str, ScopeIssue]) -> str:

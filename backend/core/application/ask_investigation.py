@@ -43,6 +43,7 @@ from core.application.ask_service import (
     said_it_ran_out,
     without_unread_negatives,
 )
+from core.application.people_words import hides_names
 from core.domain.auth import Principal
 from core.domain.graph import JsonScalar
 from core.domain.llm import LlmRequest, LlmResponse
@@ -102,13 +103,24 @@ STEP_GUIDANCE = (
     "since when, and what it holds up; and how things changed over the period asked about. "
     "A question about a date -- will it ship, is it on track, is it late -- gets a step "
     "for the delivery forecast of each project or pod it names: the committed date, the "
-    "50% and 85% finish dates and the verdict. A question about what blocks or holds "
+    "50% and 85% finish dates and the verdict. A question about why a date moved -- what "
+    "changed, was added, delayed or impacted a project's, release's or pod's timeline, or "
+    "'show me what moved X' -- gets one step per project, release or pod it names for "
+    "what moved its forecast over the period asked about (since planning unless it names "
+    "another): each driver in working days and the requirements behind it, and the "
+    "committed date's moves, keeping the committed date, the likely date and the team's "
+    "date apart, and carrying its 'Not known' line into the answer's own; and, when team "
+    "speed pushed it later, a step for the open "
+    "blockers of the pods involved. A question about what blocks or holds "
     "something up, or about risk, gets a step of its own for the open blockers of each pod "
     "involved, or of every pod -- what is blocked, whose blocker it is, for how many days, "
     "and what it waits on. A question about release readiness -- is it ready, can it go "
     "to production, what is missing before the release -- gets a step for the release "
     "readiness of each project, release or pod it names: each criterion, which are missing "
-    "or unsure, and their evidence. A question about what to do, or what to do first, or "
+    "or unsure, and their evidence. A question about whether Jira is clean, or about scope "
+    "creep or work added after planning, gets a step for the Jira hygiene of each project "
+    "or pod it names: each rule, how many issues break it, and which. "
+    "A question about what to do, or what to do first, or "
     "why something is at risk and what to do about it, covers every kind of thing that "
     "can hold the date up, a step each: the delivery forecast and the requirements with no "
     "ETA or due date; the release readiness; and the open blockers and risks of the pods "
@@ -186,7 +198,8 @@ PLAN_MORE_REMINDER = (
     "Before you answer: {reason}. Check what the question needs that the notes do not "
     "cover yet -- for a question about a date, risk, readiness or what to do: the delivery "
     "forecast and the requirements with no ETA or due date, the release readiness, and the "
-    "open blockers and risks -- and send a step for each with the task tool. Answer now "
+    "open blockers and risks; for a question about why a date moved: what moved it -- "
+    "and send a step for each with the task tool. Answer now "
     "only if the notes already cover what the question needs."
 )
 ONE_STEP_REASON = "you have checked one step only"
@@ -316,9 +329,11 @@ class InvestigationService:
         Or a failure, which ends the stream too. A consumer that stops reading
         closes the engine, which stops what it still runs.
         """
-        asked_for = as_of or date.today()
+        asked_for = as_of or self._ask_service.today()
         llm = _MeteredProvider(inner=self._llm_provider)
-        reader = await self._ask_service.reader(principal.tenant_id, asked_for)
+        reader = await self._ask_service.reader(
+            principal.tenant_id, asked_for, people=not hides_names(principal)
+        )
         context = await context_for(
             conversation,
             llm=llm,

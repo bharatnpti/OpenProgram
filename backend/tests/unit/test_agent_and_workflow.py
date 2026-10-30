@@ -10,6 +10,7 @@ import pytest
 from config.settings import Settings
 from core.application.agents.status_agent import StatusAgentNode
 from core.application.conversation_history import llm_messages_from_turns
+from core.application.fill_day import FillDaySettingsService
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import SyncRunResult
 from core.domain.conversation import ConversationRole, ConversationTurn
@@ -24,6 +25,7 @@ from core.domain.status import (
     CheckInScheduleRun,
     DeveloperStatus,
     StatusSource,
+    resolve_timezone,
 )
 from core.domain.workflows import (
     CheckinFanoutInput,
@@ -46,6 +48,7 @@ from core.domain.workflows import (
 from infra.adapters.workflows import dbos as dbos_workflows
 from infra.adapters.workflows import temporal as temporal_workflows
 from infra.adapters.workflows.fake import FakeWorkflowScheduler
+from infra.persistence.in_memory_fill_day import InMemoryFillDayRepository
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.workflows import (
     checkin_fanout,
@@ -606,6 +609,7 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
         ("day_report", "dispatch"),
         ("gate_scan", "issues"),
         ("readiness_scan", "findings"),
+        ("checkin_fill", "tenant"),
     ]
     assert [result.schedule_id for result in results] == [
         "heartbeat-test",
@@ -715,6 +719,7 @@ async def test_ensure_workflow_schedules_removes_the_readiness_scan_when_disable
         secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
         heartbeat_schedule_id="heartbeat-test",
         readiness_scan_enabled=False,
+        hygiene_scan_enabled=False,
     )
     registry = _ScheduleBootstrapRegistry(settings)
 
@@ -722,6 +727,23 @@ async def test_ensure_workflow_schedules_removes_the_readiness_scan_when_disable
 
     assert registry.scheduler.removed == [settings.readiness_scan_schedule_id]
     assert "readiness_scan" not in {c.connector for c in registry.scheduler.sync_configs}
+
+
+async def test_the_readiness_tick_stays_for_the_jira_hygiene_scan_alone() -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        heartbeat_schedule_id="heartbeat-test",
+        readiness_scan_enabled=False,
+        hygiene_scan_enabled=True,
+    )
+    registry = _ScheduleBootstrapRegistry(settings)
+
+    await schedule.ensure_workflow_schedules(registry)
+
+    assert settings.readiness_scan_schedule_id not in registry.scheduler.removed
+    assert "readiness_scan" in {c.connector for c in registry.scheduler.sync_configs}
 
 
 def test_the_readiness_scan_runs_hourly_after_the_jira_sync_and_the_gate_scan() -> None:
@@ -1787,9 +1809,14 @@ class _ScheduleBootstrapRegistry:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.scheduler = _RecordingWorkflowScheduler(settings.resolved_heartbeat_schedule_id)
+        # The tenant's "Fill the day from Jira" switch, never saved: on.
+        self.fill_day = FillDaySettingsService(InMemoryFillDayRepository())
 
     def workflow_scheduler(self) -> _RecordingWorkflowScheduler:
         return self.scheduler
+
+    def fill_day_settings_service(self) -> FillDaySettingsService:
+        return self.fill_day
 
 
 class _WorkerStartupRegistry:
@@ -1865,6 +1892,9 @@ class _RuntimeSyncRegistry:
 
     def graph_repository(self) -> InMemoryGraphStore:
         return self._store
+
+    def tenant_today(self) -> date:
+        return datetime.now(tz=resolve_timezone(None, self.settings.tenant_default_timezone)).date()
 
     def workflow_scheduler(self) -> _RuntimeSyncScheduler:
         return self.scheduler

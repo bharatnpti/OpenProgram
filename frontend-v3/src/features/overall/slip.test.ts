@@ -6,6 +6,7 @@ import {
   changeKeys,
   dateTicks,
   rangeWords,
+  rebuiltNote,
   slipDrawable,
   slipFinding,
   slipGeometry,
@@ -47,17 +48,13 @@ test("each change reads as a key: set, moved by how much, cleared, set again", (
     change("2026-10-08", null, "Scope under review."),
     change("2026-10-09", "2026-12-18"),
   ]);
-  assert.deepEqual(keys[0], [
-    "",
-    "Tue 1 Dec",
-    `, set by Mina Patel on ${sep(14)}: “First plan from the kickoff.”`,
-  ]);
+  assert.deepEqual(keys[0], ["", "Tue 1 Dec", `, set by Mina Patel on ${sep(14)}.`]);
   assert.deepEqual(keys[1], [
     "Moved to ",
     "Tue 15 Dec",
-    " by Mina Patel on Wed 7 Oct, 14 days later: “Agreed with the business.”",
+    " by Mina Patel on Wed 7 Oct, 14 days later.",
   ]);
-  assert.deepEqual(keys[2], ["", "Cleared", " by Mina Patel on Thu 8 Oct: “Scope under review.”"]);
+  assert.deepEqual(keys[2], ["", "Cleared", " by Mina Patel on Thu 8 Oct."]);
   assert.deepEqual(keys[3], ["Set again to ", "Fri 18 Dec", " by Mina Patel on Fri 9 Oct."]);
 });
 
@@ -75,14 +72,10 @@ test("the chart waits for a move or a forecast; one date and no history is a lin
 
 test("the one line says the date and why, or that none is committed, and when the chart draws", () => {
   const dated = slipRecord([moved], null, 3, 10);
-  assert.deepEqual(dated.line, [
-    "",
-    "Tue 15 Dec",
-    ", set by Mina Patel on Wed 7 Oct: “Agreed with the business.”",
-  ]);
+  assert.deepEqual(dated.line, ["", "Tue 15 Dec", ", set by Mina Patel on Wed 7 Oct."]);
   assert.equal(
     dated.note,
-    "The chart draws once the date moves or the forecast has 10 working days of history. It has 3.",
+    "It draws once the date moves or there are 10 working days of history (now 3).",
   );
   assert.deepEqual(slipRecord([], "2026-10-30", 0, 10).line, [
     "No date is committed; the Jira release date ",
@@ -91,17 +84,17 @@ test("the one line says the date and why, or that none is committed, and when th
   ]);
   const none = slipRecord([], null, 0, 10);
   assert.deepEqual(none.line, ["", "No delivery date is committed yet.", ""]);
-  assert.match(none.note, /^The chart draws once a date is committed and moves/);
+  assert.match(none.note, /^It draws once the date moves/);
 });
 
 test("the one line names the working days the tenant's forecast needs", () => {
   assert.equal(
     slipRecord([moved], null, 3, 5).note,
-    "The chart draws once the date moves or the forecast has 5 working days of history. It has 3.",
+    "It draws once the date moves or there are 5 working days of history (now 3).",
   );
   assert.equal(
     slipRecord([], null, 3, 20).note,
-    "The chart draws once a date is committed and moves, or the forecast has 20 working days of history. It has 3.",
+    "It draws once the date moves or there are 20 working days of history (now 3).",
   );
 });
 
@@ -155,6 +148,21 @@ test("a cleared date breaks the line and hatches until it is set again", () => {
   assert.equal(g.committed.length, 2);
   assert.equal(g.noDate.length, 1);
   assert.equal(g.noDate[0].title, `Cleared on ${sep(21)}`);
+});
+
+test("the days rebuilt afterwards are said up to the last of them", () => {
+  assert.equal(
+    rebuiltNote([{ day: "2026-10-08" }, { day: "2026-10-09", reconstructed: false }]),
+    null,
+  );
+  assert.equal(
+    rebuiltNote([
+      { day: "2026-10-07", reconstructed: true },
+      { day: "2026-10-08", reconstructed: true },
+      { day: "2026-10-09", reconstructed: false },
+    ]),
+    `Up to ${formatDay("2026-10-08")}, the likely dates were worked out afterwards.`,
+  );
 });
 
 test("date ticks fall on the 1st and the 15th inside the range", () => {

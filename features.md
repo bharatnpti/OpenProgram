@@ -143,7 +143,7 @@ Functional requirements:
 - Each escalation step shall be switchable off in tenant settings.
 - The system shall record stale or unknown status when the developer does not respond within configured windows.
 - A stale status shall name the last confirmed, partly answered, or inferred status once, with its date, however many days in a row the developer has not answered.
-- The system shall be able to infer limited status from recent facts when no human confirmation exists.
+- The system shall be able to infer limited status from recent facts when no human confirmation exists, first from what moved in the issue tracker and Git (see 4.35).
 - The system shall mark inferred or missing status with reduced confidence/source quality.
 
 ### 4.6 Status Parsing and Conversation Context
@@ -170,7 +170,12 @@ Functional requirements:
 - The system shall sync issue-tracker issues into graph task nodes.
 - The system shall link issues to projects or matching sprints.
 - The system shall create developer nodes and task assignments from issue assignees.
-- The system shall append issue facts with status, assignee, project, and observed timestamps.
+- The system shall append issue facts with status, assignee, project, and observed timestamps, and with the due date, fix versions and labels, so their history is kept.
+- The system shall keep on each task its reporter and creator (as tracker account ids, and as members when linked), its components, and its severity when the Jira connection names a severity field. The connection test shall offer Jira's custom select and text fields for it, severity-looking ones first.
+- The system shall read the history of each issue a sync sees changed and append one `issue_change` fact per changed field to the work item: who changed it, when, from what to what. Only status, resolution, assignee, due date, fix versions, labels, story points, sprint, issue type, parent or epic, priority, components and the severity are kept; for the summary and description only that they changed, never their text. Comments are not read.
+- A change's author shall be mapped onto a member through the identity links. An author who is no member keeps only the tracker's account id and never becomes a person. The facts belong to the work item: nothing shall count, list or rank changes per person.
+- At most a configured number of issues per sync target and tick (default 200) shall have their history read, the rest on the next tick, without losing a change made meanwhile. The first read of a target shall go back 120 days. A history that cannot be read shall never fail the sync.
+- The daily requirement snapshot shall keep each requirement's story points, issue type and due date.
 - The system shall sync VCS repositories into graph repo nodes.
 - The system shall append commit facts to developer or repo entities.
 - The system shall append pull request facts to developer entities.
@@ -239,7 +244,8 @@ Functional requirements:
 - The workstream panel shall show its type, phase, target date, and its owner, TPM, and scrum master by name. An ID that matches no member shall be shown as an ID, never as a name.
 - A direct link to an empty workstream shall open its panel, which shall say that no work is in it yet and how work gets into one, instead of a status, reasons, or a 0% ring.
 - The pod panel shall show members, confirmed check-ins, open blockers, and the pod's tasks: those assigned to its members within the pod's remit (the pod itself, the workstreams it serves, or a project that contains it), blocked first, each with its owners and the open blockers attributed to it.
-- A pod's open blockers shall include a member's blocker on a task the pod lists even when the blocker counts in another pod (the one its blocked work sits with), marked "counted in <that pod>", so the blocker list and the task list never disagree. Such a blocker shall still count once, in that pod only: the listing pod's colour, reasons and rollups shall not change, and Ask's pod_blockers over several pods shall list it once.
+- A pod's open blockers shall include a member's blocker on a task the pod lists even when the blocker counts in another pod (the one its blocked work sits with), marked "counted in <that pod>", so the blocker list and the task list never disagree. Such a blocker shall still count once, in that pod only: the listing pod's colour, blocker reasons and rollups shall not change, and Ask's pod_blockers over several pods shall list it once.
+- A pod's reason line shall never contradict its open blockers: when every member's status is confirmed and the pod's blocker list is not empty, the line shall not say "with no blockers" but name what the list holds and where it counts ("All child statuses are confirmed; 1 open blocker (IDP-6, Omar Haddad, 5 days), counted in Identity Pod."). Only the words change: the pod stays green, and the stored rollup keeps its line.
 - A panel the viewing role may not read shall say which role opens it, instead of showing a denial as dashes or a 0% ring.
 
 ### 4.11 Portfolio Heat and Signals
@@ -442,6 +448,7 @@ Functional requirements:
 - The system shall match the named person to a directory user, and shall mark a request whose person cannot be matched as needing resolution.
 - When counterpart notification is on (it is by default; an operator can switch it off with `OPENPROGRAM_CROSS_PERSON_AUTO_NOTIFY=false`), the system shall send the counterpart one DM about the request. The DM shall name who asked, the kind of ask (review, input, or dependency) and a short note, kept under the outbound DM length cap, and shall never quote the requester's reply.
 - The system shall send no DM about a request whose person was not matched or is the requester. Such a request stays visible to the requester, and a DM that fails to send shall not lose the request.
+- The requester's acknowledgement of the check-in reply ("Got it … your update is recorded.") shall say who was asked and for what, by name and with the work the request names: "I've asked Noah Weber to review storefront-web !2 and will tell you when they answer." Several asks are listed in one sentence. An ask that reached nobody shall say so instead: a name no member has, a member with no chat id, a DM that failed (and is retried), notification switched off, or an open request of the requester's that already asks it ("Noah Weber already has your open review request for storefront-web !2 from 7 Oct; I'll tell you when they answer."). The acknowledgement goes out after the counterpart DMs were attempted and never says someone was asked unless their DM went out, nor names anyone by chat id.
 - The system shall retry a counterpart DM that failed to send, from a scheduled pass, with the same message. It shall count every attempt, the first included, stop after a configured number (5 by default) with a wait that doubles after each failure (5 minutes after the first by default), never send the DM twice when passes overlap or the DM was recorded meanwhile, and send nothing while counterpart notification is off. A request recorded while notification was off is never DMed later.
 - The requester's "Raised by you" list and the board shall say when the DM is still being retried and when it was not delivered.
 - The counterpart's reply shall acknowledge or resolve the request, and the requester shall be told when it is resolved, unless they resolved it themselves. A reply after the request is resolved shall change nothing.
@@ -561,6 +568,7 @@ Functional requirements:
 - A release shall be defined by a Jira fix version or label, chosen from those the project's issues carry.
 - Every change of a date shall be kept with who made it, when and why, so a date that moved shows how often and by how many days.
 - The forecast shall put two answers side by side: what the last weeks' completion rate says (a throughput simulation, 85% and 50% likely dates, once it has the tenant's minimum of working days of history: ten by default (OPENPROGRAM_FORECAST_MIN_HISTORY_DAYS), from 3 to 60 in Admin › Delivery stages, with the window it reads growing to fit), and what the team's own dates say (check-in estimates, else Jira due dates). The verdict (on track, at risk, off track) shall name its reasons: who committed the date, how it moved, a disagreement of more than five working days between the two answers, pods planned later than the project, and a Jira release date that differs from the committed one.
+- The planning baseline, and the forecast as it stood on each day, are described in 4.33.
 
 ### 4.29 Acceptance Gates, Test Cases and Questions
 
@@ -597,6 +605,109 @@ Functional requirements:
 - Overall shall show the criteria per project, release and pod to the product owner, manager, executive (read only) and admin, and to a scrum master for the projects their pods work on (the project's rows and their own pods'); the console shall not ask for a project's board the person may not read. The answer line shall add a blocking gap near its date as a reason of its own, beside the forecast.
 - The day report shall list such gaps first under Most important, so its line cap never hides one, and ask one person to decide on each: the project's recorded owner (the escalation matrix's decision owner, else the project's owner), else a product owner of the scope's pods, else for a pod's gap its scrum master, else a manager from the escalation contacts. The ask climbs the escalation matrix from the pod that person was found on. It says "Nobody named yet" only when none of them is known.
 - Every person's action and every change the agent makes shall be kept in an audit trail, shown per criterion.
+
+### 4.32 Profiles in a Pod
+
+**Business requirement:** Each person's discipline in a pod (development, QA, security, product, design, delivery, ops and so on) shall be known, so the right person is asked, named and escalated to. A profile is a role in that pod, never a rating, and grants no rights.
+
+Functional requirements:
+
+- A profile shall belong to a pod membership, so one person can hold a different profile in each pod. It sits beside the role in the pod (developer, scrum master, product owner, manager), which keeps saying who is accountable. Until someone sets it, a membership's profile follows its role and reads as not checked.
+- Admins shall pick a profile when they add a person to a pod (Admin › Links), change it later, and give one to everyone imported into a pod (Admin › Directory). A scrum master shall change profiles in the pods they run, from the pod's Delivery panel, and nowhere else; anyone else is refused in words. Each change holds from its day, and earlier days keep the profile they had.
+- A suggestion shall come from the person's directory title, the types and labels of their issues in the pod and their Git work, with its reasons in words. It is shown only to whoever sets the profile, never stored, and never applied on its own. A list of the profiles nobody checked yet shall offer every suggestion at once (Accept all), after a confirmation that names each change.
+- The catalog shall start with generic profiles; admins shall rename, hide or add profiles (Admin › Profiles). A hidden profile is offered nowhere, and a membership already holding it keeps it.
+- Profiles shall route, read per pod: whether a person's "in review" is code work that needs a merge request (only a profile someone chose decides this; otherwise the person's app roles do), who a release criterion asks to create or link its evidence (4.31) beside the unchanged decision ask, how the day report names an ask's owner ("Mina Patel (Product, Payments Pod)", for profiles someone chose), and who the assistant names for "who is the security, QA or product person for X".
+- Each person shall read their own profiles, beside their check-in schedule.
+
+### 4.33 Planning Baselines and the Forecast Kept per Day
+
+**Business requirement:** When planning is complete, the requirements agreed shall be frozen, so later scope is read against them. Each day's forecast shall be kept as it stood that day, so the date's history shows what people saw then, not a recomputation.
+
+Functional requirements:
+
+- A product owner, a manager or an admin shall mark planning complete on Overall, for the project or for the release picked there.
+  - Marked today, it freezes the requirements in scope, each with its stage, story points, due date and type.
+  - Marked for an earlier day, at most a year back, it freezes that day's stored snapshot, or the last one kept within the week before, with points and type as the tracker last said by then.
+  - With no snapshot, the issues in scope today that were created by then stand in, and the baseline says it was reconstructed. A release with no snapshot of its own reads the project's, kept to the release's requirements.
+  - Nothing in scope is refused in words.
+- Marking planning complete again shall add a new baseline and keep the earlier ones, with one baseline active per project or release. Each baseline carries:
+  - the tenant's change label, one tracker label ("CR" by default) for changes agreed after planning;
+  - a grace period of 0 to 20 working days (2 by default);
+  - an optional note.
+- Everyone who reads the forecast (product owner, manager, executive, admin) shall see Planning baseline under the Timeline (4.37). It shows:
+  - the active baseline and who set it, by name;
+  - the requirements added since, and how many of them lack the change label;
+  - the requirements gone since, by key only, never who added or removed them;
+  - the earlier baselines.
+- Mark planning complete, or New baseline once one exists, shall be offered only to product owners, managers and admins, and not while a past day is shown. Scrum masters and developers get no section, and the server refuses them.
+- The forecast of every project and release shall be kept per day: the 50% and 85% dates, the verdict and the date it was measured against, the team's latest date, and the forecast's inputs. The hourly snapshot run shall write today's row after the day's snapshots; a later run that day replaces it.
+- An admin shall rebuild earlier days from the stored snapshots, 90 days by default and at most 365 (`POST /admin/workflows/forecast-days/reconstruct`).
+  - Each past day with a snapshot is forecast against the committed date and the team's dates as they stood at the end of that day, and marked rebuilt.
+  - A day the hourly run kept is never replaced.
+- The forecast's history (4.28) shall read past days from the kept rows and replay only the days nobody kept. Today is always live. Rebuilt days are marked, and the slip chart (the project row's Band over time, 4.37) says the forecast up to a day was rebuilt afterwards.
+
+### 4.34 Why the Date Moved
+
+**Business requirement:** Product owners, managers and executives shall see what moved a project's, release's or pod's forecast, in working days, and which work items were behind it: scope added after planning (with or without the change label), work finished, requirements closing late.
+
+Functional requirements:
+
+- Each kept forecast day shall say why its forecast moved since the scope's day before: the move replayed one input at a time under the day's own seed, so the parts add up exactly to the real move. The drivers are time passed and work finished (read together as pace), scope added, scope removed, reopened, re-estimated, throughput (the history window changing) and the forecast's rounding. A read shall say a move in a leader's words: first where the likely date stands against the committed date ("Likely by 19 Mar, 3 months after the committed 15 Dec"), then at most three causes in working days, the latest-pushing first: scope added (added after planning, reopened, re-estimated larger), scope removed, and team speed (time passed, work finished, the recent history's speed and the forecast's rounding, read as one). No sentence says throughput, window, replay or a percentage; the 85% date is "likely by" and the 50% date "likely around". The Overall sentence and bars, the timeline's row sentence, the day report line and the assistant's answer say the same causes in the same words. Scope is shared among its items: equally by count, by story points when the forecast counts points. The hourly run keeps it with each project's, pod's and release's row; the reconstruction rebuilds it for earlier days.
+- A period (since planning, the last 7 or 30 days, since the committed date last changed, or from a named day) shall add up its days. A day that kept no breakdown shall be shown as not attributed, so the parts still add up.
+- Added scope shall be grouped as change requests (carrying the planning baseline's change label, tenant data), additions without the label, bugs, moved in from another release or project, planned, or added before planning was complete. Each item shall carry the day it joined and, for readers other than executives, who brought it in: the author of the change that did, else its creator or reporter. Nothing shall count or rank additions per person.
+- Beside the drivers: each move of the committed date with who, when and why (and the additions just before it); the team's latest date at both ends with what moved it; and, as evidence that never gets a share, requirements open past their due date, ETA or baseline due date, and those with no date.
+- The day report shall add one line under "What changed" when the 85% date moved since the previous report, naming the items; it shall lead "Most important" when the verdict worsened or the date moved three working days later or more.
+- Ask (Ora) shall answer "why did the date move" and "what impacted the timeline" from `delivery_impact`, read-only, with the same gate as the read: a project's readers, a scrum master for their own projects and pods (another pod's dates only), never a developer. Its answer shall carry the timeline's markers and the link to the scope's row. The same data is served by `GET /projects/{id}/delivery/impact`.
+
+### 4.35 The Jira-Observed Day
+
+**Business requirement:** Every member the check-in asks shall have a day on record, and a day nobody gave in words shall say what moved in the tracker and Git, never be read as green, and never be taken for the person's word. Low-level design: `docs/lld/observed-day.md`.
+
+Functional requirements:
+
+- The system shall build each member's day from the tracker's history (4.7) and Git: per task they hold, the stage moves, resolutions, due date and estimate moves, release changes, assignments, and the merge requests and commits that name it, since their last confirmed or partial answer or their previous check-in time, whichever is later. Changes they made on someone else's issue shall read "worked on"; a task under way with no movement for five days shall say so. It shall name keys, status and stage names, release names, dates and numbers only, never tracker or Git free text.
+- A check-in that closes unanswered shall be inferred from that digest first: work moved to Done counts, and no task need be under way. With nothing moved, the earlier rule applies (4.5).
+- A reply without a status shall keep its own first words and add what moved, and be inferred when anything did, unknown otherwise.
+- On a schedule of its own, every 15 minutes, after each member's nudge time, the system shall fill the day of every member the check-in did not reach (no check-in run for the day, no status, a check-in day of theirs, not on leave): inferred from the digest, else stale or unknown, saying in its first words "Not asked today." when the send is off and "Not reached in chat." when it is on. It shall do so once per member and day, send nothing, and run whether or not the check-in is sent; switching the send off shall remove only the send's own schedules.
+- Admins shall switch the fill off per tenant in Admin › Check-ins ("Fill the day from Jira for people who were not asked", on by default), which removes its schedule; the deployment can switch it off for every tenant.
+- An inferred day's reason in the rollup shall count its evidence by task: "Inferred from Jira: 2 tasks moved, 1 without movement for 8 days."
+- The pod's task table and a developer's own task list shall show, under what was last said, what Jira says of the task today: its status since when, who moved it when that was not the task's own people, the day's other changes, or how long it has not moved. It shall never be merged into what anyone said.
+- A scrum master's check-in panel shall say how the pod's day was captured ("3 of 6 replied today · 2 from Jira · 1 no data (no Jira link)"), counted per pod, with why a day has no data (no Jira link, Jira not synced, no chat id, nothing moved), and each inferred person's first line of evidence; for someone who can open Admin, a missing Jira link or chat id links to Admin › Directory, which counts the members with no chat id and with no Jira account. Executives shall still see no pod check-ins.
+- The assistant's pod check-in read shall return each inferred day's evidence and the pod's coverage, and say that an inferred day is not the person's word.
+- Nothing shall count, rank or compare people's activity.
+
+### 4.36 Jira Hygiene
+
+**Business requirement:** Issues that do not meet the tenant's own rules, above all scope added after planning without the change label that marks an agreed change, shall be found in the synced Jira data and reported, with an owner and a suggested fix, without anyone being asked until an admin decides a rule should ask.
+
+Functional requirements:
+
+- Admins shall define per-issue rules on the Jira hygiene tab, from a blank form or one of eight generic examples; none is on until an admin adds it, and each lists only until an admin switches it to ask. A rule reads each project's, release's or pod's issues (the sets release readiness uses, 4.31), narrowed to counted requirements or every issue type, a stage filter and matchers (label, issue type, title phrase, title words, epic), and finds one condition: added after the planning baseline (4.33) and its grace without a change label, a missing label, an empty field (story points, due date, epic, fix version, priority, assignee, component, severity), no gate items of a kind found by the gates' scan (4.29), no Jira change for some working days in a stage, past its due date while open, or more story points than a limit.
+- The change labels shall be tenant data: the scan's own list (default "CR", a generic word) and the baseline's label. No rule shall carry a fixed company label or field name.
+- Try on a project shall show, before a rule is saved, how many issues it looks at and finds per scope, and the first issues with what is wrong, who would be asked and the suggested fix. It saves nothing and asks nobody.
+- A scan, switched on per tenant (and per deployment with `OPENPROGRAM_HYGIENE_SCAN_ENABLED`), shall run inside the hourly readiness tick and on demand (Check now on Overall), over the issues OpenProgram already syncs, without calling or writing to Jira. Readiness off shall not stop it, nor the other way round. A finding attaches to one issue under one rule in one scope; an unchanged one is not written again. While the Jira sync is failing or behind, a finding shall never close, and a new finding of an asking rule shall wait for fresh data before the day report says it. A finding closes when the breach is gone, or as "left the scope".
+- Each finding shall name its owner: the rule's (the assignee, the reporter, the holder of a profile in the issue's pod (4.32), the pod's scrum master, or whoever decides on the project), else the pod's scrum master, else whoever decides. It carries fixed words for what is wrong and a suggested fix filled only with keys, titles, stages, names, field names, labels, numbers and dates; never Jira text.
+- People who act on readiness shall waive a finding with a reason, mark it not applicable (only a manager or admin for a rule marked blocking), re-check it after a fix in Jira, or reopen a decision. A waived finding asks nobody while the breach stands. Every action, and every change the scan makes, is audited.
+- Overall shall show Jira hygiene, after release readiness, to the product owner, manager, admin and to a scrum master for the projects their pods work on: the rule stated first, each rule's open count, new today and oldest, and per rule its issues with what is wrong, the owner, the suggested fix, days open and the actions, with a pod filter. An executive shall read each rule's counts only, never which issues or who; a developer has no section and is refused by the server.
+- The day report shall add one count line under Where we stand ("Jira hygiene: 7 open (2 new today).") while the scan is on, and for each asking rule one ask per owner per scope naming up to five keys ("Checkout Revamp: label 2 additions after planning as changes or take them out: CHK-20, CHK-21"). It waits from the earliest finding's day (the change-label rule's from when the addition passed planning's grace) and climbs the project's escalation matrix (4.30). An ask the gates already raise for the same issue is not repeated.
+- The assistant shall answer "is Jira clean", "which stories have no estimate" and "what was added after planning without a change label" from a read-only `jira_hygiene` tool, behind the readiness board's own read rule: counts only for an executive, no tool for a developer.
+- Nothing shall count or rank people: findings are about issues, aggregates stop at rules and scopes.
+
+### 4.37 Timeline per Project and Pod
+
+**Business requirement:** Leaders shall see, per project, release and pod, how far the work is against the time used, when its date is likely, and which events moved the date, on the day each happened, in one picture. Low-level design: `docs/lld/timeline.md`.
+
+Functional requirements:
+
+- Overall shall show a Timeline second, after the answer line, to the forecast's readers and to scrum masters. It replaces "Dates by pod" and "How the date moved". Each row runs from its planning baseline (4.33) to its committed date: the project's (or the release picked), the project's releases folded under it, then each pod, worst verdict first. A row without a baseline starts at its first kept forecast day and says so; one without a committed date runs open.
+- Each row shall be read in five seconds: its name, its verdict and one plain line ("Likely by 19 Mar · committed 15 Dec · 2 of 10 done", with "team says 4 Dec" only when the team's date is more than a week from the likely one); then a grey track from planning to the committed date with a dark fill for the share done, the likely finish as one segment from the 50% to the 85% date in its verdict's colour (drawn past the committed date with "likely 3 Feb – 19 Mar" when it is late), the committed date as a tick, and today's line. Nothing else is drawn on a row.
+- A row shall mark each day something changed with one dot and a count, red when the change pushed the date (scope added without the change label, a bug, a blocker, a requirement reopened, the committed date moved later), grey otherwise (per week on an axis longer than twelve weeks). A dot opens what changed in plain words, with its work items, their stage and, by kind, the change label, whether Jira hygiene (4.36) has it open, who brought it in and what a blocker waits on. Under the chart a short "What changed" list per row says its scope since planning and at most five days, newest first ("9 Oct · 2 requirements added (1 without the CR label)"). Changes are events on work items, counted per day, never per person. The legend has at most five entries: Done, To do, Likely finish, Committed date, Change.
+- The axis shall say month starts only, end a little after the latest likely finish or committed date, and fit a wide screen without a scrollbar.
+- Picking a row shall point Why the date moved (4.34) under the Timeline at it: the period chips (since planning, or Mark planning complete before a baseline; the last 7 or 30 days; since the date last changed), the server's one sentence, at most three causes as bars from zero (red to the right pushed it later, green to the left pulled it in, the days at the end, each opening its requirements), and short lines for the likely date then and now, the committed date, the team's date and the requirements with no date. The date measured (at the latest likely, or likely) and a table sit behind a Details fold, closed. "How the likely date moved, day by day" (the daily band) is folded under it.
+- The picture shall be a text alternative of one server sentence per row, and a Table toggle shall list per row the start, the committed date and its moves, the likely finish, the team's date, done, and what changed by date. Rows and dots shall be reachable by keyboard. At phone width the labels sit above the bars and the page never scrolls sideways: the axis scrolls in its own box, opening on today and the nearest committed date ahead. A past day shall be drawn as it stood that day.
+- Who sees what, set by the server per row: product owners, managers, admins and executives every row, whole; a scrum master their own pods whole and the project's other pods dates only, with no project row; a developer no Timeline on Overall and only their own pod's row on its Delivery panel. Blocker changes only for the pod blocker read's readers (never a product owner or an executive); who brought an item in and whether Jira hygiene has it open never for executives or developers.
+- Delivery's project panel shall show the same timeline for the project's and its pods' rows (labels above the bars, a shorter change list, no Why the date moved) in place of its date history, and a pod's panel the pod's own row; Why it moved opens Overall's Timeline with the row picked.
+- The same data shall be served by `GET /projects/{id}/timeline` and `GET /pods/{id}/timeline`: past days from stored rows only, today live as every read of today is, so a row's dates and Why the date moved under it always agree on now. The assistant's `delivery_impact` (4.34) shall carry the same changes and the link to the row.
 
 ## 5. Key Business Data Flows
 

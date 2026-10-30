@@ -71,7 +71,7 @@ export function AccountMenu() {
       >
         <span
           className={cn(
-            "grid h-10 w-10 flex-none place-items-center rounded-full bg-ink text-[12px] font-extrabold text-white ring-2 ring-offset-2",
+            "grid h-10 w-10 flex-none place-items-center rounded-full bg-ink text-[12px] font-extrabold text-white ring-2 ring-offset-2 ring-offset-(color:--op-viz-surface)",
             open ? "ring-magenta" : "ring-transparent",
           )}
           aria-hidden
@@ -89,7 +89,7 @@ export function AccountMenu() {
       {open ? (
         <div
           id="account-menu"
-          className="absolute right-0 top-12 z-50 w-[min(300px,calc(100vw-2rem))] rounded-2xl border border-grey-border bg-white p-2 shadow-op-menu animate-op-pop"
+          className="absolute right-0 top-12 z-50 w-[min(300px,calc(100vw-2rem))] rounded-2xl border border-grey-border bg-(--op-viz-surface) p-2 shadow-op-menu animate-op-pop"
         >
           <div className="border-b border-grey-fill px-3 pb-2.5 pt-1.5">
             <p className="font-bold">{displayName}</p>

@@ -3,6 +3,7 @@
 import type { DeliveryTreeResponse, DirectoryItemResponse, Rag } from "../../api/schema";
 import type { PaletteTargets } from "../../app/access";
 import { ownProjects } from "../../features/delivery/ownTree.ts";
+import { HUB_TAB_LABELS, placePath, type HubTab } from "../../features/hub/hubPaths.ts";
 import { ragWords, toneForRag, type BadgeTone } from "../../lib/status.ts";
 
 export type PaletteKind =
@@ -53,6 +54,28 @@ export function screenRows(screens: { to: string; label: string; hint: string }[
     label: screen.label,
     hint: screen.hint,
     to: screen.to,
+  }));
+}
+
+/** What each of the All level's tabs holds, in a few words. */
+const ALL_TAB_HINTS: Record<HubTab, string> = {
+  date: "All projects · every project's dates, worst first",
+  warnings: "All projects · what Jira and Git say before people do",
+  scope: "All projects · what joined after planning, and Jira hygiene",
+  reports: "All projects · day reports and briefs",
+};
+
+/**
+ * The All level's tabs the role has, as screens: "Early warnings" still
+ * finds the warnings across projects now that Projects is the one sidebar item.
+ */
+export function hubTabRows(tabs: readonly HubTab[]): PaletteRow[] {
+  return tabs.map((tab) => ({
+    key: `screen:${placePath({ level: "all" }, tab)}`,
+    kind: "screen",
+    label: HUB_TAB_LABELS[tab],
+    hint: ALL_TAB_HINTS[tab],
+    to: placePath({ level: "all" }, tab),
   }));
 }
 
@@ -134,7 +157,8 @@ export function directoryRows(directory: Directory, targets: PaletteTargets): Pa
             kind,
             label: item.name,
             hint: hint(kind.charAt(0).toUpperCase() + kind.slice(1), where),
-            to: to(item.id),
+            // A pod opens its part of its first project.
+            to: to(item.id, item.project_ids),
             rag: item.rag ?? null,
           },
         ]
@@ -179,7 +203,10 @@ export function ownRows(tree: DeliveryTreeResponse, targets: PaletteTargets): Pa
         kind: "pod",
         label: pod.name,
         hint: hint("Pod", where.map((p) => p.name).join(", ")),
-        to: toPod(pod.id),
+        to: toPod(
+          pod.id,
+          where.map((p) => p.id),
+        ),
         rag: pod.rag,
       });
     }
@@ -219,9 +246,12 @@ export function paletteMark(row: Pick<PaletteRow, "kind" | "rag" | "noStatus">):
 export function peopleRows(
   people: NamedPerson[],
   pods: DirectoryItemResponse[],
-  toPod: ((podId: string) => string) | null,
+  podTarget: ((podId: string, projectIds?: readonly string[]) => string) | null,
 ): PaletteRow[] {
-  if (!toPod) return [];
+  if (!podTarget) return [];
+  // Each pod opens its part of its first project.
+  const toPod = (podId: string) =>
+    podTarget(podId, pods.find((pod) => pod.id === podId)?.project_ids ?? []);
   const seen = new Set<string>();
   const rows: PaletteRow[] = [];
   for (const person of people) {

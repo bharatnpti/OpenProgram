@@ -4,11 +4,12 @@ from collections.abc import Callable
 from datetime import date
 from typing import Annotated, cast
 
-from fastapi import Header, HTTPException, Request, status
+from fastapi import Header, HTTPException, Query, Request, status
 
 from config.settings import Settings
 from core.application.ask_investigation import InvestigationLimits, InvestigationService
 from core.application.ask_service import AskService
+from core.application.baseline_service import BaselineService
 from core.application.blocker_resolution import BlockerResolutionService
 from core.application.branding_service import BrandingService
 from core.application.config_service import ConfigService, DirectoryService
@@ -20,19 +21,23 @@ from core.application.delivery_scope import DeliveryScopeService
 from core.application.delivery_service import DeliveryService
 from core.application.directory_sync_service import DirectorySyncService
 from core.application.escalation_matrix_service import EscalationMatrixService
+from core.application.fill_day import FillDaySettingsService
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.forecast_service import ForecastService
 from core.application.gate_service import GateService
 from core.application.graph_queries import GraphQueryService
+from core.application.impact_service import DeliveryImpactService
 from core.application.jira_writes_service import JiraWritesService
 from core.application.person_names import PersonNames
 from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
+from core.application.profile_service import ProfileService
 from core.application.pull_request_flow_service import PullRequestFlowService
 from core.application.risk_service import RiskService
 from core.application.self_status_service import SelfStatusService
 from core.application.sync_status_service import SyncStatusService
 from core.application.task_update_service import TaskUpdateService
+from core.application.timeline_service import TimelineService
 from core.application.writeback_service import WriteBackService
 from core.domain.auth import Principal, Role
 from core.domain.errors import (
@@ -52,6 +57,39 @@ def get_settings_from_request(request: Request) -> Settings:
 
 def get_registry(request: Request) -> ServiceRegistry:
     return cast(ServiceRegistry, request.app.state.registry)
+
+
+def get_tenant_today(request: Request) -> date:
+    """Today in the tenant's timezone, the day graph links are dated and read on.
+
+    Not the server's ``date.today()``: on a server in another timezone that is
+    a different day for part of every day, and a read on it misses the links
+    made on the tenant's day.
+    """
+    return get_registry(request).tenant_today()
+
+
+def as_of_or_tenant_today(
+    request: Request,
+    as_of: Annotated[
+        date | None,
+        Query(description="The day to read. Left out: today in the tenant's timezone."),
+    ] = None,
+) -> date:
+    """The ``as_of`` query a read asks for, else the tenant's today (get_tenant_today)."""
+    return as_of if as_of is not None else get_tenant_today(request)
+
+
+def day_or_tenant_today(
+    request: Request,
+    day: Annotated[
+        date | None,
+        Query(description="The day to read. Left out: today in the tenant's timezone."),
+    ] = None,
+) -> date:
+    """The ``day`` query a read asks for, else the tenant's today: as_of_or_tenant_today
+    for the reads whose day is named ``day``."""
+    return day if day is not None else get_tenant_today(request)
 
 
 DEV_USER_HEADER = "x-openprogram-dev-user"
@@ -142,9 +180,13 @@ def get_config_service(request: Request) -> ConfigService:
 
 
 def config_service_for(
-    registry: ServiceRegistry, *, today: Callable[[], date] = date.today
+    registry: ServiceRegistry, *, today: Callable[[], date] | None = None
 ) -> ConfigService:
-    """The config service over the registry's stores; ``today`` dates the links it changes."""
+    """The config service over the registry's stores; ``today`` dates the links it changes.
+
+    It defaults to the tenant's today, the day the forecast and readiness services
+    check links on, so a link made through the API holds on the day they read.
+    """
     return ConfigService(
         graph_repository=registry.graph_repository(),
         status_repository=registry.status_repository(),
@@ -154,8 +196,13 @@ def config_service_for(
         writeback_config_repository=registry.writeback_config_repository(),
         issue_tracker=registry.issue_tracker(),
         require_issue_tracker_link=registry.settings.issue_tracker_provider != "fake",
-        today=today,
+        today=today or registry.tenant_today,
     )
+
+
+def get_profile_service(request: Request) -> ProfileService:
+    """Profiles per pod membership: who brings what to each pod."""
+    return get_registry(request).profile_service()
 
 
 def get_flow_metrics_service(request: Request) -> FlowMetricsService:
@@ -209,6 +256,10 @@ def get_write_back_service(request: Request) -> WriteBackService:
     return registry.write_back_service()
 
 
+def get_fill_day_settings_service(request: Request) -> FillDaySettingsService:
+    return get_registry(request).fill_day_settings_service()
+
+
 def get_jira_writes_service(request: Request) -> JiraWritesService:
     registry = get_registry(request)
     return registry.jira_writes_service()
@@ -254,8 +305,12 @@ def get_ask_service(request: Request) -> AskService:
         forecast_service=get_forecast_service(request),
         delivery_scope_service=get_delivery_scope_service(request),
         release_readiness_service=registry.release_readiness_service(),
+        impact_service=registry.delivery_impact_service(),
         model=settings.default_llm_model,
         max_tool_iterations=settings.ask_max_tool_iterations,
+        profile_service=registry.profile_service(),
+        hygiene_service=registry.hygiene_service(),
+        today=registry.tenant_today,
     )
 
 
@@ -290,6 +345,7 @@ def get_delivery_scope_service(request: Request) -> DeliveryScopeService:
     return DeliveryScopeService(
         graph_repository=registry.graph_repository(),
         rollup_repository=registry.rollup_repository(),
+        today=registry.tenant_today,
     )
 
 
@@ -316,6 +372,11 @@ def get_persona_view_service(request: Request) -> PersonaViewService:
         # ones carry (N3), read by the Signals list's own reader.
         drift_signals=get_risk_service(request),
         identity_link_repository=registry.identity_link_repository(),
+        # The stage a task's tracker status maps to, on its "Jira today" line.
+        delivery_settings_repository=registry.delivery_settings_repository(),
+        escalation_policy=registry.settings.escalation_policy(),
+        checkin_defaults=registry.settings.checkin_defaults(),
+        today=registry.tenant_today,
     )
 
 
@@ -352,6 +413,18 @@ def get_day_report_service(request: Request) -> DayReportService:
 
 def get_forecast_service(request: Request) -> ForecastService:
     return get_registry(request).forecast_service()
+
+
+def get_baseline_service(request: Request) -> BaselineService:
+    return get_registry(request).baseline_service()
+
+
+def get_delivery_impact_service(request: Request) -> DeliveryImpactService:
+    return get_registry(request).delivery_impact_service()
+
+
+def get_timeline_service(request: Request) -> TimelineService:
+    return get_registry(request).timeline_service()
 
 
 def get_gate_service(request: Request) -> GateService:

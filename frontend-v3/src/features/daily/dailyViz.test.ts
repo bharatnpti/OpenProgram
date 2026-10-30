@@ -71,11 +71,11 @@ test("the date bar with three days of history: the committed date, the team's, n
   assert.equal(chart.noForecast?.text, "No forecast yet");
   assert.deepEqual(
     chart.notes.map((note) => note.text),
-    ["Team's latest date · CHK-4 · today", "History: 3 of 10 working days"],
+    ["Team's own date · CHK-4 · today", "History: 3 of 10 working days"],
   );
   near(chart.team?.x, 16);
   assert.match(chart.label, /No forecast yet: 3 of 10 working days of history\./);
-  assert.match(chart.label, /The team's latest date is today, CHK-4\./);
+  assert.match(chart.label, /The team's own date is today, CHK-4\./);
   assert.deepEqual(view.legend, { committed: true, team: true, forecast: null });
 });
 
@@ -150,7 +150,7 @@ test("a forecast the report states only at 85% is one tick in the verdict's colo
 test("a team date past today stays at the start, and says it is past", () => {
   const view = dateBar({ ...shortHistory, team_latest: "2026-10-05" }, TODAY);
   near(view.chart?.team?.x, 16);
-  assert.equal(view.chart?.notes[0].text, "Team's latest date · CHK-4 · Mon 5 Oct, past");
+  assert.equal(view.chart?.notes[0].text, "Team's own date · CHK-4 · Mon 5 Oct, past");
 });
 
 const strip: ProgressFacts = {
@@ -517,6 +517,28 @@ test("a date bar with nothing to say under it is shorter, as on a tenant new to 
   assert.equal(view.chart?.noForecast?.text, "No forecast yet");
   assert.deepEqual(view.chart?.ticks, []);
   assert.deepEqual(view.legend, { committed: true, team: false, forecast: null });
+});
+
+test("a person whose every ask has nobody above says it once, under their name", () => {
+  const stopped = asks[2].asks[0];
+  const view = whoActs([
+    { ...asks[2], asks: [stopped, { ...stopped, text: "CHK-9: another fix", waited_days: 2 }] },
+  ]);
+  const [lane] = view.lanes;
+  assert.equal(lane.stop, "Nobody above Asha Rao is told");
+  assert.deepEqual(
+    lane.asks.map((ask) => ask.stop),
+    [null, null],
+  );
+  // One ask keeps it on the ask; asks that differ keep their own.
+  assert.equal(whoActs([asks[2]]).lanes[0].stop, null);
+  const mixed = whoActs([{ ...asks[2], asks: [stopped, { ...stopped, nobody_above: undefined }] }])
+    .lanes[0];
+  assert.equal(mixed.stop, null);
+  assert.deepEqual(
+    mixed.asks.map((ask) => ask.stop),
+    ["Nobody above Asha Rao is told", null],
+  );
 });
 
 test("one escalation target reads as one line, none as nothing", () => {

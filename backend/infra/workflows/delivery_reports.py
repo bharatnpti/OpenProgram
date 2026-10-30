@@ -2,7 +2,12 @@
 
 The snapshot run stores today's requirements of every project (a later run the
 same day replaces the earlier one), which the requirements timeline and the day
-reports' "moved since" read. The dispatch run checks every enabled day report
+reports' "moved since" read, and then today's forecast of every project, pod
+and release (forecast_days), each with why it moved since the day before, which
+the forecast's history and "why the date moved" read. Dispatched by an
+admin with ``reconstruct_days``, it also rebuilds the forecast of that many
+earlier days from the stored snapshots: the one-off job after the forecast
+started being kept. The dispatch run checks every enabled day report
 against its own local send time; each report claims its day before sending, so
 a tick that fires twice, or is retried, never sends a second copy.
 
@@ -17,6 +22,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from core.domain.forecast import ForecastDaysNotKept
 from core.domain.graph import NodeKind
 
 if TYPE_CHECKING:
@@ -27,6 +33,8 @@ if TYPE_CHECKING:
 class DeliverySnapshotInput:
     tenant_id: str
     observed_at: str | None = None
+    #: Also rebuild the forecast of this many days before today (an admin's dispatch).
+    reconstruct_days: int | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -34,6 +42,11 @@ class DeliverySnapshotResult:
     tenant_id: str
     day: str
     projects_recorded: int
+    #: Today's forecast rows kept: one per project, pod and release.
+    forecasts_recorded: int = 0
+    #: Earlier days rebuilt, and days left as the hourly run kept them.
+    forecast_days_reconstructed: int = 0
+    forecast_days_kept: int = 0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -96,8 +109,35 @@ async def run_delivery_snapshot_activity(payload: DeliverySnapshotInput) -> Deli
         observed_at = _timestamp(payload.observed_at)
         day = observed_at.astimezone(_zone(registry.settings.tenant_default_timezone)).date()
         recorded = await registry.delivery_service().record_snapshots(payload.tenant_id, day)
+        forecasts = registry.forecast_service()
+        try:
+            kept = await forecasts.record_forecast_days(payload.tenant_id, day)
+        except Exception as exc:  # noqa: BLE001 - the snapshots are stored; history replays the day
+            import structlog
+
+            # The run still ends well (the snapshots are stored, and the reconstruction can
+            # rebuild the day), so the error log is what says the day's rows are missing.
+            structlog.get_logger(__name__).error(
+                "forecast_days_not_recorded",
+                tenant_id=payload.tenant_id,
+                day=day.isoformat(),
+                error_type=type(exc.__cause__ or exc).__name__,
+                rows_lost=exc.rows if isinstance(exc, ForecastDaysNotKept) else None,
+            )
+            kept = 0
+        rebuilt = left = 0
+        if payload.reconstruct_days:
+            summary = await forecasts.reconstruct_forecast_days(
+                payload.tenant_id, day, days=payload.reconstruct_days
+            )
+            rebuilt, left = summary.written, summary.kept
         return DeliverySnapshotResult(
-            tenant_id=payload.tenant_id, day=day.isoformat(), projects_recorded=recorded
+            tenant_id=payload.tenant_id,
+            day=day.isoformat(),
+            projects_recorded=recorded,
+            forecasts_recorded=kept,
+            forecast_days_reconstructed=rebuilt,
+            forecast_days_kept=left,
         )
     finally:
         await registry.close()

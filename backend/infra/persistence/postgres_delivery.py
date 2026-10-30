@@ -12,6 +12,7 @@ from core.domain.delivery import (
     DeliverySettings,
     DeliveryStage,
     RequirementsSnapshot,
+    SnapshotItem,
     StageMapping,
 )
 from core.domain.forecast import ForecastSettings
@@ -255,6 +256,10 @@ def snapshot_to_json(snapshot: RequirementsSnapshot) -> dict[str, object]:
         "unmapped_statuses": list(snapshot.unmapped_statuses),
         "items": {key: stage.value for key, stage in snapshot.items.items()},
         "titles": dict(snapshot.titles),
+        "item": {
+            key: {"points": item.points, "type": item.type, "due": item.due}
+            for key, item in snapshot.details.items()
+        },
     }
 
 
@@ -291,7 +296,24 @@ def _snapshot_from_row(row: Mapping[str, object]) -> RequirementsSnapshot:
             for key, value in _mapping(payload.get("titles")).items()
             if isinstance(value, str)
         },
+        details={
+            str(key): _snapshot_item(_mapping(value))
+            for key, value in _mapping(payload.get("item")).items()
+        },
         computed_at=computed_at,
+    )
+
+
+def _snapshot_item(value: Mapping[str, object]) -> SnapshotItem:
+    points = value.get("points")
+    kind = value.get("type")
+    due = value.get("due")
+    return SnapshotItem(
+        points=float(points)
+        if isinstance(points, int | float) and not isinstance(points, bool)
+        else None,
+        type=kind if isinstance(kind, str) and kind else None,
+        due=due if isinstance(due, str) and due else None,
     )
 
 

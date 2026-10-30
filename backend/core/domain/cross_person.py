@@ -294,6 +294,27 @@ def merge_request_refs_in(text: str) -> frozenset[MergeRequestRef]:
     return frozenset(refs)
 
 
+def work_reference(text: str) -> str | None:
+    """The work an ask names, as the ask writes it: "CHK-8", "storefront-web !2".
+
+    The first issue key or merge request named with its repository, by where
+    it stands in the text; a bare "!3" only when the ask names nothing else.
+    None when it names no work at all.
+    """
+    named = [(match.start(1), match.group(1)) for match in _ISSUE_KEY.finditer(text)]
+    bare: str | None = None
+    for match in _MERGE_REQUEST.finditer(text):
+        repo = match.group(2)
+        name = repo.casefold() if repo else None
+        if name is None or name in _GENERIC_ASK_WORDS or not _looks_like_repo(name):
+            bare = bare or f"!{match.group(3)}"
+            continue
+        named.append((match.start(), " ".join(match.group(0).split())))
+    if named:
+        return min(named)[1]
+    return bare
+
+
 def request_subject(request: CrossPersonRequest) -> RequestSubject:
     return subject_of_text(
         request.note,

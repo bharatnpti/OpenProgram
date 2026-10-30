@@ -9,6 +9,7 @@ from core.domain.integrations import (
     CalendarEvent,
     Commit,
     Issue,
+    IssueChange,
     IssueState,
     IssueText,
     NewIssue,
@@ -30,6 +31,8 @@ class FakeIssueTracker:
     # email -> tracker account id, for find_user_by_email
     user_emails: dict[str, str] = field(default_factory=dict)
     texts: dict[str, IssueText] = field(default_factory=dict)
+    # issue key -> its history, oldest first
+    changes: dict[str, list[IssueChange]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.projects:
@@ -130,6 +133,16 @@ class FakeIssueTracker:
             state=issue.state,
             description="",
             updated_at=issue.updated_at,
+        )
+
+    async def list_issue_changes(
+        self, tenant_id: str, key: str, since: datetime | None
+    ) -> list[IssueChange]:
+        """The sample tracker's history for the key: what ``changes`` holds, after ``since``."""
+        await self.get_issue(tenant_id, key)
+        return sorted(
+            (change for change in self.changes.get(key, []) if since is None or change.at > since),
+            key=lambda change: (change.at, change.history_id, change.field),
         )
 
     async def list_active_for(self, assignee: UserRef) -> list[Issue]:

@@ -16,24 +16,33 @@ from api.routers import (
     admin,
     ask,
     auth,
+    baselines,
     branding,
     checkin,
     config,
     delivery,
+    delivery_impact,
     escalation,
     forecast,
     gates,
     graph,
     health,
+    hygiene,
     integrations,
+    jira_changes,
     jira_writes,
     ops,
     persona,
+    portfolio_reads,
+    profiles,
     readiness,
     reports,
     test_support,
+    timeline,
+    today,
     webhooks,
 )
+from api.routers import coordination_reads as coordination_reads_router
 from config.settings import Settings, get_settings
 from infra.observability.logging import configure_logging
 from infra.observability.metrics import build_http_metrics
@@ -146,13 +155,22 @@ def create_app(
     app.include_router(integrations.router)
     app.include_router(delivery.router)
     app.include_router(forecast.router)
+    app.include_router(baselines.router)
+    app.include_router(delivery_impact.router)
+    app.include_router(timeline.router)
     app.include_router(gates.router)
     app.include_router(readiness.router)
+    app.include_router(hygiene.router)
     app.include_router(reports.router)
     app.include_router(escalation.router)
     app.include_router(ask.router)
     app.include_router(checkin.router)
     app.include_router(persona.router)
+    app.include_router(today.router)
+    app.include_router(jira_changes.router)
+    app.include_router(portfolio_reads.router)
+    app.include_router(coordination_reads_router.router)
+    app.include_router(profiles.router)
     app.include_router(test_support.router)
     app.include_router(webhooks.router)
     return app

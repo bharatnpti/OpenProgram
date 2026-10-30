@@ -42,6 +42,8 @@ def _jira_fields() -> list[dict[str, object]]:
         {"id": "customfield_10016", "name": "Story point estimate", "schema": {"type": "number"}},
         {"id": "customfield_10050", "name": "Budget", "schema": {"type": "number"}},
         {"id": "customfield_10060", "name": "Team", "schema": {"type": "option"}},
+        {"id": "customfield_10070", "name": "Severity", "schema": {"type": "option"}},
+        {"id": "priority", "name": "Priority", "schema": {"type": "priority"}},
     ]
 
 
@@ -71,6 +73,11 @@ async def test_jira_cloud_reports_the_server_the_account_and_number_fields() -> 
     assert [option.value for option in check.suggestions["story_points_field"]] == [
         "customfield_10016",
         "customfield_10050",
+    ]
+    # Select and text fields for the severity, severity-looking ones first.
+    assert [option.value for option in check.suggestions["severity_field"]] == [
+        "customfield_10070",
+        "customfield_10060",
     ]
     assert myself.calls.last.request.headers["authorization"].startswith("Basic ")
 
@@ -133,6 +140,33 @@ async def test_a_chosen_story_points_field_that_does_not_exist_fails() -> None:
 
     assert check.ok is False
     assert check.message == "Signed in, but Jira has no number field customfield_10060."
+
+
+@respx.mock
+async def test_a_chosen_severity_field_that_is_no_select_or_text_field_fails() -> None:
+    respx.get("https://acme.atlassian.net/rest/api/3/serverInfo").mock(
+        return_value=httpx.Response(200, json={"deploymentType": "Cloud"})
+    )
+    respx.get("https://acme.atlassian.net/rest/api/3/myself").mock(
+        return_value=httpx.Response(200, json={"displayName": "bot"})
+    )
+    respx.get("https://acme.atlassian.net/rest/api/3/field").mock(
+        return_value=httpx.Response(200, json=_jira_fields())
+    )
+
+    chosen = await _tester().test(
+        "demo", "jira", {**JIRA_CLOUD, "severity_field": "customfield_10070"}
+    )
+    wrong = await _tester().test(
+        "demo", "jira", {**JIRA_CLOUD, "severity_field": "customfield_10016"}
+    )
+
+    assert chosen.ok is True
+    assert wrong.ok is False
+    assert wrong.message == "Signed in, but Jira has no select or text field customfield_10016."
+    assert [option.value for option in wrong.suggestions["severity_field"]][0] == (
+        "customfield_10070"
+    )
 
 
 @respx.mock

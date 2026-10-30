@@ -73,6 +73,15 @@ class ForecastSettingsError(OpenProgramError):
     """A forecast setting that cannot be saved."""
 
 
+class ForecastDaysNotKept(OpenProgramError):
+    """Forecast rows the store refused: they are lost until the next run keeps them."""
+
+    def __init__(self, *, rows: int) -> None:
+        super().__init__(f"{rows} forecast day rows were not kept.")
+        #: How many rows were not saved.
+        self.rows = rows
+
+
 @dataclass(frozen=True, kw_only=True)
 class CommitmentScope:
     kind: CommitmentScopeKind
@@ -224,6 +233,108 @@ class TeamForecast:
 
 
 @dataclass(frozen=True, kw_only=True)
+class ForecastDayRecord:
+    """A scope's forecast as it stood on one day, kept so its history is read, not replayed.
+
+    The hourly snapshot run keeps today's (each later run that day replaces it,
+    so the day's last run stays). A one-off reconstruction fills earlier days
+    from the stored snapshots and marks them ``reconstructed``; it never replaces
+    a day the hourly run kept. ``attribution`` is for the breakdown of why the
+    date moved, and is None until something computes it.
+    """
+
+    tenant_id: str
+    scope: CommitmentScope
+    day: date
+    p50: date | None
+    p85: date | None
+    verdict: Verdict
+    #: The date the verdict was measured against that day: committed, else Jira's release date.
+    target_date: date | None
+    #: The team's latest date that day, and the requirement that carried it.
+    team_latest: date | None
+    team_latest_key: str | None
+    remaining: float
+    unit: str
+    sample_days: int
+    completed_in_sample: float
+    #: The working days of history the forecast needed that day.
+    min_sample_days: int
+    computed_at: datetime
+    reconstructed: bool = False
+    attribution: Mapping[str, object] | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class ForecastDayChange:
+    """What one kept day of a scope changed in its scope, read off the day's breakdown.
+
+    The requirements added, removed and reopened that day, and each part's working
+    days on the 85% date: the sum of its items' shares (core/domain/impact.py), which
+    is exact for the day. A day whose move was not taken apart lists its items with
+    no days. Read in bulk for the portfolio's bar, without the breakdown itself.
+    """
+
+    scope: CommitmentScope
+    day: date
+    added: int = 0
+    added_days: float = 0.0
+    removed: int = 0
+    removed_days: float = 0.0
+    reopened: int = 0
+    reopened_days: float = 0.0
+    #: Whether the day's move was taken apart, so its days say anything.
+    taken_apart: bool = True
+    reconstructed: bool = False
+
+
+#: A stored row's key: the tenant, the scope's kind, id and project, and the day.
+ForecastDayKey = tuple[str, str, str, str, date]
+
+
+def forecast_day_key(record: ForecastDayRecord) -> ForecastDayKey:
+    """What a stored row is unique by: the tenant, the scope's kind, id and project, and the day.
+
+    The project is part of it (migration 0044): a pod's forecast is its part of one
+    project's work, so a pod two projects share keeps one row a day under each. A
+    project's row is under itself and a release's under its one project, so for them
+    the project adds nothing to the key.
+    """
+    return (
+        record.tenant_id,
+        record.scope.kind.value,
+        record.scope.id,
+        record.scope.project_id,
+        record.day,
+    )
+
+
+def last_row_per_key(
+    records: Sequence[ForecastDayRecord],
+) -> tuple[list[ForecastDayRecord], list[ForecastDayRecord]]:
+    """The rows to store, one per key with the last record of a key winning, and the
+    records it replaced, in the order they were given.
+
+    A store keeps one row per key, and a statement that offers it two for the same
+    key is refused whole: a repeated key must cost the repeat, never the day.
+    """
+    kept: dict[ForecastDayKey, ForecastDayRecord] = {}
+    replaced: list[ForecastDayRecord] = []
+    for record in records:
+        key = forecast_day_key(record)
+        earlier = kept.get(key)
+        if earlier is not None:
+            replaced.append(earlier)
+        kept[key] = record
+    return list(kept.values()), replaced
+
+
+def changes_until(changes: Iterable[DateChange], cutoff: datetime) -> list[DateChange]:
+    """The date changes made before ``cutoff``: a scope's commitment as it stood then."""
+    return [change for change in changes if change.changed_at < cutoff]
+
+
+@dataclass(frozen=True, kw_only=True)
 class OpenItem:
     key: str
     #: The check-in ETA's last day, when someone gave one.
@@ -259,8 +370,21 @@ def daily_completions(
     gap in the history is not read as a day nothing was finished. ``keys``
     limits the count to one pod's or one release's requirements.
     """
+    return [value for _day, value in dated_completions(snapshots, keys=keys, by_points=by_points)]
+
+
+def dated_completions(
+    snapshots: Sequence[RequirementsSnapshot],
+    *,
+    keys: frozenset[str] | None = None,
+    by_points: bool = False,
+) -> list[tuple[date, float]]:
+    """:func:`daily_completions` with the day each sample was finished on, oldest first.
+
+    Why the date moved says which day left the window and which joined it.
+    """
     by_day = {snapshot.day: snapshot for snapshot in snapshots}
-    samples: list[float] = []
+    samples: list[tuple[date, float]] = []
     for snapshot in sorted(snapshots, key=lambda item: item.day):
         if not is_working_day(snapshot.day):
             continue
@@ -268,17 +392,20 @@ def daily_completions(
         if previous is None:
             continue
         if by_points:
-            samples.append(max(0.0, snapshot.points_done - previous.points_done))
+            samples.append((snapshot.day, max(0.0, snapshot.points_done - previous.points_done)))
             continue
         samples.append(
-            float(
-                sum(
-                    1
-                    for key, stage in snapshot.items.items()
-                    if stage is DeliveryStage.PRODUCTION
-                    and (keys is None or key in keys)
-                    and previous.items.get(key) is not DeliveryStage.PRODUCTION
-                )
+            (
+                snapshot.day,
+                float(
+                    sum(
+                        1
+                        for key, stage in snapshot.items.items()
+                        if stage is DeliveryStage.PRODUCTION
+                        and (keys is None or key in keys)
+                        and previous.items.get(key) is not DeliveryStage.PRODUCTION
+                    )
+                ),
             )
         )
     return samples

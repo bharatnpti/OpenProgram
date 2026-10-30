@@ -14,8 +14,6 @@ mirrors ``project_viewer``: change both together.
 
 from __future__ import annotations
 
-from datetime import date
-
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.delivery_scope import PROJECT_OUTSIDE_SCOPE
 from core.application.forecast_service import ForecastService
@@ -90,7 +88,7 @@ async def pod_viewer(principal: Principal, forecasts: ForecastService, pod_id: s
     if principal.has_role(Role.ADMIN) or principal.has_role(Role.MGR):
         return Viewer(subject=principal.subject, roles=principal.roles, may_act=may_act)
     if principal.has_role(Role.SM) and await forecasts.runs_pod(
-        principal.tenant_id, pod_id, principal.subject, date.today()
+        principal.tenant_id, pod_id, principal.subject, forecasts.today()
     ):
         return Viewer(
             subject=principal.subject,

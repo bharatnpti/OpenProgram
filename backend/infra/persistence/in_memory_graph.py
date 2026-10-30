@@ -38,6 +38,7 @@ from core.domain.status import (
     CheckInCorrelation,
     CheckInDay,
     CheckInNudge,
+    CheckInNudgeSent,
     CheckInPreference,
     CheckInScheduleRun,
     CheckInSignals,
@@ -85,6 +86,8 @@ class InMemoryGraphStore:
     _checkin_reply_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     # One rollup of a tenant's day at a time, as the Postgres advisory lock.
     _rollup_day_locks: dict[tuple[str, date], asyncio.Lock] = field(default_factory=dict)
+    # One write-back answer of a correlation at a time, as the Postgres advisory lock.
+    _writeback_answer_locks: dict[tuple[str, str], asyncio.Lock] = field(default_factory=dict)
     # Stamps a blocker row's updated_at on each write, as the Postgres upsert's now().
     blocker_clock: Callable[[], datetime] = field(default_factory=lambda: _utc_now)
 
@@ -487,6 +490,21 @@ class InMemoryGraphStore:
             and (status_filter is None or request.status in status_filter)
         )
 
+    async def list_resolved_since(
+        self, tenant_id: str, since: datetime
+    ) -> list[CrossPersonRequest]:
+        return sorted(
+            (
+                request
+                for request in self._cross_person_requests.values()
+                if request.tenant_id == tenant_id
+                and request.status is CrossPersonRequestStatus.RESOLVED
+                and request.updated_at >= since
+            ),
+            key=lambda request: (request.updated_at, request.id),
+            reverse=True,
+        )
+
     async def list_open(self, tenant_id: str) -> list[CrossPersonRequest]:
         return _sort_cross_person_requests(
             request
@@ -762,6 +780,14 @@ class InMemoryGraphStore:
             return None
         return audit
 
+    @asynccontextmanager
+    async def exclusive_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> AsyncIterator[None]:
+        lock = self._writeback_answer_locks.setdefault((tenant_id, correlation_id), asyncio.Lock())
+        async with lock:
+            yield
+
     async def count_applied_writebacks(self, tenant_id: str, since: datetime | None = None) -> int:
         return sum(1 for _ in self._applied_writebacks(tenant_id, since))
 
@@ -978,6 +1004,25 @@ class InMemoryGraphStore:
             key=lambda blocker: (blocker.developer_id, blocker.first_seen_on, blocker.blocker_id),
         )
 
+    async def blockers_on_work_items(
+        self, tenant_id: str, work_item_ids: Sequence[str], after: date, until: date
+    ) -> list[DeveloperBlocker]:
+        wanted = set(work_item_ids)
+
+        def within(day: date | None) -> bool:
+            return day is not None and after < day <= until
+
+        return sorted(
+            (
+                blocker
+                for blocker in self._developer_blockers.values()
+                if blocker.tenant_id == tenant_id
+                and blocker.work_item_id in wanted
+                and (within(blocker.first_seen_on) or within(blocker.resolved_on))
+            ),
+            key=lambda blocker: (blocker.first_seen_on, blocker.blocker_id),
+        )
+
     async def has_blocker_rows(self, tenant_id: str, developer_id: str) -> bool:
         return any(
             blocker.tenant_id == tenant_id and blocker.developer_id == developer_id
@@ -1027,6 +1072,9 @@ class InMemoryGraphStore:
 
     async def checkins_on_day(self, tenant_id: str, day: date) -> list[CheckInDay]:
         return checkins_on_day(self._checkins, tenant_id, day)
+
+    async def checkin_nudges_on_day(self, tenant_id: str, day: date) -> list[CheckInNudgeSent]:
+        return checkin_nudges_on_day(self._checkins, self._checkin_nudges.values(), tenant_id, day)
 
     async def purge_checkin_raw_replies_older_than(self, tenant_id: str, cutoff: datetime) -> int:
         cleared = 0
@@ -1170,6 +1218,20 @@ class InMemoryGraphStore:
     ) -> None:
         self._sync_cursors[(tenant_id, connector, scope)] = cursor
 
+    async def swap_cursor(
+        self,
+        tenant_id: str,
+        connector: str,
+        scope: str,
+        expected_value: str | None,
+        cursor: SyncCursor,
+    ) -> bool:
+        key = (tenant_id, connector, scope)
+        if self._sync_cursors.get(key, SyncCursor()).value != expected_value:
+            return False
+        self._sync_cursors[key] = cursor
+        return True
+
     async def list_cursors(self, tenant_id: str) -> list[SyncCursorRecord]:
         return [
             SyncCursorRecord(connector=connector, scope=scope, cursor=cursor)
@@ -1201,6 +1263,20 @@ class InMemoryGraphStore:
         )
         self._touch_conversation_turns(matched)
         return matched
+
+    async def peek_turns_for_day(
+        self, tenant_id: str, developer_id: str, on: date
+    ) -> list[ConversationTurn]:
+        return sorted(
+            (
+                turn
+                for turn in self._conversation_turns
+                if turn.tenant_id == tenant_id
+                and turn.developer_id == developer_id
+                and turn.conversation_date == on
+            ),
+            key=_conversation_sort_key,
+        )
 
     async def list_recent_turns(
         self,
@@ -1544,6 +1620,38 @@ def _checkin_with_last_accessed_at(checkin: CheckIn) -> CheckIn:
 
 def _checkin_last_accessed_at(checkin: CheckIn) -> datetime:
     return checkin.last_accessed_at or checkin.replied_at or checkin.asked_at
+
+
+def _checkin_day(checkin: CheckIn) -> date:
+    """A check-in's local day; a legacy one without it, its ask's UTC day."""
+    if checkin.checkin_date is not None:
+        return checkin.checkin_date
+    asked_at = checkin.asked_at
+    return (asked_at if asked_at.tzinfo else asked_at.replace(tzinfo=UTC)).astimezone(UTC).date()
+
+
+def checkin_nudges_on_day(
+    checkins: list[CheckIn], nudges: Iterable[CheckInNudge], tenant_id: str, day: date
+) -> list[CheckInNudgeSent]:
+    """The rungs sent for the check-ins of ``day``, oldest first, as Postgres reads them."""
+    people = {
+        checkin.correlation_id: checkin.developer_id
+        for checkin in checkins
+        if checkin.tenant_id == tenant_id and _checkin_day(checkin) == day
+    }
+    sent = [
+        CheckInNudgeSent(
+            developer_id=people[nudge.correlation_id],
+            correlation_id=nudge.correlation_id,
+            nudge_number=nudge.nudge_number,
+            sent_at=nudge.sent_at,
+        )
+        for nudge in nudges
+        if nudge.tenant_id == tenant_id
+        and nudge.sent_at is not None
+        and nudge.correlation_id in people
+    ]
+    return sorted(sent, key=lambda rung: (rung.sent_at, rung.correlation_id, rung.nudge_number))
 
 
 def checkins_on_day(checkins: list[CheckIn], tenant_id: str, day: date) -> list[CheckInDay]:

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
 import type { ReleaseMatchKind, ReleaseResponse } from "../../api/schema";
+import { useRole } from "../../app/role";
 import { ConfirmDialog } from "../../components/Dialogs";
 import { Pill } from "../../components/ui/Pill";
 import { formatDay } from "../../lib/format";
@@ -127,9 +128,12 @@ function RemoveRelease({
   onRemoved: () => void;
 }) {
   const refresh = useReleaseRefresh(projectId);
+  const daily = useRole().access.reports.daily;
   const reports = useQuery({
     queryKey: ["day-reports", "project", projectId],
     queryFn: () => apiClient.dayReports(projectId),
+    // Which reports cover the release, for whoever reads day reports (not an executive).
+    enabled: daily,
   });
   const covering = (reports.data ?? []).filter(
     (report) => report.release_id === release.release_id,

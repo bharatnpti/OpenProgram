@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from typing import Literal, Protocol
@@ -15,8 +15,16 @@ from core.application.attention import (
 )
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
 from core.application.checkin_drift import CHECKIN_DRIFT_FACT_SOURCE
-from core.application.person_names import UNKNOWN_PERSON
+from core.application.checkin_ladder import PodCheckinReads
+from core.application.person_names import UNKNOWN_PERSON, member_names
+from core.application.portfolio_privacy import (
+    counted_day,
+    counted_statuses,
+    own_cells_only,
+    without_small_group_people,
+)
 from core.application.rollup_service import (
+    CONFIRMED_NO_BLOCKERS_REASON,
     NO_WORK_REASON,
     DriftSignals,
     RollupService,
@@ -24,8 +32,8 @@ from core.application.rollup_service import (
     people_outside_teams,
     task_rag,
 )
-from core.application.status_summaries import NO_REPLY_BLOCKER
-from core.application.sync_services import ISSUE_FACT_SOURCE
+from core.application.status_summaries import NO_REPLY_BLOCKER, observed_evidence
+from core.application.sync_services import ISSUE_CHANGE_FACT_SOURCE, ISSUE_FACT_SOURCE
 from core.application.task_update_service import (
     TASK_UPDATE_FACT_SOURCE,
     StatedEta,
@@ -33,8 +41,17 @@ from core.application.task_update_service import (
     last_statement,
     own_eta,
     task_facts,
+    task_key,
 )
+from core.domain.checkin_rungs import (
+    CHECKIN_RUNG_FACT_SOURCE,
+    RungView,
+    rung_facts_since,
+    sent_rungs,
+)
+from core.domain.delivery import DEFAULT_STAGE_MAPPING, DeliveryStage, StageMapping
 from core.domain.errors import GraphNotFound
+from core.domain.escalation import EscalationPolicy
 from core.domain.graph import (
     EdgeKind,
     EntityRef,
@@ -45,9 +62,17 @@ from core.domain.graph import (
     NodeKind,
     workstreams_in_use,
 )
+from core.domain.identity import IdentityLink
+from core.domain.observed_day import observe_task
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
-from core.domain.status import DeveloperStatus, StatusSource
+from core.domain.status import (
+    CheckInDefaults,
+    DeveloperStatus,
+    StatusSource,
+    effective_checkin_preference,
+)
+from core.ports.delivery import DeliverySettingsRepository
 from core.ports.repositories import (
     GraphRepository,
     IdentityLinkRepository,
@@ -57,10 +82,15 @@ from core.ports.repositories import (
 )
 
 TASK_FACT_LOOKBACK_DAYS = 30
+# Rung facts read for one day: a few per silent person, so this covers any tenant's day.
+_RUNG_FACT_LIMIT = 5000
 # Facts that say what a person stated about a task, not how it is going: a
 # task's colour never comes from them (a statement never repaints a task, and
 # an ETA fact never masks the tracker's colour).
 _STATEMENT_FACT_SOURCES = frozenset({TASK_UPDATE_FACT_SOURCE, CHECKIN_DRIFT_FACT_SOURCE})
+# Facts that never colour a task: a person's statement, or one field change
+# from the tracker's history (the issue fact of the same update carries the state).
+_UNCOLOURED_FACT_SOURCES = _STATEMENT_FACT_SOURCES | {ISSUE_CHANGE_FACT_SOURCE}
 
 
 class PortfolioFindings(Protocol):
@@ -88,6 +118,27 @@ class TaskStatusView:
 
 
 @dataclass(frozen=True, kw_only=True)
+class ObservedTaskView:
+    """What the tracker says of a task today, beside what its people said ("Jira today").
+
+    Never merged into what anyone said: a person's word stays theirs, and the
+    drift kinds flag where the two disagree.
+    """
+
+    #: The tracker's status name now, and the delivery stage it maps to.
+    status: str | None
+    stage: DeliveryStage | None
+    #: When the task entered that status, by the tracker's history.
+    since: datetime | None
+    #: Who made that move, when it was not the task's own people.
+    moved_by: str | None
+    #: The day's other changes: "due date moved Oct 10 → Oct 14".
+    changes: tuple[str, ...] = ()
+    #: Days a task under way has not moved, from five days on.
+    quiet_days: int | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
 class FocusTaskView:
     id: str
     name: str
@@ -106,6 +157,8 @@ class FocusTaskView:
     blocker_ids: tuple[str, ...] = ()
     # The person is the synced tracker issue's assignee, through their identity link.
     can_move_in_tracker: bool = False
+    # What the tracker says of it today, beside what the person said.
+    observed: ObservedTaskView | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -185,6 +238,17 @@ class PodBlockersView:
     blockers: tuple[BlockerView, ...]
 
 
+#: Why a member's day has no data: no Jira link, Jira not synced at all, no chat
+#: id (they could not be asked, and Jira had nothing), or nothing moved in Jira.
+NoDataCause = Literal["no_jira_link", "jira_not_synced", "no_chat_id", "nothing_moved"]
+_NO_DATA_CAUSES: tuple[NoDataCause, ...] = (
+    "no_jira_link",
+    "jira_not_synced",
+    "no_chat_id",
+    "nothing_moved",
+)
+
+
 @dataclass(frozen=True, kw_only=True)
 class CheckinDeveloperView:
     developer_id: str
@@ -193,6 +257,33 @@ class CheckinDeveloperView:
     source: StatusSource
     status_as_of: date | None
     summary: str
+    #: An inferred day's lines of what moved, read back from its summary.
+    evidence: tuple[str, ...] = ()
+    #: Why the day has no data, for a day closed stale or unknown.
+    no_data_cause: NoDataCause | None = None
+    #: The day's silence ladder (``PodCheckinReads.ladder``): when they were
+    #: first asked and first replied, and the rungs that went out.
+    asked_at: datetime | None = None
+    replied_at: datetime | None = None
+    rungs: tuple[RungView, ...] = ()
+    #: Their check-in time and zone (``PodCheckinReads.schedule``).
+    checkin_time: time | None = None
+    timezone: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckinCoverageView:
+    """How a pod's day was captured: "6 replied · 3 from Jira · 1 no data (no Jira link)".
+
+    Counted per pod, never per person; the causes say why a day has no data.
+    """
+
+    replied: int = 0
+    inferred: int = 0
+    no_data: int = 0
+    #: No status for the day yet: asked and not closed, or not yet filled.
+    waiting: int = 0
+    causes: tuple[tuple[NoDataCause, int], ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -205,6 +296,20 @@ class PodCheckinsView:
     stale: int
     missing: int
     developers: tuple[CheckinDeveloperView, ...]
+    coverage: CheckinCoverageView = CheckinCoverageView()
+    #: Whether the ladder and the schedule were read for this caller.
+    ladder: bool = False
+    schedule: bool = False
+
+
+@dataclass(frozen=True, kw_only=True)
+class ProjectCheckinCoverageView:
+    """How the day was captured across a project's people: counts only, no one named."""
+
+    project_id: str
+    as_of: date
+    people: int
+    coverage: CheckinCoverageView
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -240,6 +345,8 @@ class PodTaskView:
     last_update_by: str | None = None
     #: The owners' own ETA for the task: the latest day any of them gave.
     eta: StatedEta | None = None
+    #: What the tracker says of it today, beside what its owners said.
+    observed: ObservedTaskView | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -325,6 +432,9 @@ class TreeNodeView:
     source: StatusSource | None
     confidence: float | None
     factors: tuple[RollupFactor, ...]
+    #: How many people a pod, project or program holds on the day; None for any
+    #: other node, and for a group a counts-only reader may not count.
+    people: int | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -404,17 +514,31 @@ class PersonaViewService:
         time_series_repository: TimeSeriesRepository,
         drift_signals: DriftSignals | None = None,
         identity_link_repository: IdentityLinkRepository | None = None,
+        delivery_settings_repository: DeliverySettingsRepository | None = None,
+        escalation_policy: EscalationPolicy | None = None,
+        checkin_defaults: CheckInDefaults | None = None,
+        today: Callable[[], date] | None = None,
     ) -> None:
         """``drift_signals`` gives a rollup computed here, with nothing stored, its drift (N3).
 
         ``identity_link_repository`` maps a person to their tracker account, so
         a focus task can say whether they are its synced assignee.
+        ``escalation_policy`` is today's check-in ladder, which names a rung
+        sent before rungs were recorded; ``checkin_defaults`` fill a person's
+        check-in time and zone where they set none. ``today`` is the day a
+        reason calls "today" when a read names no reader's day; the API and
+        workflows pass the tenant's (ServiceRegistry.tenant_today).
         """
         self._graph_repository = graph_repository
         self._status_repository = status_repository
         self._rollup_repository = rollup_repository
         self._time_series_repository = time_series_repository
         self._identity_links = identity_link_repository
+        # The stage a tracker status maps to, for a task's "Jira today" line.
+        self._delivery_settings = delivery_settings_repository
+        self._escalation_policy = escalation_policy
+        self._checkin_defaults = checkin_defaults or CheckInDefaults()
+        self._today = today or (lambda: datetime.now(tz=UTC).date())
         self._blocker_resolution = BlockerResolutionService(graph_repository, status_repository)
         self._rollup_service = RollupService(
             status_repository, rollup_repository, self._blocker_resolution, drift_signals
@@ -521,6 +645,17 @@ class PersonaViewService:
         once, there.
         """
         tree = await self._pod_tree(tenant_id, pod_id, as_of)
+        return PodBlockersView(
+            pod_id=tree.root.id,
+            pod_name=tree.root.name,
+            as_of=as_of,
+            blockers=await self._pod_blocker_views(tenant_id, tree, as_of),
+        )
+
+    async def _pod_blocker_views(
+        self, tenant_id: str, tree: GraphTree, as_of: date
+    ) -> tuple[BlockerView, ...]:
+        """The pod's blocker list (``pod_blockers``), oldest first."""
         found: list[tuple[GraphNode, DeveloperStatus | None, ResolvedBlocker]] = []
         for developer in _developers(tree):
             status = await self._status_repository.latest_developer_status(
@@ -551,41 +686,175 @@ class PersonaViewService:
                         counted_in=_blocker_pods(blocker.pod_ids, nodes_by_id),
                     )
                 )
-        return PodBlockersView(
-            pod_id=tree.root.id,
-            pod_name=tree.root.name,
-            as_of=as_of,
-            blockers=tuple(sorted(blockers, key=lambda item: (-item.age_days, item.owner_name))),
-        )
+        return tuple(sorted(blockers, key=lambda item: (-item.age_days, item.owner_name)))
 
-    async def pod_checkins(self, tenant_id: str, pod_id: str, as_of: date) -> PodCheckinsView:
+    async def pod_checkins(
+        self,
+        tenant_id: str,
+        pod_id: str,
+        as_of: date,
+        reads: PodCheckinReads | None = None,
+    ) -> PodCheckinsView:
+        """Each member's check-in for ``as_of``, and how the pod's day was captured.
+
+        An inferred day carries the lines it was inferred from; a day closed
+        with no data says why (``NoDataCause``). ``reads`` says what more the
+        caller reads (``checkin_ladder.pod_checkin_reads``): the day's silence
+        ladder, each person's check-in time and zone, or only their own row.
+        The counts and the coverage are always the whole pod's.
+        """
+        reads = reads or PodCheckinReads()
         tree = await self._pod_tree(tenant_id, pod_id, as_of)
-        developers: list[CheckinDeveloperView] = []
-        for developer in _developers(tree):
-            status = await self._status_repository.latest_developer_status(
-                tenant_id, developer.id, as_of
-            )
-            state = _checkin_state(status, as_of)
-            developers.append(
-                CheckinDeveloperView(
-                    developer_id=developer.id,
-                    developer_name=developer.name,
-                    state=state,
-                    source=status.source if status else StatusSource.UNKNOWN,
-                    status_as_of=status.as_of if status else None,
-                    summary=status.summary if status else "No check-in status is available.",
-                )
-            )
+        counted = await self._checkin_people(tenant_id, _developers(tree), as_of)
+        developers = counted
+        if reads.only is not None:
+            developers = [item for item in developers if item.developer_id == reads.only]
+        if reads.ladder:
+            developers = await self._with_ladder(tenant_id, developers, as_of)
+        if reads.schedule:
+            developers = await self._with_schedule(tenant_id, developers)
         return PodCheckinsView(
             pod_id=tree.root.id,
             pod_name=tree.root.name,
             as_of=as_of,
-            confirmed=sum(1 for item in developers if item.state == "confirmed"),
-            partial=sum(1 for item in developers if item.state == "partial"),
-            stale=sum(1 for item in developers if item.state == "stale"),
-            missing=sum(1 for item in developers if item.state == "missing"),
+            confirmed=sum(1 for item in counted if item.state == "confirmed"),
+            partial=sum(1 for item in counted if item.state == "partial"),
+            stale=sum(1 for item in counted if item.state == "stale"),
+            missing=sum(1 for item in counted if item.state == "missing"),
             developers=tuple(sorted(developers, key=lambda item: item.developer_name)),
+            coverage=_coverage(counted, as_of),
+            ladder=reads.ladder,
+            schedule=reads.schedule,
         )
+
+    async def project_checkin_coverage(
+        self, tenant_id: str, project_id: str, as_of: date
+    ) -> ProjectCheckinCoverageView:
+        """How the day was captured across the project's people, each counted once.
+
+        The pod coverage's counts (replied, filled from the tracker, no data,
+        waiting) over everyone on the project's pods, with no one named, so a
+        reader of the project's progress gets them without the pods' boards.
+        """
+        tree = await self._project_tree(tenant_id, project_id, as_of)
+        people = await self._checkin_people(tenant_id, _developers(tree), as_of)
+        return ProjectCheckinCoverageView(
+            project_id=tree.root.id,
+            as_of=as_of,
+            people=len(people),
+            coverage=_coverage(people, as_of),
+        )
+
+    async def _checkin_people(
+        self, tenant_id: str, people: Sequence[GraphNode], as_of: date
+    ) -> list[CheckinDeveloperView]:
+        """Each person's check-in state for ``as_of``, and why a day closed with no data."""
+        links = await self._links(tenant_id)
+        synced: bool | None = None
+        developers: list[CheckinDeveloperView] = []
+        for developer in people:
+            status = await self._status_repository.latest_developer_status(
+                tenant_id, developer.id, as_of
+            )
+            cause: NoDataCause | None = None
+            if _closed_without_data(status, as_of):
+                if synced is None:
+                    synced = await self._tracker_synced(tenant_id, as_of)
+                cause = _no_data_cause(links.get(developer.id), tracker_synced=synced)
+            developers.append(
+                CheckinDeveloperView(
+                    developer_id=developer.id,
+                    developer_name=developer.name,
+                    state=_checkin_state(status, as_of),
+                    source=status.source if status else StatusSource.UNKNOWN,
+                    status_as_of=status.as_of if status else None,
+                    summary=status.summary if status else "No check-in status is available.",
+                    evidence=(
+                        observed_evidence(status.summary)
+                        if status is not None and status.source is StatusSource.INFERRED
+                        else ()
+                    ),
+                    no_data_cause=cause,
+                )
+            )
+        return developers
+
+    async def _with_ladder(
+        self, tenant_id: str, developers: Sequence[CheckinDeveloperView], as_of: date
+    ) -> list[CheckinDeveloperView]:
+        """The day's first asks and replies and the rungs that went out: three reads a pod."""
+        days = {
+            day.developer_id: day
+            for day in await self._status_repository.checkins_on_day(tenant_id, as_of)
+        }
+        nudges = await self._status_repository.checkin_nudges_on_day(tenant_id, as_of)
+        facts = (
+            await self._time_series_repository.list_recent_facts(
+                tenant_id,
+                since=rung_facts_since(as_of),
+                sources=(CHECKIN_RUNG_FACT_SOURCE,),
+                limit=_RUNG_FACT_LIMIT,
+            )
+            if nudges
+            else []
+        )
+        rungs = sent_rungs(nudges, facts, self._escalation_policy, as_of)
+        result: list[CheckinDeveloperView] = []
+        for item in developers:
+            day = days.get(item.developer_id)
+            result.append(
+                replace(
+                    item,
+                    asked_at=day.first_asked_at if day else None,
+                    replied_at=day.first_replied_at if day else None,
+                    rungs=rungs.get(item.developer_id, ()),
+                )
+            )
+        return result
+
+    async def _with_schedule(
+        self, tenant_id: str, developers: Sequence[CheckinDeveloperView]
+    ) -> list[CheckinDeveloperView]:
+        """Each person's check-in time and zone: theirs, else the team default's."""
+        stored = {
+            preference.developer_id: preference
+            for preference in await self._status_repository.list_checkin_preferences(tenant_id)
+        }
+        result: list[CheckinDeveloperView] = []
+        for item in developers:
+            effective = effective_checkin_preference(
+                tenant_id, item.developer_id, stored.get(item.developer_id), self._checkin_defaults
+            )
+            result.append(
+                replace(item, checkin_time=effective.local_time, timezone=effective.timezone)
+            )
+        return result
+
+    async def _links(self, tenant_id: str) -> dict[str, IdentityLink]:
+        if self._identity_links is None:
+            return {}
+        return {
+            link.developer_id: link
+            for link in await self._identity_links.list_identity_links(tenant_id)
+        }
+
+    async def _tracker_synced(self, tenant_id: str, as_of: date) -> bool:
+        """Whether the tracker was synced at all in the last month: any issue fact."""
+        since = datetime.combine(as_of - timedelta(days=TASK_FACT_LOOKBACK_DAYS), time.min, UTC)
+        return bool(
+            await self._time_series_repository.list_recent_facts(
+                tenant_id, since=since, sources=(ISSUE_FACT_SOURCE,), limit=1
+            )
+        )
+
+    async def _stage_mapping(self, tenant_id: str) -> StageMapping:
+        if self._delivery_settings is None:
+            return DEFAULT_STAGE_MAPPING
+        stored = await self._delivery_settings.get(tenant_id)
+        return stored.mapping if stored is not None else DEFAULT_STAGE_MAPPING
+
+    async def _member_names(self, tenant_id: str) -> Mapping[str, str]:
+        return member_names(await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER))
 
     async def pod_tasks(self, tenant_id: str, pod_id: str, as_of: date) -> PodTasksView:
         """The tasks a pod's panel lists: its members' work, inside the pod's remit.
@@ -645,6 +914,11 @@ class PersonaViewService:
         blockers.sort(key=lambda item: (item.first_seen_on, item.blocker_id))
 
         nodes = {node.id: node for node in tree.nodes}
+        observing = _Observing(
+            mapping=await self._stage_mapping(tenant_id),
+            names=await self._member_names(tenant_id),
+            as_of=as_of,
+        )
         tasks: list[PodTaskView] = []
         for listed_task in listed:
             owners = listed_task.owners
@@ -681,6 +955,7 @@ class PersonaViewService:
                     last_update=said[0] if said is not None else None,
                     last_update_by=said[1] if said is not None else None,
                     eta=_owners_eta(facts, owners, as_of),
+                    observed=observing.task(node, facts, {owner.id for owner in owners}),
                 )
             )
         tasks.sort(key=lambda task: (not task.blocked, _TRIAGE_RANK[task.rag], task.name, task.id))
@@ -846,7 +1121,9 @@ class PersonaViewService:
             raise GraphNotFound(f"pod {pod_id} not found for tenant {tenant_id}")
         statuses = await self._node_statuses_for_tree(tree, as_of)
         status = statuses.get((tree.root.kind, tree.root.id))
-        factors = status.factors if status else ()
+        factors = await self._reasons_agreeing_with_blockers(
+            tenant_id, tree, as_of, status.factors if status else ()
+        )
         return PodRollupView(
             pod_id=tree.root.id,
             pod_name=tree.root.name,
@@ -855,6 +1132,37 @@ class PersonaViewService:
             source=status.source if status else StatusSource.UNKNOWN,
             factors=factors,
             source_names=_source_names(tree, factors),
+        )
+
+    async def _reasons_agreeing_with_blockers(
+        self,
+        tenant_id: str,
+        tree: GraphTree,
+        as_of: date,
+        factors: tuple[RollupFactor, ...],
+    ) -> tuple[RollupFactor, ...]:
+        """A pod's reasons, its "no blockers" line reworded when its blocker list has some.
+
+        The pod's own page shows its reasons beside its open blockers. A
+        blocker on a task the pod lists that counts in another pod (IDP-6 on
+        the Platform Pod, counted in the Identity Pod) is on the list but, by
+        design, in none of the pod's factors, so a pod whose members all
+        confirmed read "All child statuses are confirmed with no blockers."
+        over "1 open blocker". That line now names what the list holds and
+        where it counts (``confirmed_with_listed_blockers``), read through the
+        list's own read so the two cannot disagree. Only the line's words
+        change: its colour, the pod's colour and every stored rollup stay as
+        they are, and the blocker still counts once, where it sits.
+        """
+        if not any(_claims_no_blockers(factor) for factor in factors):
+            return factors
+        listed = await self._pod_blocker_views(tenant_id, tree, as_of)
+        if not listed:
+            return factors
+        reason = confirmed_with_listed_blockers(listed)
+        return tuple(
+            replace(factor, description=reason) if _claims_no_blockers(factor) else factor
+            for factor in factors
         )
 
     async def program_tree(self, tenant_id: str, program_id: str, as_of: date) -> ProgramTreeView:
@@ -875,6 +1183,7 @@ class PersonaViewService:
             and node.id != tree.root.id
         }
         nodes: list[TreeNodeView] = []
+        people = _people_under(tree, as_of)
         for node in _sorted_nodes(tuple(node for node in tree.nodes if node.id not in hidden)):
             if node.kind is NodeKind.TASK:
                 task_status = await self._task_status(node, as_of)
@@ -900,6 +1209,7 @@ class PersonaViewService:
                     source=status.source if status else None,
                     confidence=None,
                     factors=status.factors if status else (),
+                    people=people.get(node.id),
                 )
             )
         return ProgramTreeView(
@@ -928,8 +1238,15 @@ class PersonaViewService:
         *,
         today: date | None = None,
         names: ProviderNames | None = None,
+        counts_only: bool = False,
+        reader_id: str | None = None,
     ) -> PortfolioHeatmapView:
         """Heat for one day, computed on the fly when nothing is stored yet.
+
+        ``counts_only`` is the reader who sees no person (an executive):
+        no one's cell but ``reader_id``'s own, and reasons that count people and
+        name work items, never a person or a blocker's own words
+        (``portfolio_privacy``).
 
         Reads never record. They used to: a missing rollup was computed *and
         persisted*, which meant any caller could write a row of derived history
@@ -956,12 +1273,17 @@ class PersonaViewService:
         if loaded is None:
             return PortfolioHeatmapView(as_of=as_of, rows=(), columns=(), cells=())
         statuses, tree = loaded
-        day = await self._attention_day(
-            tenant_id, statuses, as_of, today or datetime.now(tz=UTC).date(), names
-        )
+        if counts_only:
+            statuses = counted_statuses(statuses)
+        day = await self._attention_day(tenant_id, statuses, as_of, today or self._today(), names)
+        if counts_only:
+            day = counted_day(day)
         # An empty workstream is optional, not unreported: it gets no cell.
         shown = [status for status in statuses if day.graph.shows(status.entity_ref)]
-        cells = await self._heatmap_cells(tenant_id, shown, tree, day)
+        if counts_only:
+            shown = own_cells_only(shown, reader_id)
+            shown = without_small_group_people(shown, day.small_groups)
+        cells = await self._heatmap_cells(tenant_id, shown, tree, day, people_named=not counts_only)
         rows = tuple(dict.fromkeys(cell.row for cell in cells))
         columns = tuple(dict.fromkeys(cell.column for cell in cells))
         return PortfolioHeatmapView(as_of=as_of, rows=rows, columns=columns, cells=cells)
@@ -977,6 +1299,7 @@ class PersonaViewService:
         zone: tzinfo = UTC,
         names: ProviderNames | None = None,
         clock: bool = True,
+        counts_only: bool = False,
     ) -> AttentionView:
         """What a director should know about the program on ``as_of``, in one read.
 
@@ -984,12 +1307,17 @@ class PersonaViewService:
         for the people in the teams, and up to five signals worth acting on:
         from the same statuses the heat map shows, the open risk and drift
         findings (``findings``; none read without it), and how long each open
-        blocker has stood.
+        blocker has stood. ``counts_only`` words it for a reader who sees no
+        person, as the heat map does.
         """
         program_id = program_root_id or await self._first_program_id(tenant_id, as_of)
         loaded = await self._heatmap_statuses(tenant_id, as_of, program_id)
         statuses = loaded[0] if loaded is not None else []
+        if counts_only:
+            statuses = counted_statuses(statuses)
         day = await self._attention_day(tenant_id, statuses, as_of, today, names)
+        if counts_only:
+            day = counted_day(day)
         risks = await findings.portfolio_risks(tenant_id, as_of) if findings else []
         drift = await findings.portfolio_drift(tenant_id, as_of) if findings else []
         people = sorted(node_id for (kind, node_id) in day.statuses if kind is NodeKind.DEVELOPER)
@@ -1075,6 +1403,8 @@ class PersonaViewService:
         statuses: Sequence[NodeStatus],
         tree: GraphTree | None,
         day: AttentionDay,
+        *,
+        people_named: bool = True,
     ) -> tuple[HeatmapCellView, ...]:
         """One cell per status, each amber or red one naming what drives it.
 
@@ -1082,7 +1412,8 @@ class PersonaViewService:
         amber or red cell's reason names are looked up -- the people behind its
         blockers, drift and updates, and the work items and tasks those cite --
         from the tree when one was read, else one by one; a node not found is
-        left unnamed.
+        left unnamed. Without ``people_named`` no person is named: they are
+        counted, and the work items still named.
         """
         context = _ReasonContext.from_statuses(statuses)
         wanted = {
@@ -1099,7 +1430,12 @@ class PersonaViewService:
             if node is not None:
                 nodes[node_id] = node
         context = context.with_labels(
-            {node_id: _reason_label(nodes[node_id]) for node_id in wanted if node_id in nodes}
+            {
+                node_id: _reason_label(nodes[node_id])
+                for node_id in wanted
+                if node_id in nodes
+                and (people_named or nodes[node_id].kind is not NodeKind.DEVELOPER)
+            }
         )
         cells: list[HeatmapCellView] = []
         for status in statuses:
@@ -1109,14 +1445,17 @@ class PersonaViewService:
                 _without_no_pod(status) if no_pod else status,
                 outside_teams=no_pod,
             )
-            cells.append(
-                replace(
-                    _heatmap_cell(status, context),
-                    name=node.name if (node := nodes.get(status.entity_ref.id)) else None,
-                    reason=reasons.reason,
-                    reasons=reasons.reasons,
-                )
+            cell = replace(
+                _heatmap_cell(status, context),
+                name=node.name if (node := nodes.get(status.entity_ref.id)) else None,
+                reason=reasons.reason,
+                reasons=reasons.reasons,
             )
+            if _small_group_silent(status, day, context):
+                # Its people's updates were all it had to say: they count in the group above
+                # that is large enough, or nowhere.
+                cell = replace(cell, why=day.small_groups[status.entity_ref.id])
+            cells.append(cell)
         return tuple(cells)
 
     async def node_trend(
@@ -1237,6 +1576,10 @@ class PersonaViewService:
                 blocker_ids.setdefault(blocker.work_item_ref.id, []).append(blocker.blocker_id)
         return _FocusContext(
             developer_id=developer_id,
+            observing=_Observing(
+                mapping=await self._stage_mapping(tenant_id),
+                names=await self._member_names(tenant_id),
+            ),
             accounts=frozenset(accounts),
             blocker_ids={key: tuple(ids) for key, ids in blocker_ids.items()},
             assigned={
@@ -1265,6 +1608,7 @@ class PersonaViewService:
             last_update=last_statement(facts, context.developer_id, as_of),
             blocker_ids=context.blocker_ids.get(node.id, ()),
             can_move_in_tracker=_owns_synced_issue(node, facts, context, as_of),
+            observed=context.observing.task(node, facts, {context.developer_id}, as_of=as_of),
         )
 
     async def _task_progress(self, node: GraphNode, as_of: date) -> TaskProgressView:
@@ -1293,6 +1637,8 @@ class _FocusContext:
     """What every task row of one person's focus reads alike."""
 
     developer_id: str
+    # How a task's "Jira today" line is read: the stage mapping and member names.
+    observing: _Observing
     # The person's ids in the tracker: their member id and their identity link's.
     accounts: frozenset[str]
     # Open blocker ids per task id, as the blocker details place them.
@@ -1309,13 +1655,14 @@ def _task_status_from_facts(
     Statements are left out: a ``task_update`` (what the person said in chat
     or the console) never repaints the task, and an ``eta_stated`` or other
     ``checkin_drift`` fact, which carries no colour, no longer hides the
-    tracker's.
+    tracker's. Nor does an ``issue_change`` fact: one field change, at the same
+    moment as the issue fact that carries the state.
     """
     since = _since_for_as_of(as_of)
     coloured = [
         fact
         for fact in facts
-        if fact.source not in _STATEMENT_FACT_SOURCES and fact.observed_at >= since
+        if fact.source not in _UNCOLOURED_FACT_SOURCES and fact.observed_at >= since
     ]
     fact = max(coloured, key=lambda item: item.observed_at) if coloured else None
     return TaskStatusView(
@@ -1511,6 +1858,57 @@ class _ListedTask:
     owners: tuple[GraphNode, ...]
     #: The task and the work item it implements (``_task_owners``).
     attributable: frozenset[str]
+
+
+def _claims_no_blockers(factor: RollupFactor) -> bool:
+    return factor.kind is FactorKind.AGGREGATE and factor.description == (
+        CONFIRMED_NO_BLOCKERS_REASON
+    )
+
+
+#: How many blockers a reason line names before it counts the rest.
+_LISTED_BLOCKERS_NAMED = 3
+
+
+def confirmed_with_listed_blockers(blockers: Sequence[BlockerView]) -> str:
+    """A green pod's reason line when its blocker list is not empty.
+
+    "All child statuses are confirmed; 1 open blocker (IDP-6, Omar Haddad, 5
+    days), counted in Identity Pod." Each blocker by its work item, owner and
+    age, oldest first as the list has them, several apart by "; ". Where the
+    blockers count in another pod it says which, so the green colour is
+    explained rather than contradicted.
+    """
+    named = "; ".join(_listed_blocker(blocker) for blocker in blockers[:_LISTED_BLOCKERS_NAMED])
+    more = len(blockers) - _LISTED_BLOCKERS_NAMED
+    if more > 0:
+        named = f"{named}; and {more} more"
+    noun = "open blocker" if len(blockers) == 1 else "open blockers"
+    elsewhere = [blocker for blocker in blockers if not blocker.counted_here]
+    where = ""
+    if elsewhere:
+        pods = list(
+            dict.fromkeys(pod.name for blocker in elsewhere for pod in blocker.counted_in)
+        ) or ["another pod"]
+        pods_text = pods[0] if len(pods) == 1 else f"{', '.join(pods[:-1])} and {pods[-1]}"
+        counted = (
+            "counted in" if len(elsewhere) == len(blockers) else f"{len(elsewhere)} counted in"
+        )
+        where = f", {counted} {pods_text}"
+    return f"All child statuses are confirmed; {len(blockers)} {noun} ({named}){where}."
+
+
+def _listed_blocker(blocker: BlockerView) -> str:
+    work = blocker.work_item_ref.id if blocker.work_item_ref is not None else None
+    return ", ".join(
+        part for part in (work, blocker.owner_name, _age_words(blocker.age_days)) if part
+    )
+
+
+def _age_words(days: int) -> str:
+    if days <= 0:
+        return "new today"
+    return "1 day" if days == 1 else f"{days} days"
 
 
 def _blocker_pods(
@@ -1715,6 +2113,95 @@ def _blocker_details(
 
 def _blocker_age_days(blocker: ResolvedBlocker, as_of: date) -> int:
     return max((as_of - blocker.first_seen_on).days, 0)
+
+
+@dataclass(frozen=True, kw_only=True)
+class _Observing:
+    """What a task's "Jira today" line is read with, once per list."""
+
+    mapping: StageMapping
+    names: Mapping[str, str]
+    as_of: date | None = None
+
+    def task(
+        self,
+        node: GraphNode,
+        facts: Sequence[FactEvent],
+        own_people: set[str],
+        *,
+        as_of: date | None = None,
+    ) -> ObservedTaskView | None:
+        """The line for ``node`` on its day; None when its history says nothing.
+
+        "Moved by" names who made the move only when it was not one of the
+        task's own people (``own_people``): it is attached to the work item.
+        """
+        day = as_of or self.as_of
+        if day is None or not any(
+            fact.source in {ISSUE_FACT_SOURCE, ISSUE_CHANGE_FACT_SOURCE} for fact in facts
+        ):
+            return None
+        start = datetime.combine(day, time.min, tzinfo=UTC)
+        until = min(start + timedelta(days=1), datetime.now(tz=UTC))
+        observed = observe_task(
+            task_key(node),
+            facts,
+            start=start,
+            until=max(until, start),
+            mapping=self.mapping,
+            names=self.names,
+        )
+        if observed.is_empty:
+            return None
+        mover = observed.moved_by_member_id
+        return ObservedTaskView(
+            status=observed.status,
+            stage=observed.stage,
+            since=observed.since,
+            moved_by=(
+                self.names.get(mover) or UNKNOWN_PERSON
+                if mover is not None and mover not in own_people
+                else None
+            ),
+            changes=observed.changes,
+            quiet_days=observed.quiet_days,
+        )
+
+
+def _closed_without_data(status: DeveloperStatus | None, as_of: date) -> bool:
+    """A day closed stale or unknown: nothing the person said, nothing inferred."""
+    return (
+        status is not None
+        and status.as_of == as_of
+        and status.source in {StatusSource.STALE, StatusSource.UNKNOWN}
+    )
+
+
+def _no_data_cause(link: IdentityLink | None, *, tracker_synced: bool) -> NoDataCause:
+    if link is None or not (link.jira_account_id or link.jira_email):
+        return "no_jira_link"
+    if not tracker_synced:
+        return "jira_not_synced"
+    if not link.chat_user_id:
+        return "no_chat_id"
+    return "nothing_moved"
+
+
+def _coverage(developers: Sequence[CheckinDeveloperView], as_of: date) -> CheckinCoverageView:
+    """How the pod's day was captured, counted per pod: replied, inferred, no data, waiting."""
+    today = [item for item in developers if item.status_as_of == as_of]
+    replied = sum(
+        1 for item in today if item.source in {StatusSource.CONFIRMED, StatusSource.PARTIAL}
+    )
+    inferred = sum(1 for item in today if item.source is StatusSource.INFERRED)
+    causes = [item.no_data_cause for item in today if item.no_data_cause is not None]
+    return CheckinCoverageView(
+        replied=replied,
+        inferred=inferred,
+        no_data=len(causes),
+        waiting=len(developers) - len(today),
+        causes=tuple((cause, causes.count(cause)) for cause in _NO_DATA_CAUSES if cause in causes),
+    )
 
 
 def _checkin_state(
@@ -1979,11 +2466,29 @@ def _confidence_from_fact(fact: FactEvent | None) -> float | None:
 NO_POD_ROW = "no pod"
 
 
+def _people_under(tree: GraphTree, as_of: date) -> dict[str, int]:
+    """How many people each pod, project and program of the tree holds along ``contains``."""
+    graph = TeamGraph.from_graph(tree.nodes, tree.edges, as_of)
+    return {
+        node.id: len(graph.under(node.id, NodeKind.DEVELOPER))
+        for node in tree.nodes
+        if node.kind in (NodeKind.POD, NodeKind.PROJECT, NodeKind.PROGRAM)
+    }
+
+
 def _without_no_pod(status: NodeStatus) -> NodeStatus:
     """A person in no team's own status, without the line that says so (N5)."""
     return replace(
         status, factors=tuple(f for f in status.factors if f.kind is not FactorKind.NO_POD)
     )
+
+
+def _small_group_silent(status: NodeStatus, day: AttentionDay, context: _ReasonContext) -> bool:
+    """A small pod, project or program, not green, whose factors without
+    its people name no driver."""
+    if status.entity_ref.id not in day.small_groups or status.rag is Rag.GREEN:
+        return False
+    return _drivers_line(status, context) is None
 
 
 def _heatmap_cell(status: NodeStatus, context: _ReasonContext) -> HeatmapCellView:

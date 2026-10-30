@@ -163,7 +163,7 @@ test("under the committed date: who set it, when, and how often it moved", () =>
 });
 
 test("the team's date names its item and how many have none", () => {
-  assert.equal(teamWords(scope().team), "CHK-103 · 3 without a date");
+  assert.equal(teamWords(scope().team), "CHK-103 · 3 have no date");
   assert.equal(
     teamWords({ latest: "2026-10-15", latest_key: null, dated: 4, undated: 0 }),
     "latest of 4 dated",

@@ -11,13 +11,18 @@ import { dateProblem } from "../overall/overallWords";
 import { actionError } from "./access";
 import { FormProblem, ReportDialog, field, fieldLabel } from "./ReportDialog";
 
-/** The writes that change a forecast: every view of delivery and today's report. */
+/**
+ * The writes that change a forecast: every view of delivery, the timelines and
+ * why their dates moved, and today's report.
+ */
 function useDeliveryRefresh() {
   const queryClient = useQueryClient();
   return () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ["delivery"] }),
       queryClient.invalidateQueries({ queryKey: ["pod-delivery"] }),
+      queryClient.invalidateQueries({ queryKey: ["timeline"] }),
+      queryClient.invalidateQueries({ queryKey: ["delivery-impact"] }),
       queryClient.invalidateQueries({ queryKey: ["day-reports"] }),
     ]);
 }

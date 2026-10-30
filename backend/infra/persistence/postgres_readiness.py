@@ -95,20 +95,18 @@ class PostgresReleaseReadinessRepository:
         return _settings(rows[0])
 
     async def save_settings(self, settings: ReadinessSettings) -> None:
-        # ``jira_writes`` belongs to the Jira writes panel: a save here keeps it as it is.
+        # ``jira_writes`` belongs to the Jira writes panel and ``checkin_fill`` to
+        # Admin › Check-ins: a save here keeps every key but its own as it is.
         with _tracer.start_as_current_span("postgres.readiness.save_settings"):
             await self._executor.execute(
                 """
                 INSERT INTO readiness_settings (tenant_id, settings, updated_at, updated_by)
                 VALUES (%s, %s::jsonb, %s, %s)
                 ON CONFLICT (tenant_id) DO UPDATE SET
-                    settings = CASE
-                        WHEN readiness_settings.settings -> 'jira_writes' IS NULL
-                            THEN EXCLUDED.settings
-                        ELSE EXCLUDED.settings || jsonb_build_object(
-                            'jira_writes', readiness_settings.settings -> 'jira_writes'
-                        )
-                    END,
+                    settings = (
+                        readiness_settings.settings
+                        - ARRAY['enabled', 'auto_suggest', 'create_in_jira', 'issue_type', 'labels']
+                    ) || EXCLUDED.settings,
                     updated_at = EXCLUDED.updated_at,
                     updated_by = EXCLUDED.updated_by
                 """,
@@ -435,6 +433,7 @@ def criterion_spec(criterion: ReleaseCriterion) -> dict[str, object]:
         "needs_done": criterion.needs_done,
         "when_labels": list(criterion.when_labels),
         "when_types": list(criterion.when_types),
+        "owner_profile": criterion.owner_profile,
         "matchers": [
             {"kind": item.kind.value, "value": item.value, "strength": item.strength.value}
             for item in criterion.matchers
@@ -556,6 +555,7 @@ def _criterion(row: Mapping[str, object]) -> ReleaseCriterion:
         needs_done=bool(spec.get("needs_done", True)),
         when_labels=_strings(spec.get("when_labels")),
         when_types=_strings(spec.get("when_types")),
+        owner_profile=_text(spec.get("owner_profile")),
         matchers=tuple(matchers),
         draft=DraftTemplate(
             project_key=_text(draft.get("project_key")),

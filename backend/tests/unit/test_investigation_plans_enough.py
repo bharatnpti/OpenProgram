@@ -1,6 +1,6 @@
 """An investigation plans what its question needs, and looks again when a step comes back thin.
 
-In QA round V2 a manager asked Investigate why a project was at risk and what
+In a QA run a manager asked Investigate why a project was at risk and what
 to do first. The planner sent one step, the researcher came back with the
 open merge requests, and the answer named neither the requirements with no
 date nor the missing readiness criterion, and said "Not known: No

@@ -32,6 +32,10 @@ class MemberContact:
 
     ``chat_id`` is where a counterpart DM goes: the identity link's chat id,
     else the member id (members added from the directory are keyed by it).
+    ``chat_linked`` says whether that is known to be a chat account: the link's
+    chat id, or a member id the directory holds. False when it is only the
+    member id of someone with no chat id linked (Admin › Directory counts
+    them), so a DM there that did not go out is explained by it.
     """
 
     member_id: str
@@ -39,6 +43,7 @@ class MemberContact:
     name: str
     email: str | None = None
     handle: str | None = None
+    chat_linked: bool = True
 
 
 class MemberDirectory:
@@ -77,7 +82,9 @@ class MemberDirectory:
             user = await self._directory_user(tenant_id, chat_id, node.id)
             if user is not None and not user.is_active:
                 continue
-            members.append(_member_contact(node, chat_id, user))
+            # Without a directory nothing says the member id is no chat account.
+            linked = node.id in chat_ids or user is not None or self._directory_repository is None
+            members.append(_member_contact(node, chat_id, user, chat_linked=linked))
         return tuple(members)
 
     async def _directory_user(
@@ -211,7 +218,9 @@ def _starts_words(query: tuple[str, ...], name: tuple[str, ...]) -> bool:
     return bool(name) and all(any(word.startswith(part) for word in name) for part in query)
 
 
-def _member_contact(node: GraphNode, chat_id: str, user: DirectoryUser | None) -> MemberContact:
+def _member_contact(
+    node: GraphNode, chat_id: str, user: DirectoryUser | None, *, chat_linked: bool
+) -> MemberContact:
     name = node.name.strip() or (user.display_name.strip() if user is not None else "")
     return MemberContact(
         member_id=node.id,
@@ -219,6 +228,7 @@ def _member_contact(node: GraphNode, chat_id: str, user: DirectoryUser | None) -
         name=name or node.id,
         email=_metadata_string(node, "email") or (_clean(user.email) if user else None),
         handle=_metadata_string(node, "handle") or (_clean(user.handle) if user else None),
+        chat_linked=chat_linked,
     )
 
 

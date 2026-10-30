@@ -255,6 +255,7 @@ def build_issue_tracker(
         api_token=settings.jira_api_token,
         deployment=settings.jira_deployment,
         story_points_field=settings.jira_story_points_field,
+        severity_field=settings.jira_severity_field,
         connections=connections,
     )
     if settings.issue_tracker_provider != "fake":
@@ -373,6 +374,7 @@ def build_workflow_scheduler(settings: Settings) -> WorkflowScheduler:
             system_database_url=settings.resolved_dbos_system_database_url,
             system_pool_size=settings.dbos_system_pool_size,
             sync_queue_concurrency=settings.sync_queue_concurrency,
+            database_explicit=settings.dbos_database_explicit,
             schedule_id=settings.resolved_heartbeat_schedule_id,
             tenant_id=settings.tenant_id,
             heartbeat_cron=settings.dbos_heartbeat_cron,
@@ -398,6 +400,7 @@ def build_rollup_refresher(settings: Settings) -> RollupRefresher:
             system_database_url=settings.resolved_dbos_system_database_url,
             system_pool_size=settings.dbos_system_pool_size,
             sync_queue_concurrency=settings.sync_queue_concurrency,
+            database_explicit=settings.dbos_database_explicit,
         )
     return TemporalRollupRefresher(
         target=settings.temporal_target,
@@ -414,6 +417,7 @@ def build_workflow_worker(settings: Settings) -> WorkflowWorker:
             system_database_url=settings.resolved_dbos_system_database_url,
             system_pool_size=settings.dbos_system_pool_size,
             sync_queue_concurrency=settings.sync_queue_concurrency,
+            database_explicit=settings.dbos_database_explicit,
         )
     return TemporalWorkflowWorker(
         target=settings.temporal_target,
@@ -430,6 +434,7 @@ def build_workflow_readiness_probe(settings: Settings) -> ReadinessProbe:
             system_database_url=settings.resolved_dbos_system_database_url,
             system_pool_size=settings.dbos_system_pool_size,
             sync_queue_concurrency=settings.sync_queue_concurrency,
+            database_explicit=settings.dbos_database_explicit,
         )
     return TemporalWorkflowReadinessProbe(target=settings.temporal_target)
 

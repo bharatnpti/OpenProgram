@@ -15,13 +15,17 @@ import { ConfirmChange, fieldInput, type Pending } from "./AdminDialog";
 import { IdentityDialog } from "./IdentityDialog";
 import {
   autoMatchSummary,
+  accountCounts,
   gapWords,
   identityGaps,
   importSummary,
   stamp,
   syncSummary,
 } from "./identityForm";
-import { listNames, plural } from "./structure";
+import { importPlacementWords, profileLabel, profileOptions } from "../profiles/profiles";
+import { useProfileCatalog } from "../profiles/useProfiles";
+import { SelectField } from "./LinkParts";
+import { POD_ROLES, listNames, plural, podRoleLabel } from "./structure";
 import { useConfigList, useStructureChanged } from "./useStructure";
 
 const SEARCH_PAGE = 20;
@@ -126,7 +130,14 @@ function initials(name: string): string {
 function ImportCard() {
   const changed = useStructureChanged();
   const members = useConfigList("member");
+  const pods = useConfigList("pod");
+  const catalog = useProfileCatalog();
   const memberIds = new Set((members.data ?? []).map((member) => member.id));
+  // Optional: everyone imported also joins this pod, with this role and profile.
+  const [podId, setPodId] = useState("");
+  const [role, setRole] = useState("developer");
+  const [profile, setProfile] = useState("");
+  const pod = (pods.data ?? []).find((item) => item.id === podId);
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
@@ -162,20 +173,29 @@ function ImportCard() {
     const chosen = [...picked.values()];
     const some =
       chosen.length === 1 ? "This person becomes a member" : "These people become members";
+    const profileName = profile ? profileLabel(catalog.data ?? [], profile) : null;
     setPending({
       key: `import:${Date.now()}`,
       title: `Import ${plural(chosen.length, "person", "people")} as members?`,
       effect: `${some}. Members are asked to check in by direct message on their check-in days, so import only the people who work with this team.`,
+      lines: pod
+        ? [importPlacementWords(chosen.length, pod.name, podRoleLabel(role), profileName)]
+        : undefined,
       names: chosen.map(
         (user) => `${user.display_name} · ${user.email ?? user.handle ?? user.external_id}`,
       ),
       confirmLabel: `Import ${plural(chosen.length, "person", "people")}`,
       destructive: false,
       run: async () => {
-        await apiClient.addMembersFromDirectory(chosen.map((user) => user.external_id));
+        await apiClient.addMembersFromDirectory(
+          chosen.map((user) => user.external_id),
+          pod ? { pod_id: pod.id, role, profile: profile || null } : undefined,
+        );
         const already = chosen.filter((user) => memberIds.has(user.external_id)).length;
         setPicked(new Map());
-        toast.success(importSummary(chosen.length - already, already));
+        toast.success(
+          `${importSummary(chosen.length - already, already)}${pod ? ` They are in ${pod.name}.` : ""}`,
+        );
         await changed();
       },
     });
@@ -275,6 +295,49 @@ function ImportCard() {
           </ul>
         </PanelState>
       </div>
+      <fieldset className="mt-3 grid gap-2 rounded-2xl bg-grey-fill px-4 py-3">
+        <legend className="sr-only">Also add them to a pod</legend>
+        <p className="text-[13px] font-bold">Also add them to a pod (optional)</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <SelectField
+            id="import-pod"
+            label="The pod they join"
+            placeholder="No pod"
+            value={podId}
+            onChange={setPodId}
+            options={(pods.data ?? [])
+              .slice()
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((item) => ({ value: item.id, label: item.name }))}
+          />
+          {pod ? (
+            <>
+              <SelectField
+                id="import-role"
+                label={`Their role in ${pod.name}`}
+                value={role}
+                onChange={setRole}
+                options={POD_ROLES.map((item) => ({ value: item.value, label: item.label }))}
+              />
+              <SelectField
+                id="import-profile"
+                label={`Their profile in ${pod.name}`}
+                value={profile}
+                onChange={setProfile}
+                options={[
+                  { value: "", label: "Profile from their role" },
+                  ...profileOptions(catalog.data ?? []),
+                ]}
+              />
+            </>
+          ) : null}
+        </div>
+        <p className="text-[12px] text-grey-secondary">
+          {pod
+            ? "Everyone you import joins with this role and profile. To give each their own, add them one at a time under Links, where each gets a suggestion."
+            : "Leave it at No pod to only import them; put them in pods under Links."}
+        </p>
+      </fieldset>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-2">
           <Pill
@@ -310,6 +373,10 @@ function ImportCard() {
 function IdentityCard() {
   const changed = useStructureChanged();
   const members = useConfigList("member");
+  const counts = useQuery({
+    queryKey: ["config", "identity-counts"],
+    queryFn: () => apiClient.configIdentityCounts(),
+  });
   const unmapped = useQuery({
     queryKey: ["config", "unmapped-members"],
     queryFn: () => apiClient.configUnmappedMembers(),
@@ -371,6 +438,11 @@ function IdentityCard() {
         Which chat, Jira and Git account is each member. The chat id is how the bot reaches them;
         the Jira account is how their issues are found; the Git username is how their commits are.
       </p>
+      {counts.data ? (
+        <p id="member-accounts" className="mt-1 text-[13px] font-bold text-ink">
+          {accountCounts(counts.data)}
+        </p>
+      ) : null}
       <div className="mt-2 text-[13px]" aria-live="polite">
         {unmapped.data ? (
           stuck.length === 0 ? (

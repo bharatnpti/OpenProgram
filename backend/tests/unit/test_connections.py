@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
 import pytest
@@ -35,7 +35,7 @@ from core.domain.connections import (
     rerouted_fields,
 )
 from core.domain.graph import Developer
-from core.domain.integrations import Issue, IssueState, SyncCursor
+from core.domain.integrations import Issue, IssueChange, IssueChangeField, IssueState, SyncCursor
 from core.ports.secrets import SecretRef
 from infra.adapters.connections import resolver as resolver_module
 from infra.adapters.connections.resolver import CachedConnectionResolver
@@ -875,6 +875,29 @@ async def test_the_tracker_follows_the_tenants_jira_connection() -> None:
     assert (await off.list_issues_for_query(TENANT, "project = X", SyncCursor())) == (
         await fallback.list_issues_for_query(TENANT, "project = X", SyncCursor())
     )
+
+
+async def test_an_issues_history_follows_the_tenants_jira_connection() -> None:
+    first = IssueChange(
+        history_id="1",
+        author=None,
+        at=datetime(2026, 1, 9, 9, 0, tzinfo=UTC),
+        field=IssueChangeField.STATUS,
+        from_value="To Do",
+        to_value="In Progress",
+    )
+    later = replace(first, history_id="2", at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC))
+    fallback = FakeIssueTracker(tenant_id=TENANT, changes={"PO-1": [later, first]})
+    jira = FakeIssueTracker(tenant_id=TENANT)
+    on = TenantRoutedIssueTracker(
+        fallback=fallback, routes={"jira": jira}, connections=_OnlyFor("jira")
+    )
+    off = TenantRoutedIssueTracker(fallback=fallback, routes={"jira": jira}, connections=_OnlyFor())
+
+    assert await on.list_issue_changes(TENANT, "PO-1", None) == []
+    # The sample tracker answers oldest first, after ``since``.
+    assert await off.list_issue_changes(TENANT, "PO-1", None) == [first, later]
+    assert await off.list_issue_changes(TENANT, "PO-1", first.at) == [later]
 
 
 async def test_the_code_host_follows_whichever_one_the_tenant_turned_on() -> None:

@@ -654,6 +654,7 @@ def test_api_a_developer_and_a_scrum_master_work_the_gates_but_read_no_progress(
     assert set(boards["dev"].json()) == {
         "project_id",
         "release_id",
+        "pod_id",
         "templates",
         "issues",
         "questions",

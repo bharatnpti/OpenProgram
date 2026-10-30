@@ -289,14 +289,14 @@ function dateChart(facts: DateFacts, today: string, variant: BarVariant): DateBa
     team = {
       x: x(day),
       y: mid,
-      title: `Team's latest date, ${formatDay(facts.team_latest)}${facts.team_latest_key ? `, ${facts.team_latest_key}` : ""}`,
+      title: `Team's own date, ${formatDay(facts.team_latest)}${facts.team_latest_key ? `, ${facts.team_latest_key}` : ""}`,
     };
-    const text = small ? `Team${key} · ${when}` : `Team's latest date${key} · ${when}`;
+    const text = small ? `Team${key} · ${when}` : `Team's own date${key} · ${when}`;
     const left: Text = { x: g.x0, y: g.bottom, text, anchor: "start", size };
     // The forecast's labels and the history count share the bottom row: the team's
     // date goes there where it fits, else in words under the bar.
     const row = [...(forecast?.labels ?? []), ...notes];
-    if (row.some((other) => overlaps(left, other))) teamNote = `Team's latest date${key} · ${when}`;
+    if (row.some((other) => overlaps(left, other))) teamNote = `Team's own date${key} · ${when}`;
     else notes.unshift(left);
   }
 
@@ -379,7 +379,7 @@ function dateBarLabel(facts: DateFacts, today: string, end: number): string {
   if (facts.team_latest) {
     const day = facts.team_latest === today ? "today" : formatDay(facts.team_latest);
     const key = facts.team_latest_key ? `, ${facts.team_latest_key}` : "";
-    parts.push(`The team's latest date is ${day}${key}.`);
+    parts.push(`The team's own date is ${day}${key}.`);
   }
   return parts.join(" ");
 }
@@ -734,7 +734,16 @@ export type AskRow = {
   stop: string | null;
 };
 
-export type LaneView = { heading: string; named: boolean; asks: AskRow[] };
+export type LaneView = {
+  heading: string;
+  named: boolean;
+  asks: AskRow[];
+  /**
+   * "Nobody above Noah Weber is told", said once under the person when every one of
+   * their asks (two or more) would say it; each ask then says it no more.
+   */
+  stop: string | null;
+};
 
 export type WhoActsView = {
   lanes: LaneView[];
@@ -765,11 +774,17 @@ const NEED_ORDER: NeedType[] = ["fix", "review", "answer", "decision"];
 export function whoActs(owners: OwnerAsks[]): WhoActsView {
   const asks = owners.flatMap((owner) => owner.asks);
   const scale = dayScale(Math.max(0, ...asks.map((ask) => ask.waited_days ?? 0)));
-  const lanes = owners.map((owner): LaneView => ({
-    heading: owner.heading,
-    named: owner.named,
-    asks: owner.asks.map((ask) => askRow(ask, scale.max)),
-  }));
+  const lanes = owners.map((owner): LaneView => {
+    const rows = owner.asks.map((ask) => askRow(ask, scale.max));
+    const stops = new Set(rows.map((row) => row.stop));
+    const shared = rows.length > 1 && stops.size === 1 ? rows[0].stop : null;
+    return {
+      heading: owner.heading,
+      named: owner.named,
+      asks: shared ? rows.map((row) => ({ ...row, stop: null })) : rows,
+      stop: shared,
+    };
+  });
   const targets: { who: string; count: number }[] = [];
   for (const ask of asks) {
     if (!ask.escalated_to) continue;

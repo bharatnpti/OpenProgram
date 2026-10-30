@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-import { dayWords } from "../lib/viewingDate";
+import { dayWords, guessToday } from "../lib/viewingDate";
 
 export type ViewingDateValue = {
   /** The past day picked in the header, or null for today. Kept in the URL on every screen. */
@@ -47,6 +47,23 @@ export function useReadOnly(): { readOnly: boolean; reason: string | null } {
     : { readOnly: false, reason: null };
 }
 
+/**
+ * True inside a page that says once, at its top, that a past day is shown (the
+ * Project page): its sections then draw nothing in place of a change that is
+ * off, so the same line is never said once per section.
+ */
+export const PastDaySaidContext = createContext(false);
+
+/**
+ * The line a control that is off says while a past day is shown: `reason`,
+ * unless the page already said it at its top (`PastDaySaidContext`); null on today.
+ */
+export function usePastDayLine(): string | null {
+  const { readOnly, reason } = useReadOnly();
+  const said = useContext(PastDaySaidContext);
+  return readOnly && !said ? reason : null;
+}
+
 /** "today", or "on Mon 28 Sept" while this screen shows a past day: for "Check-ins today". */
 export function useDayWords(): string {
   const context = useContext(ViewingDateContext);
@@ -60,4 +77,14 @@ export function useDayWords(): string {
 export function useShownDay(): string | null {
   const context = useContext(ViewingDateContext);
   return context ? (context.chosen ?? context.today) : null;
+}
+
+/**
+ * Today as the server counts it (the tenant's day), else the console's guess
+ * outside the provider. Never the browser's UTC date, which is another day for
+ * part of every day.
+ */
+export function useToday(): string {
+  const context = useContext(ViewingDateContext);
+  return context?.today ?? guessToday();
 }

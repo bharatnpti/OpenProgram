@@ -295,6 +295,21 @@ class PostgresCrossPersonRequestRepository:
             ),
         )
 
+    async def list_resolved_since(
+        self, tenant_id: str, since: datetime
+    ) -> list[CrossPersonRequest]:
+        with _tracer.start_as_current_span("postgres.cross_person.list_resolved_since"):
+            rows = await self._executor.fetch(
+                """
+                SELECT *
+                FROM cross_person_requests
+                WHERE tenant_id = %s AND status = %s AND updated_at >= %s
+                ORDER BY updated_at DESC, id DESC
+                """,
+                (tenant_id, CrossPersonRequestStatus.RESOLVED.value, since),
+            )
+        return [_request_from_row(row) for row in rows]
+
     async def get_by_notify_correlation(
         self,
         tenant_id: str,

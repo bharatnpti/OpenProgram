@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { ApiError, apiClient } from "../../api/client";
 import type { BlockerDetailDto, FocusTaskDto, TaskUpdateRequest } from "../../api/schema";
@@ -11,6 +12,7 @@ import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { actionError } from "../../lib/errors";
 import { formatDay } from "../../lib/format";
+import { jiraTodayLine } from "../../lib/observedWords";
 import { cn } from "../../lib/utils";
 import { plural } from "../../lib/words";
 import {
@@ -45,9 +47,12 @@ import {
  * done stays in the open list with that line, rather than folding away unseen.
  *
  * It reads `/me/focus` under the key the rest of Today uses, so nothing is asked twice.
+ * `?task=` (Today's next tasks link here) lands on that task with its update open.
  */
 export function TaskList() {
   const shownDay = useShownDay();
+  const [search] = useSearchParams();
+  const asked = search.get("task");
   const focus = useQuery({ queryKey: ["me", "focus"], queryFn: () => apiClient.focus() });
   const [showDone, setShowDone] = useState(false);
   const [saved, setSaved] = useState<Record<string, Outcome>>({});
@@ -59,6 +64,7 @@ export function TaskList() {
     <TaskItem
       key={row.task.id}
       row={row}
+      asked={asked === row.task.id}
       writeBack={focus.data?.write_back ?? "off"}
       today={focus.data?.as_of ?? ""}
       outcome={saved[row.task.id] ?? null}
@@ -76,6 +82,8 @@ export function TaskList() {
   return (
     <Panel
       title="Your tasks"
+      // The viz surface: white in light, and dark on a page that turns with the theme.
+      className="bg-(--op-viz-surface)"
       note={
         focus.data && rows.length > 0
           ? `${rows.length - done} open${done > 0 ? ` · ${done} done` : ""}`
@@ -116,12 +124,15 @@ type Outcome = { text: string; tone: "success" | "warning" };
 
 function TaskItem({
   row,
+  asked = false,
   writeBack,
   today,
   outcome,
   onOutcome,
 }: {
   row: TaskRow;
+  /** The link named this task: it opens with its update, scrolled to. */
+  asked?: boolean;
   writeBack: WriteBack;
   today: string;
   /** What the last save of this task did, said on the row. */
@@ -130,10 +141,16 @@ function TaskItem({
 }) {
   const { task, blockers, group, late, etaLate } = row;
   const { readOnly, reason } = useReadOnly();
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(asked && !readOnly);
+  const anchor = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (asked) anchor.current?.scrollIntoView({ block: "center" });
+  }, [asked]);
   const key = issueKey(task);
   const meta = [key, task.tracker_status].filter(Boolean).join(" · ");
   const said = lastSaidLine(task.last_update, formatDay);
+  // What Jira says of it today, under what the person said: never merged into it.
+  const jira = jiraTodayLine(task.observed, { today });
 
   return (
     <Row
@@ -158,6 +175,7 @@ function TaskItem({
         )
       }
     >
+      <span ref={anchor} aria-hidden className="block scroll-mt-28" />
       <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
         {task.deadline ? (
           <DueDate prefix="Due " deadline={task.deadline} trackerStatus={task.tracker_status} />
@@ -187,6 +205,7 @@ function TaskItem({
         </div>
       ) : null}
       {said ? <p className="mt-1 text-[12px] text-grey-secondary">{said}</p> : null}
+      {jira ? <p className="mt-0.5 text-[12px] text-grey-secondary">{jira}</p> : null}
       {outcome ? (
         <p
           role="status"
@@ -293,7 +312,7 @@ function TaskEditor({
         <div
           role="radiogroup"
           aria-label="Status"
-          className="inline-flex flex-wrap gap-1 rounded-2xl border border-grey-border bg-white p-1 sm:rounded-full"
+          className="inline-flex flex-wrap gap-1 rounded-2xl border border-grey-border bg-(--op-viz-surface) p-1 sm:rounded-full"
         >
           {TASK_STATES.map((state) => (
             <label
@@ -330,7 +349,7 @@ function TaskEditor({
               min={today || undefined}
               placeholder="No ETA"
               onChange={(eta) => set({ eta })}
-              className="h-10 rounded-xl border border-grey-border bg-white px-3 text-[14px]"
+              className="h-10 rounded-xl border border-grey-border bg-(--op-viz-surface) px-3 text-[14px]"
             />
           </div>
           {draft.eta ? (
@@ -374,7 +393,7 @@ function TaskEditor({
         ))}
         <input
           aria-label="Add a blocker"
-          className="h-10 w-full rounded-xl border border-grey-border bg-white px-3 text-[14px]"
+          className="h-10 w-full rounded-xl border border-grey-border bg-(--op-viz-surface) px-3 text-[14px]"
           value={draft.added}
           maxLength={MAX_TASK_TEXT + 100}
           placeholder="Add a blocker, such as: waiting on sandbox credentials"
@@ -388,7 +407,7 @@ function TaskEditor({
         </label>
         <textarea
           id={`${id}-note`}
-          className="min-h-16 w-full rounded-2xl border border-grey-border bg-white p-3 text-[14px]"
+          className="min-h-16 w-full rounded-2xl border border-grey-border bg-(--op-viz-surface) p-3 text-[14px]"
           value={draft.note}
           maxLength={MAX_TASK_TEXT + 100}
           placeholder="MR !3 is open, waiting on a review"

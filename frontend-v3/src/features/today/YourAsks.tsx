@@ -86,7 +86,8 @@ function AskList({
         isEmpty={items.length === 0}
         emptyText={emptyText}
       >
-        <ul className="grid gap-2">
+        {/* The cards' surface turns with the theme on a page that does (.op-viz). */}
+        <ul className="grid gap-2 [&>li]:bg-(--op-viz-surface)">
           {items.map((request) => (
             <RequestCard key={request.id} request={request} showStatus />
           ))}

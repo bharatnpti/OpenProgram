@@ -24,6 +24,11 @@ from core.domain.status import CheckInDefaults, CheckInSendSchedule, checkin_sen
 # It is public, so it must never protect a shared (non-local) deployment.
 DEFAULT_SECRET_KEY = "q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ="
 
+# Where a Settings with no database_url points: the database of the stack a developer
+# runs on this machine (docker-compose publishes it here). Named so the tests can tell
+# a test's own database from this one; see Settings.dbos_database_explicit.
+DEFAULT_DATABASE_URL = "postgresql://openprogram:openprogram@localhost:5432/openprogram"
+
 # The DBOS pool and sync-queue limits, named so the DBOS adapter's runtime config
 # defaults to exactly what the settings default to, without reading the settings.
 DEFAULT_DBOS_SYSTEM_POOL_SIZE = 10
@@ -54,7 +59,7 @@ class Settings(BaseSettings):
         "http://localhost:5175",
         "http://127.0.0.1:5175",
     )
-    database_url: str = "postgresql://openprogram:openprogram@localhost:5432/openprogram"
+    database_url: str = DEFAULT_DATABASE_URL
     # The one application pool each process (API, worker) shares between its
     # requests and every workflow step it runs. A caller waits up to the
     # timeout for a free connection; the pool never opens one past the max.
@@ -79,11 +84,26 @@ class Settings(BaseSettings):
     checkin_reconcile_cron: str = "*/15 * * * 1-5"
     checkin_reconcile_after_local_time: str = "09:45"
     checkin_reconcile_timezone: str | None = None
+    # Fill the day from Jira for members the check-in never reached: with the
+    # send off nobody was asked; with it on, a send that did not go through. It
+    # sends nothing and has a schedule of its own, kept while this and the
+    # tenant's switch (Admin › Check-ins, on by default) are both on; the
+    # fan-out and reconcile switches never touch it.
+    checkin_fill_enabled: bool = True
+    checkin_fill_schedule_id: str = "openprogram-checkin-fill"
+    # Every day of the week: a member's own check-in days decide.
+    checkin_fill_cron: str = "*/15 * * * *"
     jira_sync_projects: tuple[str, ...] = ()
     github_sync_repos: tuple[str, ...] = ()
     calendar_sync_user_ids: tuple[str, ...] = ()
     calendar_sync_window_days: int = 1
     jira_sync_cron: str = "0 * * * *"
+    # Each Jira sync also reads the history of the issues it saw change, as
+    # issue_change facts: at most this many issues a sync target and tick (the
+    # rest on the next tick; 0 reads no history). The first read of a target
+    # goes back this many days.
+    jira_changes_per_tick: int = 200
+    jira_changes_backfill_days: int = 120
     github_sync_cron: str = "*/15 * * * *"
     calendar_sync_cron: str = "0 8 * * *"
     conversation_retention_days: int = 30
@@ -174,6 +194,10 @@ class Settings(BaseSettings):
     readiness_scan_enabled: bool = True
     readiness_scan_cron: str = "45 * * * *"
     readiness_scan_schedule_id: str = "openprogram-readiness-scan"
+    # Jira hygiene: each scope's issues checked against the tenant's per-issue
+    # rules, inside the readiness tick. Its own switch: readiness off doesn't stop
+    # it, nor the other way round. The tenant's own switch decides as well.
+    hygiene_scan_enabled: bool = True
     # Ask the language model for items in text with no headings (quotes only).
     gate_text_model_enabled: bool = True
     temporal_target: str = "localhost:7233"
@@ -248,6 +272,7 @@ class Settings(BaseSettings):
     # Used only while the tenant has no Jira connection set up in admin.
     jira_deployment: Literal["cloud", "data_center"] = "cloud"
     jira_story_points_field: str | None = None
+    jira_severity_field: str | None = None
     github_base_url: str = "https://api.github.com"
     github_token: str | None = None
     github_owner: str | None = None
@@ -457,6 +482,8 @@ class Settings(BaseSettings):
         "checkin_reconcile_schedule_id",
         "checkin_reconcile_cron",
         "checkin_reconcile_after_local_time",
+        "checkin_fill_schedule_id",
+        "checkin_fill_cron",
         "jira_sync_cron",
         "github_sync_cron",
         "calendar_sync_cron",
@@ -618,6 +645,7 @@ class Settings(BaseSettings):
         "outbound_dm_max_chars",
         "recent_fact_lookback_days",
         "cross_person_notify_max_attempts",
+        "jira_changes_backfill_days",
     )
     @classmethod
     def validate_positive_int(cls, value: int) -> int:
@@ -666,6 +694,7 @@ class Settings(BaseSettings):
         "llm_max_tool_iterations",
         "ask_max_tool_iterations",
         "ask_investigate_max_tool_iterations",
+        "jira_changes_per_tick",
     )
     @classmethod
     def validate_non_negative_count(cls, value: int) -> int:
@@ -828,6 +857,24 @@ class Settings(BaseSettings):
     @property
     def resolved_dbos_system_database_url(self) -> str:
         return self.dbos_system_database_url or self.database_url
+
+    @property
+    def dbos_database_explicit(self) -> bool:
+        """Whether this process was told which database DBOS runs on.
+
+        A local process that fell back to the default URL would register its code as
+        the application version of whatever database sits at that address, and that
+        is the developer's own running stack: its scheduled runs wait for a version
+        no worker runs. DBOS refuses to launch then. Set through the environment,
+        a .env file or the constructor, the URL counts even when it spells the
+        default: a person named it. A deployed environment sets everything itself
+        and is not second-guessed here.
+        """
+        return (
+            self.environment != "local"
+            or self.dbos_system_database_url is not None
+            or "database_url" in self.model_fields_set
+        )
 
     @property
     def resolved_heartbeat_schedule_id(self) -> str:

@@ -1,9 +1,28 @@
-import { useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
-import type { ConfigNodeResponse, PodTaskDto } from "../../api/schema";
+import { podPath, programPath, projectPath, workstreamPath } from "../../app/links";
+import type {
+  ConfigNodeResponse,
+  MemberProfileResponse,
+  PodTaskDto,
+  ProfileResponse,
+  ProfileSuggestionResponse,
+} from "../../api/schema";
+import { ProfileDialog, type ProfileTarget } from "../profiles/ProfileDialog";
+import {
+  acceptAllWords,
+  chipNote,
+  profileForPodRole,
+  profileOptions,
+  reviewOrder,
+  reviewSummary,
+  suggestionLine,
+} from "../profiles/profiles";
+import { usePodsProfiles, useProfileCatalog, useProfileReview } from "../profiles/useProfiles";
 import { PanelState } from "../../components/PanelState";
 import { Panel } from "../../components/ui/Bits";
 import { Pill } from "../../components/ui/Pill";
@@ -55,6 +74,13 @@ type Ctx = {
   pods: ConfigNodeResponse[];
   workstreams: ConfigNodeResponse[];
   members: ConfigNodeResponse[];
+  /** Each pod's people's profiles, by pod then member. */
+  profiles: Record<string, Record<string, MemberProfileResponse>>;
+  catalog: ProfileResponse[];
+  /** Opens the profile dialog for one person in one pod. */
+  editProfile: (target: ProfileTarget) => void;
+  /** Asks first, then does a change that is not a removal (Accept all suggestions). */
+  confirm: (pending: Pending) => void;
   /** Makes a link; throws when the server refuses, so the control that asked can say why. */
   link: (
     kind: LinkKind,
@@ -94,9 +120,12 @@ export function LinksTab() {
   const { links, inUse, isLoading, error, reading, unreadable } = useLinks();
   const podIds = (pods.data ?? []).map((pod) => pod.id);
   const roles = usePodRoles(podIds);
+  const podProfiles = usePodsProfiles(podIds);
+  const catalog = useProfileCatalog();
   const { tasks } = useKnownTasks(podIds);
   const changed = useStructureChanged();
   const [pending, setPending] = useState<Pending | null>(null);
+  const [profileTarget, setProfileTarget] = useState<ProfileTarget | null>(null);
 
   const lists = [programs, projects, pods, workstreams, members];
   const loading = isLoading || lists.some((query) => query.isLoading);
@@ -131,6 +160,10 @@ export function LinksTab() {
         pods: [...(pods.data ?? [])].sort(byName),
         workstreams: [...(workstreams.data ?? [])].sort(byName),
         members: [...(members.data ?? [])].sort(byName),
+        profiles: podProfiles,
+        catalog: catalog.data ?? [],
+        editProfile: setProfileTarget,
+        confirm: setPending,
         link: async (kind, parent, child, run) => {
           await run();
           toast.success(linkDone(kind, nameOf(parent), childName(kind, child), true));
@@ -170,12 +203,14 @@ export function LinksTab() {
           </p>
           <ProgramProjects ctx={ctx} />
           <PodsOnProjects ctx={ctx} />
+          <ProfilesToCheck ctx={ctx} />
           <PeopleInPods ctx={ctx} />
           <WorkstreamLinks ctx={ctx} />
           <TaskAssignment ctx={ctx} />
         </div>
       ) : null}
       <ConfirmChange pending={pending} onClose={() => setPending(null)} />
+      <ProfileDialog target={profileTarget} onClose={() => setProfileTarget(null)} />
     </PanelState>
   );
 }
@@ -257,7 +292,7 @@ function ProgramProjects({ ctx }: { ctx: Ctx }) {
               : { value: project.id, label: project.name };
           });
         return (
-          <LinkRow key={program.id} title={program.name} to={`/delivery/program/${program.id}`}>
+          <LinkRow key={program.id} title={program.name} to={programPath(program.id)}>
             <ChipList
               empty="No projects in it yet."
               items={inside.map((id) => (
@@ -312,7 +347,7 @@ function PodsOnProjects({ ctx }: { ctx: Ctx }) {
           .filter((pod) => !on.includes(pod.id))
           .map((pod) => ({ value: pod.id, label: pod.name }));
         return (
-          <LinkRow key={project.id} title={project.name} to={`/delivery/project/${project.id}`}>
+          <LinkRow key={project.id} title={project.name} to={projectPath(project.id)}>
             <ChipList
               empty="No pods on it yet."
               items={on.map((id) => {
@@ -367,29 +402,38 @@ function PodsOnProjects({ ctx }: { ctx: Ctx }) {
 // ---- People in pods ---------------------------------------------------------------------------------------
 
 function PeopleInPods({ ctx }: { ctx: Ctx }) {
-  const { links, pods, nameOf, roles } = ctx;
+  const { links, pods, nameOf, roles, profiles } = ctx;
   return (
     <Section
       title="People in a pod"
-      note="A person's check-in rolls up into the pod they are in. Someone in no pod shows as in no team. The role is a label: it puts the right person first when you pick the pod's escalation contacts."
+      note="A person's check-in rolls up into the pod they are in. Someone in no pod shows as in no team. The role says who is accountable and orders the escalation pickers; the profile says what they bring to this pod (QA, security, product…). A profile grants no rights: it routes who is asked and named."
       empty={pods.length === 0 ? "No pods yet. Add one under Entities first." : null}
     >
       {pods.map((pod) => {
         const inside = links.podMembers[pod.id] ?? [];
         return (
-          <LinkRow key={pod.id} title={pod.name} to={`/delivery/pod/${pod.id}`}>
+          <LinkRow key={pod.id} title={pod.name} to={podPath(pod.id)}>
             <ChipList
               empty="Nobody in it yet."
               items={inside.map((id) => (
                 <Chip
                   key={id}
                   label={nameOf(id)}
-                  note={podRoleLabel(roles[pod.id]?.[id]) || undefined}
+                  note={chipNote(podRoleLabel(roles[pod.id]?.[id]), profiles[pod.id]?.[id])}
                   removeLabel={`Take ${nameOf(id)} out of ${pod.name}`}
                   onRemove={() =>
                     ctx.remove("pod-member", pod.id, id, () =>
                       apiClient.unlinkPodMember(pod.id, id),
                     )
+                  }
+                  editLabel={`Change ${nameOf(id)}'s profile in ${pod.name}`}
+                  onEdit={() =>
+                    ctx.editProfile({
+                      podId: pod.id,
+                      podName: pod.name,
+                      memberId: id,
+                      memberName: nameOf(id),
+                    })
                   }
                 />
               ))}
@@ -402,12 +446,24 @@ function PeopleInPods({ ctx }: { ctx: Ctx }) {
   );
 }
 
+/**
+ * Add someone with their role and their profile in the pod. The profile is preselected from
+ * the server's suggestion for them (their directory title, their issues, their Git work), with
+ * its reasons under the form; it is set only when the admin adds them.
+ */
 function AddPerson({ pod, ctx }: { pod: ConfigNodeResponse; ctx: Ctx }) {
   const [role, setRole] = useState("developer");
+  const [profile, setProfile] = useState(profileForPodRole("developer"));
+  const [suggestion, setSuggestion] = useState<ProfileSuggestionResponse | null>(null);
+  const picked = useRef<string>("");
+  const touched = useRef(false);
   const inside = ctx.links.podMembers[pod.id] ?? [];
   const options: Option[] = ctx.members
     .filter((member) => !inside.includes(member.id))
     .map((member) => ({ value: member.id, label: withTitle(member) }));
+  const fromRole = (reasons: string[]) =>
+    reasons.every((reason) => reason.startsWith("from their role"));
+
   return (
     <AddControl
       id={`add-person-${pod.id}`}
@@ -417,24 +473,144 @@ function AddPerson({ pod, ctx }: { pod: ConfigNodeResponse; ctx: Ctx }) {
       options={options}
       onSelect={(memberId) => {
         const member = ctx.members.find((item) => item.id === memberId);
-        if (member) setRole(suggestPodRole(member.metadata.app_roles));
+        const nextRole = member ? suggestPodRole(member.metadata.app_roles) : role;
+        setRole(nextRole);
+        setProfile(profileForPodRole(nextRole));
+        setSuggestion(null);
+        picked.current = memberId;
+        touched.current = false;
+        apiClient
+          .membershipProfile(pod.id, memberId, nextRole)
+          .then((detail) => {
+            // Only the person still picked: an earlier pick's answer may come back late.
+            if (picked.current !== memberId) return;
+            setSuggestion(detail.suggestion);
+            if (!touched.current) setProfile(detail.suggestion.profile);
+          })
+          .catch(() => setSuggestion(null));
       }}
       onAdd={(memberId) =>
         ctx.link("pod-member", pod.id, memberId, () =>
-          apiClient.linkPodMember(pod.id, memberId, { role }),
+          apiClient.linkPodMember(pod.id, memberId, { role, profile }),
         )
       }
     >
-      {() => (
-        <SelectField
-          id={`add-role-${pod.id}`}
-          label={`Their role in ${pod.name}`}
-          value={role}
-          onChange={setRole}
-          options={POD_ROLES.map((item) => ({ value: item.value, label: item.label }))}
-        />
+      {(selected) => (
+        <>
+          <SelectField
+            id={`add-role-${pod.id}`}
+            label={`Their role in ${pod.name}`}
+            value={role}
+            onChange={(next) => {
+              setRole(next);
+              // A suggestion that only followed the role follows it again.
+              if (!touched.current && (!suggestion || fromRole(suggestion.reasons))) {
+                setProfile(profileForPodRole(next));
+              }
+            }}
+            options={POD_ROLES.map((item) => ({ value: item.value, label: item.label }))}
+          />
+          <SelectField
+            id={`add-profile-${pod.id}`}
+            label={`Their profile in ${pod.name}`}
+            value={profile}
+            onChange={(next) => {
+              touched.current = true;
+              setProfile(next);
+            }}
+            options={profileOptions(ctx.catalog)}
+          />
+          {selected && suggestion ? (
+            <p className="basis-full text-[12px] text-grey-secondary">
+              {suggestionLine(suggestion)}
+            </p>
+          ) : null}
+        </>
       )}
     </AddControl>
+  );
+}
+
+/**
+ * The profiles nobody checked yet (read from the pod role, or written by the migration from
+ * it), each beside a suggestion, and Accept all. Not drawn when every profile is checked.
+ */
+function ProfilesToCheck({ ctx }: { ctx: Ctx }) {
+  const review = useProfileReview();
+  const queryClient = useQueryClient();
+  const items = reviewOrder(review.data?.items ?? []);
+  const summary = reviewSummary(items.length);
+  if (review.error) {
+    return (
+      <Panel title="Profiles to check">
+        <p role="alert" className="text-[13px] text-rag-red">
+          Could not read the profiles to check: {refusal(review.error)}
+        </p>
+      </Panel>
+    );
+  }
+  if (!summary) return null;
+  const acceptAll = () => {
+    const words = acceptAllWords(items);
+    ctx.confirm({
+      key: `accept-profiles:${Date.now()}`,
+      title: words.title,
+      effect: words.effect,
+      names: words.names,
+      confirmLabel: "Accept all",
+      destructive: false,
+      run: async () => {
+        const done = await apiClient.acceptProfiles({
+          items: items.map((item) => ({
+            pod_id: item.current.pod_id,
+            member_id: item.current.member_id,
+            profile: item.suggestion.profile,
+          })),
+        });
+        toast.success(
+          `Accepted ${done.accepted.length} ${done.accepted.length === 1 ? "suggestion" : "suggestions"}.`,
+        );
+        await queryClient.invalidateQueries();
+      },
+    });
+  };
+  return (
+    <Panel
+      title="Profiles to check"
+      note={
+        <Pill size="sm" variant="dark" onClick={acceptAll}>
+          Accept all suggestions
+        </Pill>
+      }
+    >
+      <p className="mb-2 max-w-[720px] text-[13px] text-grey-body">
+        {summary} Each suggestion comes from the person&rsquo;s directory title, their issues in the
+        pod and their Git work; nothing is set until you accept it. Change one alone with the pencil
+        on their chip below.
+      </p>
+      <details className="rounded-2xl border border-grey-border">
+        <summary className="cursor-pointer select-none px-4 py-3 text-[13px] font-bold">
+          Show the {items.length} {items.length === 1 ? "suggestion" : "suggestions"}
+        </summary>
+        <ul className="grid px-4 pb-2">
+          {items.map((item) => (
+            <li
+              key={`${item.current.pod_id}:${item.current.member_id}`}
+              className="grid gap-0.5 border-t border-grey-border py-2 text-[13px] first:border-t-0"
+            >
+              <span>
+                <span className="font-bold">{item.current.member_name}</span> in{" "}
+                {item.current.pod_name}: now {item.current.label}
+                {item.suggestion.profile === item.current.profile
+                  ? ", and the suggestion agrees"
+                  : ""}
+              </span>
+              <span className="text-grey-secondary">{suggestionLine(item.suggestion)}</span>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </Panel>
   );
 }
 
@@ -472,7 +648,7 @@ function WorkstreamLinks({ ctx }: { ctx: Ctx }) {
           <li key={ws.id} className="grid gap-3 border-t border-grey-border py-3 first:border-t-0">
             <div className="flex flex-wrap items-center gap-2">
               <Link
-                to={`/delivery/workstream/${ws.id}`}
+                to={workstreamPath(ws.id, inProjects)}
                 className="text-[14px] font-bold text-ink no-underline hover:underline"
               >
                 {ws.name}

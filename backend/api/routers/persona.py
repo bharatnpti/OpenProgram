@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import (
+    as_of_or_tenant_today,
     get_cross_person_request_service,
     get_current_principal,
     get_delivery_scope_service,
@@ -19,6 +20,7 @@ from api.dependencies import (
     get_provider_names,
     get_pull_request_flow_service,
     get_risk_service,
+    get_tenant_today,
     get_write_back_service,
 )
 from api.dtos import (
@@ -49,7 +51,9 @@ from api.dtos import (
     WorkstreamProgressResponse,
     WriteBackAdoptionResponse,
 )
+from api.people_projection import PeopleWordsDep, all_for_reader, for_reader
 from core.application.authorization import AuthorizationPolicy, Capability
+from core.application.checkin_ladder import pod_checkin_reads
 from core.application.cross_person_service import (
     CrossPersonRequestService,
     RequestStatusNotSettable,
@@ -59,8 +63,11 @@ from core.application.flow_metrics_service import FlowMetricsService
 from core.application.person_names import PersonNames, person_name
 from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
+from core.application.portfolio_privacy import counted_progress, counted_tree, reads_people
 from core.application.pull_request_flow_service import FlowScopeInvalid, PullRequestFlowService
+from core.application.request_trail_service import REQUEST_COUNTS_ONLY, reads_request_names
 from core.application.risk_service import RiskService
+from core.application.teammate_reasons import teammates_counted
 from core.application.writeback_service import WriteBackService
 from core.domain.auth import Principal
 from core.domain.brief import BriefKind
@@ -80,7 +87,7 @@ _TREND_KINDS = frozenset(
 
 @router.get("/me/focus", response_model=FocusResponse)
 async def my_focus(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     write_back_service: Annotated[WriteBackService, Depends(get_write_back_service)],
@@ -98,7 +105,7 @@ async def my_focus(
 @router.get("/pods/{pod_id}/blockers", response_model=PodBlockersResponse)
 async def pod_blockers(
     pod_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
@@ -114,15 +121,18 @@ async def pod_blockers(
 @router.get("/pods/{pod_id}/checkins", response_model=PodCheckinsResponse)
 async def pod_checkins(
     pod_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
     person_names: Annotated[PersonNames, Depends(get_person_names)],
 ) -> PodCheckinsResponse:
     await _ensure_pod_detail(scope, principal, pod_id)
+    # The day's ladder and each person's check-in time only for their readers;
+    # a developer on their own pod gets the counts and their own row.
+    reads = await pod_checkin_reads(scope, principal, pod_id)
     try:
-        view = await persona_service.pod_checkins(principal.tenant_id, pod_id, as_of)
+        view = await persona_service.pod_checkins(principal.tenant_id, pod_id, as_of, reads)
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     # A summary stored before it named people can still hold their chat ids.
@@ -132,7 +142,7 @@ async def pod_checkins(
 @router.get("/pods/{pod_id}/rollup", response_model=PodRollupResponse)
 async def pod_rollup(
     pod_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
@@ -145,13 +155,17 @@ async def pod_rollup(
         view = await persona_service.pod_rollup(principal.tenant_id, pod_id, as_of)
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not reads_people(principal):
+        # A developer on their own pod reads counts and work items, never a
+        # teammate's check-in; their own reasons stay theirs.
+        view = teammates_counted(view, principal.subject)
     return PodRollupResponse.from_view(view)
 
 
 @router.get("/pods/{pod_id}/tasks", response_model=PodTasksResponse)
 async def pod_tasks(
     pod_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
@@ -170,24 +184,33 @@ async def pod_tasks(
 @router.get("/projects/{project_id}/progress", response_model=ProjectProgressResponse)
 async def project_progress(
     project_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
+    words: PeopleWordsDep,
 ) -> ProjectProgressResponse:
+    """The project's colour, its tasks, and the factors behind the colour.
+
+    An executive reads it with nobody in it: no person's own status among
+    the factors, a blocker as "Open blocker." on its work item, and every name
+    said as a role or a team.
+    """
     # Every project for its readers; for a scrum master, the projects their pods work on.
     await _ensure_project_read(scope, principal, project_id)
     try:
         view = await persona_service.project_progress(principal.tenant_id, project_id, as_of)
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return ProjectProgressResponse.from_view(view)
+    if words is not None:
+        view = counted_progress(view)
+    return for_reader(ProjectProgressResponse.from_view(view), words)
 
 
 @router.get("/workstreams/{workstream_id}/progress", response_model=WorkstreamProgressResponse)
 async def workstream_progress(
     workstream_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
 ) -> WorkstreamProgressResponse:
@@ -202,18 +225,26 @@ async def workstream_progress(
 @router.get("/programs/{program_id}/tree", response_model=ProgramTreeResponse)
 async def program_tree(
     program_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
 ) -> ProgramTreeResponse:
+    """The tree under a node with each node's status.
+
+    A reader who counts people only (an executive) reads it with nobody in it:
+    no person's node, each pod, project and program with how many people
+    it holds (none under five), and its factors worded as on the heat map.
+    """
     _ensure(principal, Capability.READ_PROGRAM_ROLLUP)
     view = await persona_service.program_tree(principal.tenant_id, program_id, as_of)
+    if not reads_people(principal):
+        view = counted_tree(view)
     return ProgramTreeResponse.from_view(view)
 
 
 @router.get("/me/delivery-tree", response_model=DeliveryTreeResponse)
 async def my_delivery_tree(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
 ) -> DeliveryTreeResponse:
@@ -232,22 +263,34 @@ async def my_delivery_tree(
 
 @router.get("/portfolio/heatmap", response_model=PortfolioHeatmapResponse)
 async def portfolio_heatmap(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     names: Annotated[ProviderNames, Depends(get_provider_names)],
     program_root_id: Annotated[str | None, Query()] = None,
 ) -> PortfolioHeatmapResponse:
+    """The day's heat, each cell with why it has its colour.
+
+    An executive reads it with nobody in it: no person's cell but their
+    own, and reasons that count people and name work items, never a name or a
+    blocker's own words. Decided here by role, never by the console hiding it.
+    """
     _ensure(principal, Capability.READ_PORTFOLIO_HEATMAP)
     view = await persona_service.portfolio_heatmap(
-        principal.tenant_id, as_of, program_root_id, names=names
+        principal.tenant_id,
+        as_of,
+        program_root_id,
+        names=names,
+        counts_only=not reads_people(principal),
+        reader_id=principal.subject,
     )
     return PortfolioHeatmapResponse.from_view(view)
 
 
 @router.get("/portfolio/attention", response_model=PortfolioAttentionResponse)
 async def portfolio_attention(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
+    tenant_today: Annotated[date, Depends(get_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     risk_service: Annotated[RiskService, Depends(get_risk_service)],
@@ -262,6 +305,7 @@ async def portfolio_attention(
 
     The heat map's read (the same colours and reasons) with the portfolio's
     risk and drift findings, so it needs both: manager, exec and admin hold them.
+    An executive's names nobody, as their heat map does.
     """
     _ensure(principal, Capability.READ_PORTFOLIO_HEATMAP)
     _ensure_aggregate(principal)
@@ -271,9 +315,13 @@ async def portfolio_attention(
         as_of,
         program_root_id,
         risk_service,
-        today=datetime.now(tz=zone).date(),
+        # The tenant's today, the calendar as_of is on: whether the day is live decides
+        # "not answered yet" against "All N confirmed", as on the heat map. The
+        # reader's zone only words the clock times.
+        today=tenant_today,
         zone=zone,
         names=names,
+        counts_only=not reads_people(principal),
     )
     return PortfolioAttentionResponse.from_view(view)
 
@@ -294,7 +342,7 @@ async def node_trend(
     entity_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     window_days: Annotated[int, Query(ge=1, le=365)] = 30,
 ) -> NodeTrendResponse:
     _ensure_aggregate(principal)
@@ -312,7 +360,7 @@ async def node_trend(
 @router.get("/workstreams/{workstream_id}/flow", response_model=WorkstreamFlowResponse)
 async def workstream_flow(
     workstream_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[FlowMetricsService, Depends(get_flow_metrics_service)],
 ) -> WorkstreamFlowResponse:
@@ -323,7 +371,7 @@ async def workstream_flow(
 
 @router.get("/portfolio/flow", response_model=PortfolioFlowResponse)
 async def portfolio_flow(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[FlowMetricsService, Depends(get_flow_metrics_service)],
 ) -> PortfolioFlowResponse:
@@ -334,9 +382,10 @@ async def portfolio_flow(
 
 @router.get("/portfolio/pr-flow", response_model=PullRequestFlowResponse)
 async def portfolio_pull_request_flow(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[PullRequestFlowService, Depends(get_pull_request_flow_service)],
+    words: PeopleWordsDep,
     days: Annotated[int, Query(ge=1, le=180)] = 30,
     program_id: Annotated[str | None, Query()] = None,
     project_id: Annotated[str | None, Query()] = None,
@@ -363,33 +412,57 @@ async def portfolio_pull_request_flow(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return PullRequestFlowResponse.from_view(view)
+    return for_reader(PullRequestFlowResponse.from_view(view), words)
 
 
 @router.get("/portfolio/feed", response_model=PortfolioFeedResponse)
 async def portfolio_feed(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[PortfolioFeedService, Depends(get_portfolio_feed_service)],
+    words: PeopleWordsDep,
     since: Annotated[datetime | None, Query()] = None,
 ) -> PortfolioFeedResponse:
     _ensure_aggregate(principal)
     view = await service.feed(principal.tenant_id, since)
-    return PortfolioFeedResponse.from_view(view)
+    return for_reader(PortfolioFeedResponse.from_view(view), words)
 
 
 @router.get("/persona/briefs", response_model=NarrativeBriefsResponse)
 async def narrative_briefs(
     principal: Annotated[Principal, Depends(get_current_principal)],
     repository: Annotated[NarrativeBriefRepository, Depends(get_narrative_brief_repository)],
+    words: PeopleWordsDep,
     kind: Annotated[BriefKind | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> NarrativeBriefsResponse:
-    # apiClient note: frontend client regen picks this up automatically.
+    """The latest briefs, newest first.
+
+    An executive reads every brief with each person said as their role or team,
+    and no person among its sources: a pod's brief names its people to the
+    people who run pods, never to an executive. A brief written before the
+    executive brief stopped naming people reads the same way. Nor do they read
+    the brief of a pod or project of fewer than five people: its
+    text counts its people ("two of three confirmed"); its dates and verdict
+    are on the project's page.
+    """
     _ensure_aggregate(principal)
     briefs = await repository.latest_briefs(principal.tenant_id, kind, limit)
-    return NarrativeBriefsResponse(
-        briefs=[NarrativeBriefResponse.from_domain(brief) for brief in briefs],
-    )
+    if words is not None:
+        briefs = [brief for brief in briefs if brief.scope_id not in words.small_groups]
+    responses = [NarrativeBriefResponse.from_domain(brief) for brief in briefs]
+    if words is not None:
+        responses = [
+            response.model_copy(
+                update={"sources": [s for s in response.sources if not _person_source(s)]}
+            )
+            for response in all_for_reader(responses, words)
+        ]
+    return NarrativeBriefsResponse(briefs=responses)
+
+
+def _person_source(source: str) -> bool:
+    """A brief's source that is one person ("developer:<id>"), not a team or an item."""
+    return source.startswith(f"{NodeKind.DEVELOPER.value}:")
 
 
 @router.get("/persona/writeback-adoption", response_model=WriteBackAdoptionResponse)
@@ -425,6 +498,10 @@ async def portfolio_cross_person_requests(
     status: Annotated[CrossPersonRequestStatus | None, Query()] = None,
 ) -> CrossPersonRequestsResponse:
     _ensure_aggregate(principal)
+    if not reads_request_names(principal):
+        # Every ask names two people and its note often a third: an
+        # executive reads the waits as counts (GET /cross-person-requests/counts).
+        raise HTTPException(status_code=403, detail=REQUEST_COUNTS_ONLY)
     requests = await service.list_portfolio(principal.tenant_id, status)
     return CrossPersonRequestsResponse(
         requests=[CrossPersonRequestResponse.from_domain(request) for request in requests],
@@ -499,10 +576,11 @@ async def update_cross_person_request_status(
 @router.get("/projects/{project_id}/risks", response_model=ProjectRisksResponse)
 async def project_risks(
     project_id: str,
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[RiskService, Depends(get_risk_service)],
     person_names: Annotated[PersonNames, Depends(get_person_names)],
+    words: PeopleWordsDep,
 ) -> ProjectRisksResponse:
     _ensure_aggregate(principal)
     try:
@@ -510,29 +588,33 @@ async def project_risks(
         drift = await service.project_drift(principal.tenant_id, project_id, as_of)
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return ProjectRisksResponse(
+    response = ProjectRisksResponse(
         project_id=project_id,
         as_of=as_of,
         risks=await _risk_responses(principal.tenant_id, findings, person_names),
         drift=await _drift_responses(principal.tenant_id, drift, person_names),
     )
+    # An executive reads each owner as their role or team, and no one's own status.
+    return for_reader(response, words)
 
 
 @router.get("/portfolio/risks", response_model=PortfolioRisksResponse)
 async def portfolio_risks(
-    as_of: Annotated[date, Query(default_factory=date.today)],
+    as_of: Annotated[date, Depends(as_of_or_tenant_today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[RiskService, Depends(get_risk_service)],
     person_names: Annotated[PersonNames, Depends(get_person_names)],
+    words: PeopleWordsDep,
 ) -> PortfolioRisksResponse:
     _ensure_aggregate(principal)
     findings = await service.portfolio_risks(principal.tenant_id, as_of)
     drift = await service.portfolio_drift(principal.tenant_id, as_of)
-    return PortfolioRisksResponse(
+    response = PortfolioRisksResponse(
         as_of=as_of,
         risks=await _risk_responses(principal.tenant_id, findings, person_names),
         drift=await _drift_responses(principal.tenant_id, drift, person_names),
     )
+    return for_reader(response, words)
 
 
 async def _risk_responses(

@@ -22,7 +22,7 @@ from infra.registry import ServiceRegistry
 def test_portfolio_cross_person_requests_visible_to_aggregate_roles(settings: Settings) -> None:
     store = InMemoryGraphStore()
     asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.OPEN))
-    app = _app_for_role(settings, "exec", "exec-user", store)
+    app = _app_for_role(settings, "mgr", "mgr-user", store)
 
     with TestClient(app) as client:
         response = client.get("/portfolio/cross-person-requests?status=open")
@@ -38,6 +38,23 @@ def test_portfolio_cross_person_requests_visible_to_aggregate_roles(settings: Se
     assert "notify_message_id" not in request
     assert "notify_correlation_id" not in request
     assert "notify_attempts" not in request
+
+
+def test_an_executive_reads_the_board_as_counts_never_who_asked_whom(settings: Settings) -> None:
+    """Every ask names two people, and its note often a third."""
+    store = InMemoryGraphStore()
+    asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.OPEN))
+    app = _app_for_role(settings, "exec", "exec-user", store)
+
+    with TestClient(app) as client:
+        board = client.get("/portfolio/cross-person-requests")
+        counts = client.get("/cross-person-requests/counts")
+
+    assert board.status_code == 403
+    assert "counts" in board.json()["detail"]
+    assert counts.status_code == 200, counts.text
+    assert counts.json()["open"] == 1
+    assert "Alice" not in counts.text
 
 
 def test_raised_requests_say_when_the_counterpart_dm_was_not_delivered(
@@ -69,7 +86,7 @@ def test_portfolio_cross_person_requests_without_status_returns_every_active(
     """
     store = InMemoryGraphStore()
     asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.ACKNOWLEDGED))
-    app = _app_for_role(settings, "exec", "exec-user", store)
+    app = _app_for_role(settings, "sm", "sm-user", store)
 
     with TestClient(app) as client:
         response = client.get("/portfolio/cross-person-requests")

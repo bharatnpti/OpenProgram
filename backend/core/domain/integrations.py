@@ -70,6 +70,55 @@ class Issue:
     updated_at: datetime | None = None
 
 
+class IssueChangeField(StrEnum):
+    """The issue fields whose changes are kept, in provider-neutral words.
+
+    Anything else in a tracker's history is dropped. ``SUMMARY`` and
+    ``DESCRIPTION`` say only that the text changed: their values are never
+    kept. Comments are not part of the history and are never read.
+    """
+
+    STATUS = "status"
+    RESOLUTION = "resolution"
+    ASSIGNEE = "assignee"
+    DUE_DATE = "due_date"
+    FIX_VERSION = "fix_version"
+    LABELS = "labels"
+    STORY_POINTS = "story_points"
+    SPRINT = "sprint"
+    ISSUE_TYPE = "issue_type"
+    PARENT = "parent"
+    PRIORITY = "priority"
+    COMPONENTS = "components"
+    SEVERITY = "severity"
+    SUMMARY = "summary"
+    DESCRIPTION = "description"
+
+
+#: Fields whose change is kept without its values: their text is free text.
+VALUELESS_CHANGE_FIELDS = frozenset({IssueChangeField.SUMMARY, IssueChangeField.DESCRIPTION})
+
+
+@dataclass(frozen=True, kw_only=True)
+class IssueChange:
+    """One field changed on an issue: who changed it, when, from what to what.
+
+    ``history_id`` is the tracker's id for the change set; one set may change
+    several fields, and each field is one ``IssueChange``. A multi-valued
+    field (fix versions, components) lists what it lost in ``from_value`` and
+    what it gained in ``to_value``, comma-separated. For an assignee the values
+    are tracker account ids, never names. ``author`` is None when the tracker
+    names nobody (an automation or an anonymous change).
+    """
+
+    history_id: str
+    author: UserRef | None
+    at: datetime
+    field: IssueChangeField
+    from_value: str | None = None
+    to_value: str | None = None
+
+
 @dataclass(frozen=True, kw_only=True)
 class NewIssue:
     """An issue to create in the tracker, as a person approved it. Never assigned to anyone."""

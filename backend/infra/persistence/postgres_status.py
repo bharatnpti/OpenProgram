@@ -26,6 +26,7 @@ from core.domain.status import (
     CheckInCorrelation,
     CheckInDay,
     CheckInNudge,
+    CheckInNudgeSent,
     CheckInPreference,
     CheckInScheduleRun,
     CheckInSignals,
@@ -698,6 +699,26 @@ class PostgresStatusRepository:
             )
         return [_developer_blocker_from_row(row) for row in rows]
 
+    async def blockers_on_work_items(
+        self, tenant_id: str, work_item_ids: Sequence[str], after: date, until: date
+    ) -> list[DeveloperBlocker]:
+        if not work_item_ids:
+            return []
+        with _tracer.start_as_current_span("postgres.status.blockers_on_work_items"):
+            rows = await self._executor.fetch(
+                f"""
+                {_DEVELOPER_BLOCKER_SELECT_SQL}
+                WHERE tenant_id = %s AND work_item_id = ANY(%s)
+                  AND (
+                    (first_seen_on > %s AND first_seen_on <= %s)
+                    OR (resolved_on > %s AND resolved_on <= %s)
+                  )
+                ORDER BY first_seen_on, blocker_id
+                """,
+                (tenant_id, list(work_item_ids), after, until, after, until),
+            )
+        return [_developer_blocker_from_row(row) for row in rows]
+
     async def has_blocker_rows(self, tenant_id: str, developer_id: str) -> bool:
         with _tracer.start_as_current_span("postgres.status.has_blocker_rows"):
             rows = await self._executor.fetch(
@@ -814,6 +835,39 @@ class PostgresStatusRepository:
                 first_replied_at=_optional_datetime_field(
                     row.get("first_replied_at"), "first_replied_at"
                 ),
+            )
+            for row in rows
+        ]
+
+    async def checkin_nudges_on_day(self, tenant_id: str, day: date) -> list[CheckInNudgeSent]:
+        # The day of the check-in the rung belongs to, read as checkins_on_day reads it.
+        with _tracer.start_as_current_span("postgres.status.checkin_nudges_on_day"):
+            rows = await self._executor.fetch(
+                """
+                SELECT c.developer_id, n.correlation_id, n.nudge_number, n.sent_at
+                FROM checkin_nudges n
+                JOIN checkins c
+                  ON c.tenant_id = n.tenant_id AND c.correlation_id = n.correlation_id
+                WHERE n.tenant_id = %s
+                  AND n.sent_at IS NOT NULL
+                  AND (
+                    c.checkin_date = %s
+                    OR (
+                      c.checkin_date IS NULL
+                      AND c.asked_at >= %s::date
+                      AND c.asked_at < (%s::date + INTERVAL '1 day')
+                    )
+                  )
+                ORDER BY n.sent_at, n.correlation_id, n.nudge_number
+                """,
+                (tenant_id, day, day, day),
+            )
+        return [
+            CheckInNudgeSent(
+                developer_id=str(row["developer_id"]),
+                correlation_id=str(row["correlation_id"]),
+                nudge_number=_int_field(row["nudge_number"], "nudge_number"),
+                sent_at=_datetime_field(row.get("sent_at"), "sent_at"),
             )
             for row in rows
         ]
@@ -1155,6 +1209,48 @@ class PostgresSyncCursorRepository:
                 ),
             )
 
+    async def swap_cursor(
+        self,
+        tenant_id: str,
+        connector: str,
+        scope: str,
+        expected_value: str | None,
+        cursor: SyncCursor,
+    ) -> bool:
+        values = (cursor.value, cursor.updated_at, _json_scalar_mapping(cursor.metadata))
+        with _tracer.start_as_current_span("postgres.cursor.swap_cursor"):
+            if expected_value is None:
+                rows = await self._executor.fetch(
+                    """
+                    INSERT INTO connector_sync_cursors (
+                        tenant_id, connector, scope, cursor_value, cursor_updated_at, metadata
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (tenant_id, connector, scope)
+                    DO UPDATE SET
+                        cursor_value = EXCLUDED.cursor_value,
+                        cursor_updated_at = EXCLUDED.cursor_updated_at,
+                        metadata = EXCLUDED.metadata,
+                        updated_at = now()
+                    WHERE connector_sync_cursors.cursor_value IS NULL
+                    RETURNING scope
+                    """,
+                    (tenant_id, connector, scope, *values),
+                )
+            else:
+                rows = await self._executor.fetch(
+                    """
+                    UPDATE connector_sync_cursors
+                    SET cursor_value = %s, cursor_updated_at = %s, metadata = %s,
+                        updated_at = now()
+                    WHERE tenant_id = %s AND connector = %s AND scope = %s
+                      AND cursor_value = %s
+                    RETURNING scope
+                    """,
+                    (*values, tenant_id, connector, scope, expected_value),
+                )
+        return bool(rows)
+
     async def list_cursors(self, tenant_id: str) -> list[SyncCursorRecord]:
         with _tracer.start_as_current_span("postgres.cursor.list_cursors"):
             rows = await self._executor.fetch(
@@ -1228,6 +1324,31 @@ class PostgresConversationRepository:
                 (tenant_id, developer_id, on),
             )
             await self._touch_conversation_turns(rows)
+        return [_conversation_turn_from_row(row) for row in rows]
+
+    async def peek_turns_for_day(
+        self, tenant_id: str, developer_id: str, on: date
+    ) -> list[ConversationTurn]:
+        # The same rows and order as list_turns_for_day; only the touch is left out.
+        with _tracer.start_as_current_span("postgres.conversation.peek_turns_for_day"):
+            rows = await self._executor.fetch(
+                """
+                SELECT id::text AS turn_id, tenant_id, developer_id, conversation_id,
+                       conversation_date, role, content, correlation_id, chat_message_id,
+                       observed_at, last_accessed_at
+                FROM conversation_turns
+                WHERE tenant_id = %s
+                  AND developer_id = %s
+                  AND conversation_date = %s
+                ORDER BY observed_at ASC,
+                         conversation_id ASC,
+                         COALESCE(correlation_id, '') ASC,
+                         COALESCE(chat_message_id, '') ASC,
+                         role ASC,
+                         content ASC
+                """,
+                (tenant_id, developer_id, on),
+            )
         return [_conversation_turn_from_row(row) for row in rows]
 
     async def list_recent_turns(

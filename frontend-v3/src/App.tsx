@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ComponentType, type ReactNode } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { Layout } from "./app/Layout";
 import { RoleProvider } from "./app/RoleProvider";
@@ -12,29 +12,38 @@ const page = <K extends string>(load: () => Promise<Record<K, ComponentType>>, n
   lazy(() => load().then((module) => ({ default: module[name] })));
 
 const TodayPage = page(() => import("./pages/TodayPage"), "TodayPage");
-const DeliveryPage = page(() => import("./pages/DeliveryPage"), "DeliveryPage");
-const SignalsPage = page(() => import("./pages/SignalsPage"), "SignalsPage");
-const CoordinationPage = page(() => import("./pages/CoordinationPage"), "CoordinationPage");
-const ReportsHomePage = page(() => import("./pages/ReportsHomePage"), "ReportsHomePage");
-const DailyPage = page(() => import("./pages/DailyPage"), "DailyPage");
-const OverallPage = page(() => import("./pages/OverallPage"), "OverallPage");
-const ChatPage = page(() => import("./pages/ChatPage"), "ChatPage");
-const AdminPage = page(() => import("./pages/AdminPage"), "AdminPage");
+const CheckinPage = page(() => import("./pages/CheckinPage"), "CheckinPage");
+const RequestsPage = page(() => import("./pages/RequestsPage"), "RequestsPage");
+const ProjectsLanding = page(() => import("./pages/HubPage"), "ProjectsLanding");
+const HubPage = lazy(() =>
+  import("./pages/HubPage").then((module) => ({ default: module.HubPage })),
+);
+const FlowPage = page(() => import("./pages/FlowPage"), "FlowPage");
 const OraPage = page(() => import("./pages/OraPage"), "OraPage");
+const PeoplePage = page(() => import("./pages/PeoplePage"), "PeoplePage");
+const AdminPage = page(() => import("./pages/AdminPage"), "AdminPage");
 
 /*
- *   /today                          the role's own home (developer, scrum master,
- *                                   product owner, or the portfolio view)
- *   /delivery[/:kind/:id]           walk the graph: program, project, workstream, pod
- *   /signals                        flow through review; risks across projects (portfolio roles)
- *   /coordination                   requests between people, briefs
- *   /reports                        every project's reports
- *   /reports/:projectId/daily       the end-of-day report (?report= picks one)
- *   /reports/:projectId/overall     the project's state since it started
- *   /chat                           the built-in chat (local tenants only)
- *   /admin                          runtime configuration (admin)
+ * The sidebar's pages (app/nav.ts):
  *
- * Any of them takes ?asOf=YYYY-MM-DD to show a past day (app/ViewingDateProvider).
+ *   /today                                    what needs me today, per role
+ *   /check-in                                 my own check-in and tasks
+ *   /requests                                 who is waiting on whom
+ *   /projects                                 the Projects hub; opens by role
+ *     /portfolio/:tab                         All projects
+ *     /projects/:projectId/:tab               one project
+ *     /projects/:projectId/pods/:podId/:tab   one pod, its part of that project
+ *                                             (tabs: date, warnings, scope, reports)
+ *   /flow                                     review flow
+ *   /ora                                      Ask Ora, full page
+ *   /people                                   people & roles
+ *   /admin                                    runtime configuration (admin)
+ *
+ * Every address from before the hub (/pods/…, /warnings, /scope, /reports/…,
+ * /delivery/…, /signals, /coordination, /chat, /today?pod=…) opens where it
+ * lives now, its query and hash kept (app/access.ts `legacyPath`, applied by
+ * app/RouteGuard): links in messages already sent must keep working. Any page
+ * takes ?asOf=YYYY-MM-DD to show a past day (app/ViewingDateProvider).
  */
 export function App() {
   return (
@@ -66,30 +75,20 @@ function AppRoutes() {
       >
         <Route path="/" element={<Navigate to="/today" replace />} />
         <Route path="/today" element={<TodayPage />} />
-        <Route path="/delivery" element={<DeliveryPage />} />
-        <Route path="/delivery/:kind/:id" element={<DeliveryPage />} />
-        <Route path="/signals" element={<SignalsPage />} />
-        <Route path="/coordination" element={<CoordinationPage />} />
-        <Route path="/reports" element={<ReportsHomePage />} />
-        <Route path="/reports/:projectId" element={<ProjectRedirect />} />
-        <Route path="/reports/:projectId/daily" element={<DailyPage />} />
-        <Route path="/reports/:projectId/overall" element={<OverallPage />} />
-        {/* Links from the first scaffold keep working. */}
-        <Route path="/projects/:projectId" element={<ProjectRedirect />} />
-        <Route path="/projects/:projectId/:view" element={<ProjectRedirect />} />
-        <Route path="/chat" element={<ChatPage />} />
-        <Route path="/admin" element={<AdminPage />} />
+        <Route path="/check-in" element={<CheckinPage />} />
+        <Route path="/requests" element={<RequestsPage />} />
+        <Route path="/projects" element={<ProjectsLanding />} />
+        <Route path="/portfolio/:tab?" element={<HubPage level="all" />} />
+        <Route path="/projects/:projectId/:tab?" element={<HubPage level="project" />} />
+        <Route path="/projects/:projectId/pods/:podId/:tab?" element={<HubPage level="pod" />} />
+        <Route path="/flow" element={<FlowPage />} />
         <Route path="/ora" element={<OraPage />} />
+        <Route path="/people" element={<PeoplePage />} />
+        <Route path="/admin" element={<AdminPage />} />
+        {/* An old address is placed by the guard before this is reached. */}
         <Route path="*" element={<Navigate to="/today" replace />} />
       </Route>
     </Routes>
-  );
-}
-
-function ProjectRedirect() {
-  const { projectId, view } = useParams();
-  return (
-    <Navigate to={`/reports/${projectId}/${view === "overall" ? "overall" : "daily"}`} replace />
   );
 }
 

@@ -113,6 +113,7 @@ function board(issues: IssueGatesResponse[], questions: TrackedQuestionResponse[
   return {
     project_id: "checkout",
     release_id: null,
+    pod_id: null,
     templates: [ACCEPTANCE],
     issues,
     questions,

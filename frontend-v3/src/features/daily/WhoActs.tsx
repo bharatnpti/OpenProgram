@@ -50,15 +50,21 @@ export function WhoActs({ owners, emptyText }: { owners: OwnerAsks[]; emptyText:
       <ul aria-label="What we need, one row per person, in the report's order">
         {view.lanes.map((lane) => (
           <li key={lane.heading} className="dv-lane">
-            <p
-              className={
-                lane.named
-                  ? "min-w-0 text-[13.5px] font-extrabold"
-                  : "min-w-0 text-[13.5px] font-extrabold text-(--op-day-secondary)"
-              }
-            >
-              {lane.heading}
-            </p>
+            <div className="min-w-0">
+              <p
+                className={
+                  lane.named
+                    ? "text-[13.5px] font-extrabold"
+                    : "text-[13.5px] font-extrabold text-(--op-day-secondary)"
+                }
+              >
+                {lane.heading}
+              </p>
+              {/* Said once for the person when every ask of theirs would say it. */}
+              {lane.stop ? (
+                <p className="text-[12px] text-(--op-day-secondary)">{lane.stop}</p>
+              ) : null}
+            </div>
             <ul className="grid gap-2">
               {lane.asks.map((ask, index) => (
                 <li key={`${ask.text}-${index}`} className="dv-ask">

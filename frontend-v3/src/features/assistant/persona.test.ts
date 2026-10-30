@@ -46,14 +46,21 @@ test("the greeting names the person and the time of day, and no one when nobody 
   assert.equal(assistantGreeting("", evening), "Good evening — what would you like to know?");
 });
 
-test("the page is read from the path, with its view", () => {
-  assert.deepEqual(placeOf("/today", "", "flow"), { page: "today", view: null });
-  assert.deepEqual(placeOf("/reports/p-1/daily", "", "flow"), { page: "reports", view: "daily" });
-  assert.deepEqual(placeOf("/reports", "", "flow"), { page: "reports", view: null });
-  assert.deepEqual(placeOf("/signals", "?view=risks", "flow"), { page: "signals", view: "risks" });
-  assert.deepEqual(placeOf("/signals", "", "risks"), { page: "signals", view: "risks" });
-  assert.deepEqual(placeOf("/delivery/pod/x", "", "flow"), { page: "delivery", view: null });
-  assert.deepEqual(placeOf("/somewhere", "", "flow"), { page: "today", view: null });
+test("the page is read from the path, with its view; in the hub, the level and the tab", () => {
+  assert.deepEqual(placeOf("/today"), { page: "today", view: null });
+  assert.deepEqual(placeOf("/check-in"), { page: "checkin", view: null });
+  // All projects: each tab asks its own questions.
+  assert.deepEqual(placeOf("/portfolio/date"), { page: "portfolio", view: null });
+  assert.deepEqual(placeOf("/portfolio/warnings"), { page: "warnings", view: null });
+  assert.deepEqual(placeOf("/portfolio/scope"), { page: "scope", view: null });
+  assert.deepEqual(placeOf("/portfolio/reports"), { page: "reports", view: "briefs" });
+  // A project, its day reports, and a pod of it.
+  assert.deepEqual(placeOf("/projects/p-1/date"), { page: "projects", view: null });
+  assert.deepEqual(placeOf("/projects/p-1/warnings"), { page: "projects", view: null });
+  assert.deepEqual(placeOf("/projects/p-1/reports"), { page: "reports", view: "daily" });
+  assert.deepEqual(placeOf("/projects/p-1/pods/x/warnings"), { page: "pods", view: null });
+  assert.deepEqual(placeOf("/projects"), { page: "projects", view: null });
+  assert.deepEqual(placeOf("/somewhere"), { page: "today", view: null });
 });
 
 test("a scrum master's pod gets questions about that pod, worded for the day shown", () => {
@@ -95,14 +102,20 @@ test("a project gets questions about the project; the portfolio about every proj
   );
 });
 
-test("every page has two to four questions, and Signals' follow its view", () => {
+test("every page has two to four questions, and the warnings and the flow their own", () => {
   for (const page of [
     "today",
-    "delivery",
-    "signals",
-    "coordination",
+    "checkin",
+    "requests",
+    "portfolio",
+    "projects",
+    "pods",
+    "warnings",
+    "scope",
     "reports",
-    "chat",
+    "flow",
+    "ora",
+    "people",
     "admin",
   ] as const) {
     for (const podDetail of [true, false]) {
@@ -111,16 +124,8 @@ test("every page has two to four questions, and Signals' follow its view", () =>
       assert.equal(new Set(chips).size, chips.length, `${page}: no question twice`);
     }
   }
-  assert.ok(
-    suggestionsFor(at({ page: "signals", view: "risks" }), { podDetail: false })[0].includes(
-      "risks",
-    ),
-  );
-  assert.ok(
-    suggestionsFor(at({ page: "signals", view: "flow" }), { podDetail: false })[0].includes(
-      "review",
-    ),
-  );
+  assert.ok(suggestionsFor(at({ page: "warnings" }), { podDetail: false })[0].includes("risks"));
+  assert.ok(suggestionsFor(at({ page: "flow" }), { podDetail: false })[0].includes("review"));
 });
 
 test("on a past day the panel says which day is asked about", () => {
@@ -132,12 +137,12 @@ test("a source links where the role has its page, and is plain words elsewhere",
   const project = { id: "project-checkout", kind: "project" as const, label: "Checkout Revamp" };
   const pod = { id: "pod payments", kind: "pod" as const, label: "Payments Pod" };
   const task = { id: "CHK-101", kind: "task" as const, label: "Card form" };
-  assert.equal(sourceLink(project, targetsOf("mgr")), "/delivery/project/project-checkout");
-  // A scrum master's or product owner's Delivery opens it; one outside their part of the
-  // tree is sent on from there (access.ts ownRedirect).
-  assert.equal(sourceLink(pod, targetsOf("sm")), "/delivery/pod/pod%20payments");
-  assert.equal(sourceLink(project, targetsOf("po")), "/delivery/project/project-checkout");
-  assert.equal(sourceLink(pod, targetsOf("exec")), null, "an executive's Delivery lists no pods");
+  assert.equal(sourceLink(project, targetsOf("mgr")), "/projects/project-checkout");
+  // Its own page; one outside the person's part of the tree is sent on from there
+  // (access.ts redirectFor).
+  assert.equal(sourceLink(pod, targetsOf("sm")), "/pods/pod%20payments");
+  assert.equal(sourceLink(project, targetsOf("po")), "/projects/project-checkout");
+  assert.equal(sourceLink(pod, targetsOf("exec")), null, "an executive has no Pods");
   assert.equal(sourceLink(task, targetsOf("mgr")), null, "a task has no page of its own");
   assert.deepEqual(sourceWords(task), { label: "Card form", kind: "task" });
   assert.deepEqual(sourceWords({ id: "U1007", kind: null, label: null }), {

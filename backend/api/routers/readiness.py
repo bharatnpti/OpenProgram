@@ -20,6 +20,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from api.dependencies import get_current_principal, get_forecast_service, get_registry
+from api.people_projection import PeopleWordsDep, for_reader
 from api.readiness_dtos import (
     ReadinessBoardResponse,
     ReadinessConfigResponse,
@@ -84,6 +85,7 @@ async def project_readiness(
     principal: Caller,
     service: Service,
     forecasts: Forecasts,
+    words: PeopleWordsDep,
     release_id: Annotated[str | None, Query()] = None,
 ) -> ReadinessBoardResponse:
     viewer = await _project_viewer(principal, forecasts, service, project_id, reading=True)
@@ -92,19 +94,20 @@ async def project_readiness(
         view = await service.project_board(principal.tenant_id, project_id, viewer, release=release)
     except GraphNotFound as exc:
         raise _error(exc) from exc
-    return ReadinessBoardResponse.from_view(view)
+    # An executive reads who decided or dismissed as their role.
+    return for_reader(ReadinessBoardResponse.from_view(view), words)
 
 
 @router.get("/pods/{pod_id}/readiness", response_model=ReadinessBoardResponse)
 async def pod_readiness(
-    pod_id: str, principal: Caller, service: Service, forecasts: Forecasts
+    pod_id: str, principal: Caller, service: Service, forecasts: Forecasts, words: PeopleWordsDep
 ) -> ReadinessBoardResponse:
     viewer = await _pod_viewer(principal, forecasts, pod_id)
     try:
         view = await service.pod_board(principal.tenant_id, pod_id, viewer)
     except GraphNotFound as exc:
         raise _error(exc) from exc
-    return ReadinessBoardResponse.from_view(view)
+    return for_reader(ReadinessBoardResponse.from_view(view), words)
 
 
 @router.post("/projects/{project_id}/readiness/run", response_model=ReadinessRunResponse)

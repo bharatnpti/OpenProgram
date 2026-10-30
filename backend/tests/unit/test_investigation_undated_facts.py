@@ -1,6 +1,6 @@
 """Investigate quotes the forecast's count of undated requirements, with their keys.
 
-In QA round V2 one of two runs of "What should I do first to make <project>'s
+In a QA run one of two runs of "What should I do first to make <project>'s
 date?" said only one requirement lacked an ETA, while Delivery counted six:
 its step about undated requirements read release readiness, and the step that
 read the forecast kept no count in its notes. What delivery_forecast returns

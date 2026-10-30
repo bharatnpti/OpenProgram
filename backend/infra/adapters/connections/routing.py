@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from core.domain.integrations import (
     CalendarEvent,
     Commit,
     Issue,
+    IssueChange,
     IssueText,
     NewIssue,
     Project,
@@ -72,6 +73,12 @@ class TenantRoutedIssueTracker:
 
     async def get_issue_text(self, tenant_id: str, key: str) -> IssueText:
         return await (await self._pick(tenant_id)).get_issue_text(tenant_id, key)
+
+    async def list_issue_changes(
+        self, tenant_id: str, key: str, since: datetime | None
+    ) -> list[IssueChange]:
+        tracker = await self._pick(tenant_id)
+        return await tracker.list_issue_changes(tenant_id, key, since)
 
     async def list_active_for(self, assignee: UserRef) -> list[Issue]:
         return await (await self._pick(assignee.tenant_id)).list_active_for(assignee)

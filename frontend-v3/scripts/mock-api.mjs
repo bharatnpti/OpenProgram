@@ -32,6 +32,16 @@ import * as forecastSettings from "./mock/forecast-settings.mjs";
 import * as scopedDelivery from "./mock/scoped-delivery.mjs";
 import * as releaseReadiness from "./mock/release-readiness.mjs";
 import * as jiraWrites from "./mock/jira-writes.mjs";
+import * as profilesMock from "./mock/profiles.mjs";
+import * as requestsPods from "./mock/requests-pods.mjs";
+import * as baselines from "./mock/baselines.mjs";
+import * as observedDay from "./mock/observed-day.mjs";
+import * as hygieneMock from "./mock/hygiene.mjs";
+import * as timelineMock from "./mock/timeline.mjs";
+import * as consoleToday from "./mock/console-today.mjs";
+import * as portfolioMock from "./mock/portfolio.mjs";
+import * as podLevel from "./mock/pod-level.mjs";
+import * as restoreMock from "./mock/restore.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
@@ -226,10 +236,12 @@ function api(req, res, url) {
   if (forecastSettings.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny))
     return;
   if (jiraWrites.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
+  if (observedDay.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
   if (releaseReadiness.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny))
     return;
   if (adminConfig.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
   if (vizDaily.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
+  if (profilesMock.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
   if (p === "/api/v1/auth/status")
     return send(200, {
       authenticated: true,
@@ -255,7 +267,15 @@ function api(req, res, url) {
     return can.aggregate(roles) ? send(200, risks) : deny();
   const userId = req.headers["x-openprogram-dev-user"] ?? "U1001";
   // Before the lane mocks: it answers scoped reads they refuse (a person's own part of the tree).
+  if (podLevel.api(req, url, roles, userId, send, deny)) return;
+  if (requestsPods.api(req, url, roles, userId, send, deny)) return;
   if (scopedDelivery.api(req, url, roles, userId, send, deny)) return;
+  if (portfolioMock.api(req, url, roles, userId, send, deny)) return;
+  if (restoreMock.api(req, url, roles, userId, send, deny)) return;
+  if (baselines.api(req, url, roles, userId, send, deny)) return;
+  if (hygieneMock.api(req, url, roles, userId, send, deny)) return;
+  if (timelineMock.api(req, url, roles, userId, send, deny)) return;
+  if (consoleToday.api(req, url, roles, userId, send, deny)) return;
   // The shell mock goes first: of the reads the lane mocks share, it answers
   // only past-day ones (as_of), which the today mock would answer as today.
   if (vizOverall.api(req, url, roles, userId, send, deny)) return;

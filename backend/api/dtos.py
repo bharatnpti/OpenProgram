@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator
 
+from api.pod_checkin_dtos import CheckinRungDto
 from core.application.ask_conversation import (
     MAX_SUMMARY_CHARS,
     MAX_TURN_CHARS,
@@ -31,6 +32,7 @@ from core.application.config_service import (
     EscalationCandidate,
     EscalationContactChoice,
     IdentityAutoMatchResult,
+    IdentityCounts,
     PodEscalationContactChoices,
     UnmappedMember,
 )
@@ -59,12 +61,15 @@ from core.application.person_names import UNKNOWN_PERSON, without_member_ids
 from core.application.persona_views import (
     BlockerDetailView,
     BlockerView,
+    CheckinCoverageView,
     CheckinDeveloperView,
     FocusItemView,
     FocusTaskView,
     FocusView,
     HeatmapCellView,
+    NoDataCause,
     NodeTrendView,
+    ObservedTaskView,
     PodBlockersView,
     PodCheckinsView,
     PodRollupView,
@@ -136,6 +141,7 @@ from core.domain.gates import (
 )
 from core.domain.graph import EdgeKind, EntityRef, GraphEdge, GraphNode, GraphTree, NodeKind
 from core.domain.identity import IdentityLink
+from core.domain.observed_day import FillDaySetting
 from core.domain.report_facts import (
     AskFacts,
     DateFacts,
@@ -497,6 +503,8 @@ class PodMemberLinkRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     role: str = Field(min_length=1)
+    #: Their profile in the pod (a catalog slug). Left out, it reads from the role, unchecked.
+    profile: str | None = Field(default=None, min_length=1, max_length=32)
 
 
 class MemberTaskAssignmentRequest(BaseModel):
@@ -713,6 +721,16 @@ class MemberFromDirectoryRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     external_ids: list[str] = Field(min_length=1)
+    #: Also add everyone imported to this pod, with ``role`` and ``profile`` (optional).
+    pod_id: str | None = Field(default=None, min_length=1)
+    role: str | None = Field(default=None, min_length=1)
+    profile: str | None = Field(default=None, min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def _pod_for_role_and_profile(self) -> MemberFromDirectoryRequest:
+        if self.pod_id is None and (self.role is not None or self.profile is not None):
+            raise ValueError("a role or profile needs the pod they hold it in (pod_id)")
+        return self
 
 
 class ChatWebhookResponse(BaseModel):
@@ -872,6 +890,42 @@ class TaskStatementDto(BaseModel):
         )
 
 
+class ObservedTaskDto(BaseModel):
+    """What the tracker says of a task today ("Jira today"), beside what its people said."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: str | None = Field(description="The tracker's status name now.")
+    stage: DeliveryStage | None = Field(description="The delivery stage that status maps to.")
+    since: datetime | None = Field(
+        description="When the task entered that status, by the tracker's history."
+    )
+    moved_by: str | None = Field(
+        default=None,
+        description="Who made that move, by name, when it was not one of the task's own people.",
+    )
+    changes: list[str] = Field(
+        default_factory=list,
+        description="The day's other changes, worded: 'due date moved Oct 10 → Oct 14'.",
+    )
+    quiet_days: int | None = Field(
+        default=None, description="Days a task under way has not moved, from five on."
+    )
+
+    @classmethod
+    def from_view(cls, view: ObservedTaskView | None) -> ObservedTaskDto | None:
+        if view is None:
+            return None
+        return cls(
+            status=view.status,
+            stage=view.stage,
+            since=view.since,
+            moved_by=view.moved_by,
+            changes=list(view.changes),
+            quiet_days=view.quiet_days,
+        )
+
+
 class FocusTaskDto(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -899,6 +953,10 @@ class FocusTaskDto(BaseModel):
         description="The person is the synced tracker issue's assignee through their identity "
         "link. The tick to move the issue also needs write_back other than off."
     )
+    observed: ObservedTaskDto | None = Field(
+        default=None,
+        description="What the tracker says of the task today, never merged into last_update.",
+    )
 
     @classmethod
     def from_view(cls, task: FocusTaskView) -> FocusTaskDto:
@@ -915,6 +973,7 @@ class FocusTaskDto(BaseModel):
             last_update=TaskStatementDto.from_view(task.last_update),
             blocker_ids=list(task.blocker_ids),
             can_move_in_tracker=task.can_move_in_tracker,
+            observed=ObservedTaskDto.from_view(task.observed),
         )
 
 
@@ -1096,6 +1155,36 @@ class CheckinDeveloperDto(BaseModel):
     source: StatusSource
     status_as_of: date | None
     summary: str
+    evidence: list[str] = Field(
+        default_factory=list,
+        description="An inferred day's lines of what moved in the tracker and Git; "
+        "not the person's word.",
+    )
+    no_data_cause: NoDataCause | None = Field(
+        default=None, description="Why a day closed stale or unknown has no data."
+    )
+    asked_at: datetime | None = Field(
+        default=None,
+        description="When the day's check-in first asked them; only where the ladder is read "
+        "(reads_ladder).",
+    )
+    replied_at: datetime | None = Field(
+        default=None,
+        description="When their first reply of the day was recorded; null while none is, "
+        "or where the ladder is not read.",
+    )
+    reminders: list[CheckinRungDto] = Field(
+        default_factory=list,
+        description="The day's silence-ladder rungs that went out for them, oldest first: a "
+        "reminder to them, then their scrum master and manager told. Only where the ladder "
+        "is read.",
+    )
+    checkin_time: str | None = Field(
+        default=None,
+        description="Their check-in time (HH:MM, in `timezone`): an admin's and their own "
+        "pod's scrum master's read only (reads_schedule).",
+    )
+    timezone: str | None = Field(default=None, description="The zone of `checkin_time`.")
 
     @classmethod
     def from_view(
@@ -1108,6 +1197,48 @@ class CheckinDeveloperDto(BaseModel):
             source=developer.source,
             status_as_of=developer.status_as_of,
             summary=without_member_ids(developer.summary, names or {}),
+            evidence=list(developer.evidence),
+            no_data_cause=developer.no_data_cause,
+            asked_at=developer.asked_at,
+            replied_at=developer.replied_at,
+            reminders=[CheckinRungDto.from_view(rung) for rung in developer.rungs],
+            checkin_time=(
+                developer.checkin_time.strftime("%H:%M") if developer.checkin_time else None
+            ),
+            timezone=developer.timezone,
+        )
+
+
+class CheckinCoverageCauseDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    cause: NoDataCause
+    count: int
+
+
+class CheckinCoverageDto(BaseModel):
+    """How a pod's day was captured: "6 replied · 3 from Jira · 1 no data (no Jira link)"."""
+
+    model_config = ConfigDict(frozen=True)
+
+    replied: int = Field(description="Gave the day's status themselves (confirmed or partial).")
+    inferred: int = Field(description="Inferred from what moved in the tracker and Git.")
+    no_data: int = Field(description="Closed stale or unknown: nothing said, nothing moved.")
+    waiting: int = Field(description="No status for the day yet.")
+    causes: list[CheckinCoverageCauseDto] = Field(
+        default_factory=list, description="Why the no-data days have none, counted per cause."
+    )
+
+    @classmethod
+    def from_view(cls, view: CheckinCoverageView) -> CheckinCoverageDto:
+        return cls(
+            replied=view.replied,
+            inferred=view.inferred,
+            no_data=view.no_data,
+            waiting=view.waiting,
+            causes=[
+                CheckinCoverageCauseDto(cause=cause, count=count) for cause, count in view.causes
+            ],
         )
 
 
@@ -1122,6 +1253,19 @@ class PodCheckinsResponse(BaseModel):
     stale: int
     missing: int
     developers: list[CheckinDeveloperDto]
+    coverage: CheckinCoverageDto | None = Field(
+        default=None, description="How the pod's day was captured, counted per pod."
+    )
+    reads_ladder: bool = Field(
+        default=False,
+        description="The caller reads the day's silence ladder: asked and replied times and "
+        "the rungs sent (a scrum master for their own pods, a manager, an admin).",
+    )
+    reads_schedule: bool = Field(
+        default=False,
+        description="The caller reads each person's check-in time and zone (an admin, and a "
+        "scrum master of their own pods).",
+    )
 
     @classmethod
     def from_view(
@@ -1138,6 +1282,9 @@ class PodCheckinsResponse(BaseModel):
             stale=view.stale,
             missing=view.missing,
             developers=[CheckinDeveloperDto.from_view(item, names) for item in view.developers],
+            coverage=CheckinCoverageDto.from_view(view.coverage),
+            reads_ladder=view.ladder,
+            reads_schedule=view.schedule,
         )
 
 
@@ -1227,6 +1374,10 @@ class PodTaskDto(BaseModel):
         default=None,
         description="That ETA as it was given: 'Oct 9' from the console, 'Tuesday' from chat.",
     )
+    observed: ObservedTaskDto | None = Field(
+        default=None,
+        description="What the tracker says of the task today, never merged into last_update.",
+    )
 
     @classmethod
     def from_view(cls, task: PodTaskView) -> PodTaskDto:
@@ -1245,6 +1396,7 @@ class PodTaskDto(BaseModel):
             last_update_by=task.last_update_by,
             eta=task.eta.day if task.eta is not None else None,
             eta_label=task.eta.label if task.eta is not None else None,
+            observed=ObservedTaskDto.from_view(task.observed),
         )
 
 
@@ -1386,6 +1538,14 @@ class PersonaTreeNodeDto(BaseModel):
     source: StatusSource | None
     confidence: float | None
     factors: list[RollupFactorDto]
+    people: int | None = Field(
+        default=None,
+        description=(
+            "How many people a pod, project or program holds on the day; null for any "
+            "other node, and for a group of fewer than five read by someone who counts "
+            "people only."
+        ),
+    )
 
     @classmethod
     def from_view(cls, node: TreeNodeView) -> PersonaTreeNodeDto:
@@ -1397,6 +1557,7 @@ class PersonaTreeNodeDto(BaseModel):
             source=node.source,
             confidence=node.confidence,
             factors=[RollupFactorDto.from_domain(factor) for factor in node.factors],
+            people=node.people,
         )
 
 
@@ -1582,7 +1743,12 @@ class PortfolioAttentionResponse(BaseModel):
     rag: Rag
     headline: str
     detail: str | None
-    checkins: AttentionCheckinsDto
+    checkins: AttentionCheckinsDto | None = Field(
+        description=(
+            "The day's check-in counts for the people in the program's teams; null for a "
+            "reader who counts people only, when the program has fewer than five."
+        )
+    )
     signals: list[AttentionSignalDto]
 
     @classmethod
@@ -1593,7 +1759,9 @@ class PortfolioAttentionResponse(BaseModel):
             rag=view.rag,
             headline=view.headline,
             detail=view.detail,
-            checkins=AttentionCheckinsDto.from_view(view.checkins),
+            checkins=(
+                AttentionCheckinsDto.from_view(view.checkins) if view.checkins is not None else None
+            ),
             signals=[AttentionSignalDto.from_view(signal) for signal in view.signals],
         )
 
@@ -1995,7 +2163,12 @@ class PortfolioFeedItemResponse(BaseModel):
     source: str
     kind: str
     summary: str
-    entity_ref: EntityRefDto
+    entity_ref: EntityRefDto | None = Field(
+        description=(
+            "What the event is about. Null for a reader who reads no person (an executive) "
+            "when it is about one: a member's id names them as much as a name does."
+        ),
+    )
     observed_at: datetime
     details: dict[str, str | int | float | bool | None]
     person_name: str | None = Field(
@@ -2956,6 +3129,26 @@ class IdentityAutoMatchResponse(BaseModel):
         )
 
 
+class IdentityCountsResponse(BaseModel):
+    """Admin › Directory: members with no chat id and with no Jira account."""
+
+    model_config = ConfigDict(frozen=True)
+
+    members: int
+    without_chat_id: int = Field(description="No chat id: the check-in cannot reach them.")
+    without_jira_account: int = Field(
+        description="Neither a Jira account nor a Jira email: their day cannot be read from Jira."
+    )
+
+    @classmethod
+    def from_domain(cls, counts: IdentityCounts) -> IdentityCountsResponse:
+        return cls(
+            members=counts.members,
+            without_chat_id=counts.without_chat_id,
+            without_jira_account=counts.without_jira_account,
+        )
+
+
 class UnmappedMemberResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -3074,6 +3267,45 @@ class TenantWritebackResponse(BaseModel):
 
 
 class TenantWritebackUpdateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool
+
+
+class CheckinFillResponse(BaseModel):
+    """The tenant's switch "Fill the day from Jira for people who were not asked"."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = Field(
+        description=(
+            "Whether the reconcile tick fills the day from Jira for members the check-in "
+            "never reached (the send off, or a send that failed)."
+        )
+    )
+    source: Literal["default", "tenant"] = Field(
+        description="'default' while an admin never saved it (on), 'tenant' once saved."
+    )
+    deployment_enabled: bool = Field(
+        description="The deployment's own switch (OPENPROGRAM_CHECKIN_FILL_ENABLED); off wins."
+    )
+    updated_at: datetime | None = None
+    updated_by: str | None = None
+
+    @classmethod
+    def from_domain(
+        cls, setting: FillDaySetting, *, saved: bool, deployment_enabled: bool
+    ) -> CheckinFillResponse:
+        return cls(
+            enabled=setting.enabled,
+            source="tenant" if saved else "default",
+            deployment_enabled=deployment_enabled,
+            updated_at=setting.updated_at,
+            updated_by=setting.updated_by,
+        )
+
+
+class CheckinFillUpdateRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     enabled: bool
@@ -3766,6 +3998,10 @@ class RequirementsResponse(BaseModel):
     as_of: date
     release_id: str | None
     release_name: str | None
+    pod_id: str | None = Field(
+        description="Set for one pod's part: the requirements below the pod."
+    )
+    pod_name: str | None
     live: bool
     available: bool
     total: int
@@ -3799,6 +4035,8 @@ class RequirementsResponse(BaseModel):
             as_of=view.as_of,
             release_id=view.release_id,
             release_name=view.release_name,
+            pod_id=view.pod_id,
+            pod_name=view.pod_name,
             live=view.live,
             available=view.available,
             total=view.total,
@@ -4686,6 +4924,12 @@ class ForecastDayResponse(BaseModel):
     p50: date | None
     p85: date | None
     sample_days: int
+    reconstructed: bool = Field(
+        default=False,
+        description=(
+            "True when the day was rebuilt later from the stored snapshots, not kept on the day."
+        ),
+    )
 
 
 class ForecastHistoryResponse(BaseModel):
@@ -4710,7 +4954,11 @@ class ForecastHistoryResponse(BaseModel):
             needed_days=view.needed_days,
             days=[
                 ForecastDayResponse(
-                    day=item.day, p50=item.p50, p85=item.p85, sample_days=item.sample_days
+                    day=item.day,
+                    p50=item.p50,
+                    p85=item.p85,
+                    sample_days=item.sample_days,
+                    reconstructed=item.reconstructed,
                 )
                 for item in view.days
             ],
@@ -4941,6 +5189,9 @@ class GateBoardResponse(BaseModel):
 
     project_id: str
     release_id: str | None
+    pod_id: str | None = Field(
+        description="Set for one pod's part: the requirements below the pod."
+    )
     templates: list[GateTemplateDto]
     issues: list[IssueGatesResponse]
     questions: list[TrackedQuestionResponse]
@@ -4951,6 +5202,7 @@ class GateBoardResponse(BaseModel):
         return cls(
             project_id=view.project_id,
             release_id=view.release_id,
+            pod_id=view.pod_id,
             templates=[GateTemplateDto.from_domain(item) for item in view.templates],
             issues=[
                 IssueGatesResponse(

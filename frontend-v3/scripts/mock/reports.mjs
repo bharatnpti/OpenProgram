@@ -358,7 +358,7 @@ function podScope(podId) {
     "at_risk",
     [
       short,
-      "Team dates: the latest open requirement is due Thu 15 Oct 2026 (CHK-109).",
+      "Team's own date: Thu 15 Oct 2026 (CHK-109), the latest finish date the team gave (ETA or due date) across the open requirements.",
       "1 open requirement has no ETA or due date.",
     ],
   );

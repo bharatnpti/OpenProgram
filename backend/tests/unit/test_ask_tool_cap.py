@@ -1,6 +1,6 @@
 """An answer written when Ask ran out of tool steps never claims what it did not read.
 
-In QA round V2 a scrum master asked what blocks a project. The quick answer's
+In a QA run a scrum master asked what blocks a project. The quick answer's
 tool loop hit its cap of three rounds (``tool_loop_cap_reached``), the model
 was asked to answer with no tools and no word about the reads it never made,
 and it said the project "has no blockers reported today" while a blocker was

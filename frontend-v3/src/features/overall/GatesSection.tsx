@@ -46,17 +46,20 @@ const CELL: Record<HeatState, { className: string; style?: CSSProperties }> = {
 export function GatesSection({
   projectId,
   releaseId = "",
+  podId = "",
   summary = true,
 }: {
   projectId: string;
   releaseId?: string;
+  /** One pod's part: the requirements below the pod. */
+  podId?: string;
   /** The count chips; a developer's answer line already says them. */
   summary?: boolean;
 }) {
   const { editGates, pastDay } = useReportAccess();
   const offNow = pastDay("editGates");
   const queryClient = useQueryClient();
-  const { query } = useGateBoard(projectId, releaseId || undefined);
+  const { query } = useGateBoard(projectId, releaseId || undefined, podId || undefined);
   const data = query.data;
   const templates = (data?.templates ?? []).filter((t) => t.enabled);
   const [openKey, setOpenKey] = useState<string | null>(null);

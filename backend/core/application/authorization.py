@@ -37,6 +37,9 @@ class Capability(StrEnum):
     #: dismiss and create a draft. A scrum master only for pods they run and the
     #: projects those pods work on.
     ACT_ON_READINESS = "act_on_readiness"
+    #: Set a member's profile in a pod. A scrum master only in the pods they run;
+    #: a profile grants no rights, it only routes who is asked and named.
+    SET_POD_PROFILES = "set_pod_profiles"
 
 
 class SensitiveField(StrEnum):
@@ -89,6 +92,8 @@ class AuthorizationPolicy:
                     Capability.SEND_DAY_REPORTS,
                     Capability.SET_UP_DAY_REPORTS,
                     Capability.ACT_ON_READINESS,
+                    # The scrum master says who brings what to the pods they run.
+                    Capability.SET_POD_PROFILES,
                 }
             ),
             Role.MGR: frozenset(
@@ -122,9 +127,10 @@ class AuthorizationPolicy:
                     # gives an executive. Pod check-ins and blockers are
                     # per-person, so they stay with the scrum master and manager.
                     Capability.READ_PROJECT_PROGRESS,
-                    # A day report says what its readers are sent: aggregate
-                    # state and asks, never anyone's reply.
-                    Capability.READ_DAY_REPORTS,
+                    # No READ_DAY_REPORTS: the day report is an action
+                    # list that names each owner, and an executive reads no
+                    # person's name in the console. They read the project's own
+                    # page instead. Whom a report is sent to stays its set-up's.
                 }
             ),
         }

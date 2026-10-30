@@ -1344,7 +1344,7 @@ def _as(role: str, member: str = "dev-zoe") -> dict[str, str]:
     return {"x-openprogram-dev-user": member, "x-openprogram-dev-roles": role}
 
 
-@pytest.mark.parametrize("role", ["dev", "sm", "po", "mgr", "exec", "admin"])
+@pytest.mark.parametrize("role", ["dev", "sm", "po", "mgr", "admin"])
 def test_every_role_reads_the_reports_todays_report_and_past_sends(
     settings: Settings, role: str
 ) -> None:
@@ -1366,6 +1366,32 @@ def test_every_role_reads_the_reports_todays_report_and_past_sends(
     assert runs.json()[0]["actor"] == "dev-user"
 
 
+def test_an_executive_reads_no_day_report_and_one_with_another_role_does(
+    settings: Settings,
+) -> None:
+    """The report names each owner, and an executive reads no person's name.
+
+    They read the project's own page instead. Whom the report is sent to, and
+    what it says, stay as they were: an executive among its destinations still
+    gets it.
+    """
+    client, checkout, _insights = _reach_app(settings)
+    with client:
+        sent = client.post(f"/day-reports/{checkout}/send")
+        persona = _as("exec")
+        refused = [
+            client.get("/day-reports", headers=persona).status_code,
+            client.get(f"/day-reports/{checkout}", headers=persona).status_code,
+            client.get(f"/day-reports/{checkout}/preview", headers=persona).status_code,
+            client.get(f"/day-reports/{checkout}/runs", headers=persona).status_code,
+        ]
+        both = client.get(f"/day-reports/{checkout}/preview", headers=_as("exec,po"))
+
+    assert sent.status_code == 200
+    assert refused == [403] * 4
+    assert both.status_code == 200
+
+
 @pytest.mark.parametrize(
     ("role", "member", "checkout_allowed", "insights_allowed"),
     [
@@ -1376,7 +1402,6 @@ def test_every_role_reads_the_reports_todays_report_and_past_sends(
         ("admin", "dev-zoe", True, True),
         ("po", "dev-priya", False, False),
         ("dev", "dev-priya", False, False),
-        ("exec", "dev-priya", False, False),
     ],
 )
 def test_the_scrum_master_of_a_pod_on_the_project_a_manager_or_an_admin_sends_and_sets_up(
@@ -1426,7 +1451,7 @@ def test_the_scrum_master_of_a_pod_on_the_project_a_manager_or_an_admin_sends_an
     assert moved.status_code == (200 if checkout_allowed and insights_allowed else 403)
     for report_id, allowed in ((checkout, checkout_allowed), (insights, insights_allowed)):
         assert (listed[report_id]["can_send"], listed[report_id]["can_edit"]) == (allowed, allowed)
-    if role in {"po", "dev", "exec"}:
+    if role in {"po", "dev"}:
         assert setup.status_code == 403
         return
     reachable = sorted(project["id"] for project in setup.json()["projects"])
@@ -1445,7 +1470,7 @@ def test_a_reader_who_cannot_set_a_report_up_sees_names_and_counts_never_address
         client.post(f"/day-reports/{checkout}/send")
         viewer = client.get(f"/day-reports/{checkout}", headers=_as("dev")).json()
         viewer_runs = client.get(f"/day-reports/{checkout}/runs", headers=_as("dev")).json()
-        listed = client.get("/day-reports", headers=_as("exec")).json()
+        listed = client.get("/day-reports", headers=_as("po")).json()
         setter = client.get(f"/day-reports/{checkout}", headers=_as("mgr")).json()
         setter_runs = client.get(f"/day-reports/{checkout}/runs", headers=_as("mgr")).json()
 
@@ -1486,7 +1511,7 @@ def test_a_reader_who_cannot_set_a_report_up_sees_names_and_counts_never_address
 
 @pytest.mark.parametrize(
     ("role", "allowed"),
-    [("po", True), ("mgr", True), ("admin", True), ("dev", False), ("sm", False), ("exec", False)],
+    [("po", True), ("mgr", True), ("admin", True), ("dev", False), ("sm", False)],
 )
 def test_the_product_owner_a_manager_or_an_admin_writes_the_days_note(
     settings: Settings, role: str, allowed: bool

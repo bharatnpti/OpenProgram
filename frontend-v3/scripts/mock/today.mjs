@@ -22,6 +22,7 @@
 //     verdict then leads with the program's own colour (the first program's tiles
 //     are red, so its verdict and colour agree).
 import * as consoleData from "../mock-console.mjs";
+import { withCoverage, withObserved } from "./observed-day.mjs";
 
 const TODAY = "2026-10-06";
 const ref = (kind, id) => ({ tenant_id: "demo", kind, id });
@@ -576,7 +577,7 @@ function updateTask(userId, taskId, body, send) {
  */
 function podTasksOf(podId) {
   const base = consoleData.podTasks(podId);
-  if (podId !== "pod-payments") return base;
+  if (podId !== "pod-payments") return { ...base, tasks: base.tasks.map(withObserved) };
   const kai = tasksOf("U1007");
   const details = statusOf("U1007").blocker_details;
   const rows = base.tasks.filter((row) => !kai.some((t) => t.id === row.id));
@@ -607,7 +608,7 @@ function podTasksOf(podId) {
     };
   });
   const all = [...kaiRows, ...rows].sort((a, b) => Number(b.blocked) - Number(a.blocked));
-  return { ...base, tasks: all };
+  return { ...base, tasks: all.map(withObserved) };
 }
 
 function focusOf(userId) {
@@ -617,7 +618,7 @@ function focusOf(userId) {
     ...base,
     as_of: TODAY,
     write_back: WRITE_BACK,
-    tasks: tasksOf(userId).map(taskDto),
+    tasks: tasksOf(userId).map(taskDto).map(withObserved),
     status_source: status.source,
     developer_confirmed: status.developer_confirmed,
     status_as_of: status.status_as_of,
@@ -669,14 +670,14 @@ function podCheckins(podId) {
     };
   });
   const count = (state) => developers.filter((d) => d.state === state).length;
-  return {
+  return withCoverage({
     ...base,
     confirmed: count("confirmed"),
     partial: count("partial"),
     stale: count("stale"),
     missing: count("missing"),
     developers,
-  };
+  });
 }
 
 // ---- briefs: a real tenant has dozens ---------------------------------------------------

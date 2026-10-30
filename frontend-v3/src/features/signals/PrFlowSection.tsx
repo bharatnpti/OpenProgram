@@ -363,7 +363,7 @@ function BandCard({
         </details>
       ) : (
         <p className="mt-3 text-[12px]">
-          <Link to="/signals?view=flow">Types, scope and every request: Flow</Link>
+          <Link to="/flow">Types, scope and every request: Review flow</Link>
         </p>
       )}
     </section>

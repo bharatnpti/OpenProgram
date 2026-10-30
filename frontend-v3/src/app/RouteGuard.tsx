@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { apiClient } from "../api/client";
 import { ownLinks } from "../features/delivery/ownTree";
 import {
-  pageOf,
+  guardNeeds,
   redirectFor,
   redirectToast,
   roleOfferingPage,
@@ -16,12 +16,13 @@ import { useOwnTree } from "./directory";
 import { roleLabels, rolePriority, useRole } from "./role";
 
 /**
- * A link to a page the viewing role is not offered opens the closest page it
- * has instead (app/access.ts `redirectFor`), with `replace`, so Back does not
- * bounce. Only when that is plain Today, with nothing of the role's own
- * standing in for the link, one toast says so; when the person holds another
- * role that is offered the page, the toast offers to switch to it. The page
- * itself never carries a line about roles.
+ * An address from before the sidebar opens where it lives now, its query and
+ * hash kept; a link to a page the viewing role is not offered opens the closest
+ * page it has instead (app/access.ts `redirectFor`). Both with `replace`, so
+ * Back does not bounce. Only when that is plain Today, with nothing of the
+ * role's own standing in for the link, one toast says so; when the person
+ * holds another role that is offered the page, the toast offers to switch to
+ * it. The page itself never carries a line about roles.
  */
 export function RouteGuard({ children }: { children: ReactNode }) {
   const location = useLocation();
@@ -29,30 +30,24 @@ export function RouteGuard({ children }: { children: ReactNode }) {
   const role = useRole();
   const { access } = role;
 
-  // Only a Delivery link to a pod or workstream needs the directory to say where to go,
-  // and under the `own` scope any link to a node needs the person's part of the tree.
-  const [, first, kind, id] = location.pathname.split("/");
-  const delivery = pageOf(location.pathname) === "delivery" && first === "delivery";
-  const own = access.deliveryScope === "own";
-  const needsTree = delivery && own && Boolean(kind && id);
-  const needsDirectory =
-    delivery &&
-    (kind === "pod" || kind === "workstream") &&
-    (own || !(access.pages.delivery && access.delivery[kind]));
+  // What the link needs read before it can be placed (app/access.ts `guardNeeds`).
+  const needs = guardNeeds(location, access);
   // The same keys as app/directory.ts, so this shares its requests.
   const pods = useQuery({
     queryKey: ["directory", "pods"],
     queryFn: () => apiClient.pods(),
-    enabled: needsDirectory,
+    enabled: needs.pods,
   });
   const workstreams = useQuery({
     queryKey: ["directory", "workstreams"],
     queryFn: () => apiClient.workstreams(),
-    enabled: needsDirectory,
+    enabled: needs.workstreams,
   });
-  const tree = useOwnTree(needsTree);
+  const tree = useOwnTree(needs.tree);
   const waiting =
-    (needsDirectory && (pods.isPending || workstreams.isPending)) || (needsTree && tree.isPending);
+    (needs.pods && pods.isPending) ||
+    (needs.workstreams && workstreams.isPending) ||
+    (needs.tree && tree.isPending);
 
   const redirect = useMemo(() => {
     if (waiting) return null;
