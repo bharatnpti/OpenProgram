@@ -1,0 +1,33 @@
+backend/tests/unit/test_summary_names_issues.py
+  s_d27f8ef4bd0971::t_adb30d4982808a 123-125
+backend/tests/unit/test_ask_follow_ups_in_answer.py
+  s_d27f8ef4bd0971::t_30236dd4d2dc34 30,178
+backend/tests/unit/test_litellm_provider.py
+  s_d27f8ef4bd0971::t_de03dedd0d763a 20,429
+docs/guardrails.md
+  s_d27f8ef4bd0971::t_de03dedd0d763a 21,27,80-90
+backend/infra/adapters/llm/litellm_provider.py
+  s_d27f8ef4bd0971::t_79105550725d5a 342-351
+backend/tests/unit/test_guardrails.py
+  s_d27f8ef4bd0971::t_fb0ce95123bb8a 6,30
+  s_d27f8ef4bd0971::t_5a345bdb5b3a91 91-105
+  s_d27f8ef4bd0971::t_e50c77b2af674d 90
+backend/tests/unit/test_ask_release_readiness.py
+  s_d27f8ef4bd0971::t_adb30d4982808a 401-402
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "01a1d9b0881590ab0b50bcdc5e8a329a99b24135",
+  "prompts": {},
+  "sessions": {
+    "s_d27f8ef4bd0971": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d63d461a-e54f-4a30-80ef-f72358c9241a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
