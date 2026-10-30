@@ -4167,7 +4167,10 @@ export interface components {
       developer_id: string;
       /** Developer Name */
       developer_name?: string | null;
-      /** Chat External Id */
+      /**
+       * Chat External Id
+       * @description Who is DMed: the member's id when left out, else one of their own chat ids.
+       */
       chat_external_id?: string | null;
       /** Checkin Date */
       checkin_date?: string | null;

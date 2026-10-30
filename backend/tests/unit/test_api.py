@@ -1169,6 +1169,65 @@ def test_admin_workflow_dispatch_routes_are_admin_only(settings: Settings) -> No
     assert denied.status_code == 403
 
 
+def test_admin_checkin_dispatch_dms_only_the_members_own_chat_ids(settings: Settings) -> None:
+    """A manual check-in goes to the member's own chat, never to whoever the body names.
+
+    Their own chat ids are their member id, the chat id their identity link
+    holds and the one the chat directory recorded on them.
+    """
+    configured = settings.model_copy(update={"workflow_provider": "fake"})
+    registry = _RecordingWorkflowRegistry(configured)
+    app = create_app(settings=configured, registry=registry)
+    with TestClient(app) as client:
+        created = [
+            client.post("/config/members", json={"id": "dev-1", "name": "Dev One"}),
+            client.post(
+                "/config/members",
+                json={
+                    "id": "dev-2",
+                    "name": "Dev Two",
+                    "metadata": {"chat_external_id": "chat-dir-2"},
+                },
+            ),
+        ]
+        linked = client.put("/config/members/dev-1/identity-link", json={"chat_user_id": "chat-1"})
+        accepted = [
+            client.post(
+                "/admin/workflows/checkin/dispatch",
+                json={"tenant_id": "demo", "developer_id": member_id, "chat_external_id": chat_id},
+            )
+            for member_id, chat_id in (
+                ("dev-1", None),
+                ("dev-1", "dev-1"),
+                ("dev-1", "chat-1"),
+                ("dev-2", "chat-dir-2"),
+            )
+        ]
+        refused = {
+            chat_id: client.post(
+                "/admin/workflows/checkin/dispatch",
+                json={"tenant_id": "demo", "developer_id": "dev-1", "chat_external_id": chat_id},
+            )
+            for chat_id in ("dev-2", "chat-dir-2", "chat-unlinked")
+        }
+
+    assert [response.status_code for response in created] == [201, 201]
+    assert linked.status_code == 200
+    assert [response.status_code for response in accepted] == [200] * 4
+    for chat_id, response in refused.items():
+        assert response.status_code == 400, (chat_id, response.text)
+        assert response.json()["detail"] == f"chat ID {chat_id} is not linked to member dev-1"
+    # The accepted ids reach the workflow unchanged; nothing was sent for the rest.
+    assert [
+        (item.developer_id, item.chat_external_id) for item in registry.scheduler.checkin_inputs
+    ] == [
+        ("dev-1", None),
+        ("dev-1", "dev-1"),
+        ("dev-1", "chat-1"),
+        ("dev-2", "chat-dir-2"),
+    ]
+
+
 def test_admin_checkin_dispatch_rejects_unknown_developer_without_dispatch(
     settings: Settings,
 ) -> None:

@@ -596,6 +596,36 @@ class ConfigService:
         repository = self._identity_link_repository_or_raise()
         return await repository.get_identity_link(tenant_id, member_id)
 
+    async def ensure_member_chat_id(
+        self,
+        tenant_id: str,
+        member_id: str,
+        chat_external_id: str | None,
+    ) -> None:
+        """Refuse a chat id that is not the member's own.
+
+        A check-in is DMed to the chat id it is dispatched with, so any other id
+        would send this member's check-in to someone else. The member's own ids
+        are their node id (where a check-in goes when none is given), the chat
+        id their identity link holds, and the one the chat directory recorded on
+        their node. Raises ``GraphNotFound`` when the member is not configured.
+        """
+        member = await self._ensure_node(tenant_id, member_id, NodeKind.DEVELOPER)
+        if not chat_external_id:
+            return
+        own = {member.id}
+        recorded = _string_metadata(member, "chat_external_id")
+        if recorded is not None:
+            own.add(recorded)
+        if self._identity_link_repository is not None:
+            link = await self._identity_link_repository.get_identity_link(tenant_id, member.id)
+            if link is not None and link.chat_user_id:
+                own.add(link.chat_user_id)
+        if chat_external_id not in own:
+            raise ConfigValidationError(
+                f"chat ID {chat_external_id} is not linked to member {member.id}"
+            )
+
     async def set_identity_link(self, link: IdentityLink) -> IdentityLink:
         await self._ensure_node(link.tenant_id, link.developer_id, NodeKind.DEVELOPER)
         repository = self._identity_link_repository_or_raise()

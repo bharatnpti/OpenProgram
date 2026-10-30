@@ -2844,7 +2844,10 @@ class CheckinDispatchRequest(BaseModel):
     tenant_id: str
     developer_id: str
     developer_name: str | None = None
-    chat_external_id: str | None = None
+    chat_external_id: str | None = Field(
+        default=None,
+        description="Who is DMed: the member's id when left out, else one of their own chat ids.",
+    )
     checkin_date: date | None = None
 
 
