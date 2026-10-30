@@ -34,6 +34,7 @@ from core.domain.connections import (
     normalize_settings,
     rerouted_fields,
 )
+from core.domain.errors import SecretNotFound
 from core.domain.graph import Developer
 from core.domain.integrations import Issue, IssueChange, IssueChangeField, IssueState, SyncCursor
 from core.ports.secrets import SecretRef
@@ -358,7 +359,7 @@ async def test_a_change_forgets_the_last_test_and_a_plain_resave_keeps_it() -> N
         TENANT,
         "jira",
         enabled=True,
-        settings={**JIRA_DC, "base_url": "https://jira2.example.com"},
+        settings={**JIRA_DC, "story_points_field": "customfield_10016"},
         secrets={},
         actor="a",
     )
@@ -446,6 +447,110 @@ async def test_a_draft_is_tested_over_the_stored_values_and_not_recorded() -> No
     }
     stored = await harness.repository.get(TENANT, "jira")
     assert stored is not None and stored.last_test is None
+
+
+async def test_a_draft_at_a_new_address_is_never_sent_the_stored_secret() -> None:
+    harness = _harness()
+    await harness.service.save(
+        TENANT,
+        "jira",
+        enabled=True,
+        settings=JIRA_DC,
+        secrets={"personal_access_token": "p"},
+        actor="a",
+    )
+
+    kept = await harness.service.test(
+        TENANT,
+        "jira",
+        draft=ConnectionDraft(
+            settings={"base_url": "https://elsewhere.example.net"},
+            secrets={"personal_access_token": ""},
+        ),
+    )
+    entered = await harness.service.test(
+        TENANT,
+        "jira",
+        draft=ConnectionDraft(
+            settings={"base_url": "https://elsewhere.example.net"},
+            secrets={"personal_access_token": "typed-again"},
+        ),
+    )
+
+    assert kept.check.ok is False
+    assert harness.tester.calls == [
+        (
+            "jira",
+            {
+                "deployment": "data_center",
+                "base_url": "https://elsewhere.example.net",
+                "auth_method": "personal_access_token",
+                "personal_access_token": "typed-again",
+            },
+        )
+    ]
+    assert entered.check.ok is True
+
+
+async def test_saving_a_new_address_needs_the_secret_entered_again() -> None:
+    harness = _harness()
+    await harness.service.save(
+        TENANT,
+        "jira",
+        enabled=True,
+        settings=JIRA_DC,
+        secrets={"personal_access_token": "p"},
+        actor="a",
+    )
+
+    with pytest.raises(ConnectionValidationError, match="Enter Personal access token again"):
+        await harness.service.save(
+            TENANT,
+            "jira",
+            enabled=True,
+            settings={**JIRA_DC, "base_url": "https://elsewhere.example.net"},
+            secrets={},
+            actor="a",
+        )
+    await harness.service.save(
+        TENANT,
+        "jira",
+        enabled=True,
+        settings={**JIRA_DC, "base_url": "https://elsewhere.example.net"},
+        secrets={"personal_access_token": "typed-again"},
+        actor="a",
+    )
+
+    stored = await harness.service.resolve(TENANT, "jira")
+    assert stored is not None
+    assert stored.get("base_url") == "https://elsewhere.example.net"
+    assert stored.get("personal_access_token") == "typed-again"
+
+
+async def test_a_new_address_drops_secrets_kept_for_another_auth_method() -> None:
+    harness = _harness()
+    await harness.service.save(
+        TENANT,
+        "jira",
+        enabled=False,
+        settings={**JIRA_DC, "auth_method": "basic"},
+        secrets={"password": "old-password"},
+        actor="a",
+    )
+
+    view = await harness.service.save(
+        TENANT,
+        "jira",
+        enabled=False,
+        settings={**JIRA_DC, "base_url": "https://elsewhere.example.net"},
+        secrets={"personal_access_token": "t"},
+        actor="a",
+    )
+
+    assert view.connection is not None
+    assert view.connection.secret_keys == frozenset({"personal_access_token"})
+    with pytest.raises(SecretNotFound):
+        await harness.secrets.get(SecretRef(tenant_id=TENANT, connector="jira", key="password"))
 
 
 async def test_a_test_with_a_required_field_missing_never_reaches_the_system() -> None:

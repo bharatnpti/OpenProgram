@@ -27,8 +27,8 @@ from core.application.ask_investigation import (
 from core.application.ask_service import (
     ASK_SYSTEM_PROMPT,
     OWN_FIELDS_RULE,
+    _instructions,
     _parse_answer,
-    _prompt,
 )
 from core.domain.auth import Principal, Role
 from core.domain.graph import Pod, Task
@@ -175,7 +175,7 @@ def test_the_prompts_name_follow_ups_a_field_of_their_own() -> None:
     assert OWN_FIELDS_RULE in ANSWER_RULES
     assert "Do not restate references inside answer" not in ASK_SYSTEM_PROMPT
     # Said again right before the question, where a rule holds best.
-    assert "follow_ups, never inside answer" in _prompt("Why is CHK-8 early?", date(2026, 10, 11))
+    assert "follow_ups, never inside answer" in _instructions(date(2026, 10, 11))
     assert "follow_ups, never inside answer" in ANSWER_REMINDER
 
 

@@ -12,6 +12,7 @@ from core.domain.errors import ProviderUnavailable
 from core.domain.graph import JsonScalar
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from infra.adapters.chat.rate_limit import RateLimiter
+from infra.adapters.chat.send_cap import DailySendCap, InMemoryDailySendCap
 
 Direction = Literal["bot", "user"]
 
@@ -365,9 +366,12 @@ class MockSlackChatAdapter:
     tenant_id: str
     store: MockSlackStore
     rate_limiter: RateLimiter
+    # Daily DMs per recipient (send_cap.py); the default has no limit.
+    send_cap: DailySendCap = field(default_factory=InMemoryDailySendCap)
 
     async def send_dm(self, user: ChatUserRef, message: OutboundMessage) -> str:
         await self.rate_limiter.acquire(f"chat:{self.tenant_id}:{user.external_id}")
+        await self.send_cap.take(self.tenant_id, user.external_id)
         channel_id = await self.open_thread(user)
         stored = await self.store.record_bot_message(
             tenant_id=self.tenant_id,

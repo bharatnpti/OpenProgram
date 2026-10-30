@@ -7,6 +7,7 @@ import respx
 from cryptography.fernet import Fernet
 
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
+from core.domain.prompt_safety import MODEL_RULES, fenced
 from core.ports.secrets import SecretRef
 from infra.adapters.llm.litellm_provider import LangfuseTraceSink
 from infra.adapters.secrets.encrypted import FernetSecretStore, InMemoryEncryptedSecretRecordStore
@@ -93,8 +94,10 @@ async def test_langfuse_trace_sink_records_llm_payloads() -> None:
     serialized = json.dumps(payload)
     assert "raw private reply about blockers" in serialized
     generation = payload["batch"][1]["body"]
+    # The trace shows the call as sent: the rules, then the fenced input.
     assert generation["input"] == [
-        {"role": "user", "content": "Reply:\nraw private reply about blockers"}
+        {"role": "system", "content": MODEL_RULES},
+        {"role": "user", "content": fenced("Reply:\nraw private reply about blockers", "input")},
     ]
     assert generation["output"] == '{"progress_note":"raw private reply about blockers"}'
     assert generation["metadata"]["prompt_sha256"]

@@ -10,4 +10,6 @@ Before modifying files or creating commits, use the repo-local `$lore-protocol` 
   every member again (a new round on the same date) and resets their status to
   "Awaiting this round's reply." Used for live demos where a day's check-in has
   to run several times. Never merge it into `main`; rebase it onto `main` when
-  a demo needs it again, and run with `DEMO_CHECKIN_ROUNDS=true`.
+  a demo needs it again, and run with `DEMO_CHECKIN_ROUNDS=true`. A demo with
+  many rounds a day may also need `OPENPROGRAM_CHAT_DAILY_DM_LIMIT=0`, since
+  each person gets at most 100 DMs a day by default.

@@ -19,6 +19,7 @@ from core.application.merge_request_links import (
     MergeRequestIndex,
     merge_request_label,
 )
+from core.application.outbound_text import reveals_internals, scrubbed
 from core.application.person_names import PersonNames, person_name
 from core.application.status_collector import OUTBOUND_DM_MAX_CHARS
 from core.domain.cross_person import (
@@ -824,18 +825,17 @@ class CrossPersonRequestService:
         eta = eta_phrase(message.text)
         if self.llm_provider is None:
             return CounterpartReplyReading(status=CrossPersonRequestStatus.ACKNOWLEDGED, eta=eta)
+        # Instructions in the system message; the request and reply are input only.
         prompt = (
-            "Classify this reply to a cross-person work request as JSON with one key, status. "
-            "Use resolved only when the reply says the requested review/input/dependency is done. "
-            "Use acknowledged when the reply only confirms ownership or gives a non-final update. "
-            "Answer with the JSON object only. "
-            f"Request kind: {request.kind.value}. "
-            f"Request note: {request.note}. Reply: {message.text}"
+            f"Request kind: {request.kind.value}\n"
+            f"Request note: {request.note}\n"
+            f"Reply: {message.text}"
         )
         response = await self.llm_provider.complete(
             LlmRequest(
                 tenant_id=message.tenant_id,
                 prompt=prompt,
+                system=_COUNTERPART_REPLY_SYSTEM_PROMPT,
                 model=self.model,
                 correlation_id=message.correlation_id,
                 metadata={
@@ -1065,12 +1065,20 @@ _SUPERSEDED = "superseded"
 # cover every recent merge request of a tenant.
 _MERGE_REQUEST_FACT_SCAN_LIMIT = 5000
 _RESOLVED_NOTE_CHARS = 200
+# Sent in place of a note that talked about OpenProgram's insides.
+_NOTE_WITHHELD = "no details given"
 _MIN_NOTE_CHARS = 40
 _ASK_LEAD = {
     "review": "asked for your review",
     "input": "asked for your input",
 }
 _REPLY_HINT = "\nReply in this thread to acknowledge, or say when it is done."
+_COUNTERPART_REPLY_SYSTEM_PROMPT = (
+    "Classify the reply in the input to a cross-person work request as JSON with one key, "
+    "status. Use resolved only when the reply says the requested review/input/dependency is "
+    "done. Use acknowledged when the reply only confirms ownership or gives a non-final "
+    "update. Answer with the JSON object only."
+)
 
 
 def _counterpart_message(request: CrossPersonRequest, requester_name: str | None) -> str:
@@ -1094,10 +1102,11 @@ def _join_labels(labels: tuple[str, ...]) -> str:
 
 
 def _fit_note(note: str, limit: int) -> str:
-    flat = " ".join(note.split())
-    if len(flat) <= limit:
-        return flat
-    return f"{flat[: limit - 1].rstrip()}…"
+    # The note is model-drafted and goes to another person: no links or markup,
+    # and never a word about OpenProgram's own tools or instructions.
+    if reveals_internals(note):
+        note = _NOTE_WITHHELD
+    return scrubbed(note, max_chars=limit)
 
 
 def _fact_kind(request: CrossPersonRequest) -> str:

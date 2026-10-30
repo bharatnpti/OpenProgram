@@ -17,6 +17,7 @@ from core.application.brief_facts import (
     project_status,
 )
 from core.application.brief_grounding import compose_brief, fallback_brief
+from core.application.outbound_text import reveals_internals
 from core.application.people_words import PeopleWords, is_small, people_words
 from core.application.persona_views import NO_POD_ROW, PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
@@ -241,6 +242,10 @@ class NarrativeBriefService:
         except Exception:
             return fallback_brief(facts).body
         if not response.text.strip():
+            return fallback_brief(facts).body
+        # A brief that talks about OpenProgram's own tools or instructions (an
+        # issue title can ask for that) is replaced by the one built from facts.
+        if reveals_internals(response.text, prompts=(BRIEF_SYSTEM_PROMPT,)):
             return fallback_brief(facts).body
         # A verdict and 3-5 bullets, each checked against the facts: what no
         # fact supports is corrected or dropped, never trusted to the prompt.

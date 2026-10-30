@@ -15010,13 +15010,6 @@
             "type": "array",
             "title": "References"
           },
-          "tools_used": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Tools Used"
-          },
           "trace_id": {
             "type": "string",
             "title": "Trace Id"
@@ -15055,7 +15048,7 @@
           }
         },
         "type": "object",
-        "required": ["answer", "references", "tools_used", "trace_id"],
+        "required": ["answer", "references", "trace_id"],
         "title": "AskResponse"
       },
       "AskSourceResponse": {

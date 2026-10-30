@@ -182,6 +182,8 @@ class ConnectionService:
         existing = await self._repository.get(tenant_id, connector)
         normalized = normalize_settings(spec, settings)
         to_store, to_clear = _secret_changes(spec, secrets)
+        if existing is not None and rerouted_fields(spec, existing.settings, normalized):
+            to_clear |= _secrets_left_behind(spec, existing, normalized, to_store, to_clear)
         secret_keys = (
             (existing.secret_keys if existing is not None else frozenset()) - to_clear
         ) | frozenset(to_store)
@@ -355,6 +357,32 @@ def _reuse_refusal(moved: Sequence[ConnectorField], reused: Sequence[ConnectorFi
 def _labels(fields: Sequence[ConnectorField]) -> str:
     labels = [item.label for item in fields]
     return labels[0] if len(labels) == 1 else f"{', '.join(labels[:-1])} and {labels[-1]}"
+
+
+def _secrets_left_behind(
+    spec: ConnectorSpec,
+    existing: Connection,
+    settings: Mapping[str, str],
+    to_store: Mapping[str, str],
+    to_clear: frozenset[str],
+) -> frozenset[str]:
+    """The kept secrets to drop when a save points the connection somewhere new.
+
+    A secret saved for one server is never sent to another (guardrails.md): a
+    kept secret that applies has to be entered again, and one that does not
+    apply (an auth method switched away from) is dropped rather than carried
+    over to the new address.
+    """
+    kept = existing.secret_keys - to_clear - frozenset(to_store)
+    applicable = {item.key for item in applicable_fields(spec, settings)}
+    reenter = [spec.field(key) for key in sorted(kept & applicable)]
+    labels = [item.label for item in reenter if item is not None]
+    if labels:
+        raise ConnectionValidationError(
+            f"Enter {', '.join(labels)} again: a saved secret is only sent to the "
+            "address it was saved with."
+        )
+    return kept
 
 
 def _secret_changes(

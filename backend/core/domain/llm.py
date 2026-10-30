@@ -6,7 +6,10 @@ from typing import Literal
 
 from core.domain.graph import JsonScalar
 
-type LlmMessageRole = Literal["system", "user", "assistant"]
+# No message is ever a system message: the only instructions a model gets are
+# LlmRequest.system, written by OpenProgram's code. Everything else is input
+# (docs/guardrails.md, prompt injection).
+type LlmMessageRole = Literal["user", "assistant"]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -61,7 +64,14 @@ class LlmRequest:
     prompt: str
     model: str
     correlation_id: str
+    # What the call is for. Sent first, as the system message, with the rules
+    # every call carries (core/domain/prompt_safety.py).
     system: str | None = None
+    # The call's detailed instructions, written by OpenProgram's code. Sent as a
+    # second system message right before the input: a model follows rules it
+    # reads next to the reply far better than rules at the top of a long
+    # conversation (QA replay, docs/guardrails.md D8).
+    instructions: str | None = None
     messages: tuple[LlmMessage, ...] = ()
     tools: tuple[LlmTool, ...] = ()
     # Prior assistant tool-call turns carried through multi-turn tool loops.

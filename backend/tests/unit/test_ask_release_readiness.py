@@ -398,7 +398,8 @@ def test_the_ask_route_offers_and_runs_it(
     )
 
     assert response.status_code == 200, response.text
-    assert response.json()["tools_used"] == ["release_readiness"]
+    # Which tools ran is logged, never returned (docs/guardrails.md).
+    assert "tools_used" not in response.json()
     assert "release_readiness" in {tool.name for tool in llm.requests[0].tools}
     result = json.loads(llm.requests[1].tool_results[0].content)
     assert _by_name(result)["Security review"]["state"] == "Missing"

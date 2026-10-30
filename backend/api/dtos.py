@@ -2483,7 +2483,7 @@ class AskResponse(BaseModel):
 
     answer: str
     references: list[str]
-    tools_used: list[str]
+    # Which tools ran is internal (docs/guardrails.md): logged, never returned.
     trace_id: str
     # The references again, in order, each labelled for a reader.
     sources: list[AskSourceResponse] = []
@@ -2499,7 +2499,6 @@ class AskResponse(BaseModel):
         return cls(
             answer=view.answer,
             references=list(view.references),
-            tools_used=list(view.tools_used),
             trace_id=view.trace_id,
             sources=[
                 AskSourceResponse(id=source.id, kind=source.kind, label=source.label)

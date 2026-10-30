@@ -23,6 +23,8 @@ from core.domain.llm import (
     LlmTurn,
     TokenUsage,
 )
+from core.domain.prompt_safety import fenced, system_message
+from infra.adapters.llm.guard import LlmCallGuard
 
 _logger = structlog.get_logger(__name__)
 _tracer = trace.get_tracer("openprogram.adapters.llm.litellm")
@@ -168,11 +170,15 @@ class LiteLlmProvider:
     base_url: str
     trace_sink: LlmTraceSink
     api_key: str | None = None
+    # Budget and size guardrails, checked before anything is sent (guard.py).
+    guard: LlmCallGuard | None = None
 
     async def complete(self, request: LlmRequest) -> LlmResponse:
         with _tracer.start_as_current_span("litellm.complete") as span:
             span.set_attribute("llm.model", request.model)
             span.set_attribute("openprogram.tenant_id", request.tenant_id)
+            if self.guard is not None:
+                await self.guard.admit(request)
             started = perf_counter()
             headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
             # Tenant and correlation travel on the OTel span and the
@@ -198,6 +204,8 @@ class LiteLlmProvider:
             cost_usd = _response_cost(http_response.headers, payload)
             response = _response_from_payload(request, payload, latency_ms, cost_usd)
             trace_id = await self.trace_sink.record(request, response)
+            if self.guard is not None:
+                await self.guard.record(request, response)
             return LlmResponse(
                 tenant_id=response.tenant_id,
                 text=response.text,
@@ -331,17 +339,36 @@ def _parse_float(value: object) -> float | None:
 
 
 def _chat_messages(request: LlmRequest) -> list[dict[str, object]]:
-    messages: list[dict[str, object]] = []
-    if request.system is not None:
-        messages.append({"role": "system", "content": request.system})
     if request.turns:
-        messages.extend(_turn_payload(turn) for turn in request.turns)
-        return messages
+        # An agent harness's conversation (Investigate) goes as it was kept, with
+        # its own system text and no fence: its middleware says rules in user
+        # turns, which MODEL_RULES would have the model ignore (docs/guardrails.md,
+        # open risks).
+        kept: list[dict[str, object]] = []
+        if request.system is not None:
+            kept.append({"role": "system", "content": request.system})
+        kept.extend(_turn_payload(turn) for turn in request.turns)
+        return kept
+    # The system message is the only instruction a call carries; everything
+    # else is input, fenced so it is read as data (core/domain/prompt_safety.py).
+    messages: list[dict[str, object]] = [
+        {"role": "system", "content": system_message(request.system)}
+    ]
     messages.extend(
-        {"role": message.role, "content": message.content} for message in request.messages
+        {
+            "role": message.role,
+            "content": (
+                fenced(message.content, "conversation")
+                if message.role == "user"
+                else message.content
+            ),
+        }
+        for message in request.messages
     )
+    if request.instructions:
+        messages.append({"role": "system", "content": request.instructions})
     if request.prompt:
-        messages.append({"role": "user", "content": request.prompt})
+        messages.append({"role": "user", "content": fenced(request.prompt, "input")})
     if request.tool_calls:
         messages.append(
             {
@@ -354,7 +381,7 @@ def _chat_messages(request: LlmRequest) -> list[dict[str, object]]:
         {
             "role": "tool",
             "tool_call_id": result.tool_call_id,
-            "content": result.content,
+            "content": fenced(result.content, "tool_result"),
         }
         for result in request.tool_results
     )

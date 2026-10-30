@@ -162,7 +162,6 @@ export interface AskSourceResponse {
 export interface AskResponse {
   answer: string;
   references: string[];
-  tools_used: string[];
   trace_id: string;
   /** The references again, in order, each labelled. Absent from older servers. */
   sources?: AskSourceResponse[];

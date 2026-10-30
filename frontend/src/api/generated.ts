@@ -3667,8 +3667,6 @@ export interface components {
       answer: string;
       /** References */
       references: string[];
-      /** Tools Used */
-      tools_used: string[];
       /** Trace Id */
       trace_id: string;
       /**

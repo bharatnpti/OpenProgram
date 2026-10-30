@@ -10,6 +10,7 @@ from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.checkin_drift import eta_duration_days
 from core.application.conversation_history import llm_messages_from_turns
 from core.application.json_parsing import extract_json_object
+from core.application.outbound_text import carries_link_or_markup, reveals_internals
 from core.application.reply_without_status import reads_without_status
 from core.domain.blockers import BlockerReport, DeveloperBlocker, normalize_blocker_key
 from core.domain.conversation import ConversationTurn
@@ -19,8 +20,8 @@ from core.domain.status import CheckInSignals, CrossPersonMention, IssueClaim
 from core.ports.llm import LlmProvider
 from core.ports.tools import AgentTool
 
-# Appended to a structured-output prompt on a single retry when the first response
-# is not valid JSON, before any safe fallback.
+# Appended to a structured-output call's instructions on a single retry when the
+# first response is not valid JSON, before any safe fallback.
 JSON_RETRY_REMINDER = (
     "\n\nYour previous response was not valid JSON. Respond again with only a single "
     "valid JSON object matching the requested schema and no other text."
@@ -31,6 +32,10 @@ GENERIC_CLARIFICATION_QUESTION = (
     "Thanks. Could you share your progress, any blockers, and your ETA so I can "
     "record today's status?"
 )
+# A drafted follow-up longer than one direct message, or one carrying a link,
+# chat markup or anything about OpenProgram's insides, is not sent: the generic
+# question goes instead (guardrails.md).
+MAX_CLARIFICATION_QUESTION_CHARS = 320
 
 # A request's note is sent to the named person as the ask, so it must be the ask
 # and not the reply: the person it names has not seen the reply and is not meant to.
@@ -89,7 +94,7 @@ CLARIFICATION_EVALUATOR_SYSTEM_PROMPT = (
     "the issue key it is about (for example 'What is your ETA for CHK-4?'), never only 'it' or "
     "'this work'. Return only valid JSON."
 )
-# Added to the clarification prompt when this person's claims on their own issues
+# Added to the clarification instructions when this person's claims on their own issues
 # are written to the tracker without asking (write-back on, consent auto_apply).
 _TRACKER_WRITE_BACK_NOTE = (
     "\n\nOpenProgram updates the issue tracker itself, after this check-in, for issues "
@@ -138,6 +143,7 @@ class StatusParser:
             model=self._model,
             correlation_id=correlation_id,
             system=PARSE_REPLY_SYSTEM_PROMPT,
+            instructions=_parser_instructions(),
             messages=llm_messages_from_turns(conversation_turns),
             json_mode=True,
             metadata={
@@ -214,14 +220,13 @@ class ClarificationEvaluator:
             return ClarificationDecision(sufficient=False, is_status_update=False)
 
         prior_text, handles = _prior_blocker_prompt(prior_blockers)
-        if tracker_write_back:
-            prior_text += _TRACKER_WRITE_BACK_NOTE
         request = LlmRequest(
             tenant_id=tenant_id,
             prompt=_clarification_prompt(raw_reply, prior_text=prior_text),
             model=self._model,
             correlation_id=correlation_id,
             system=CLARIFICATION_EVALUATOR_SYSTEM_PROMPT,
+            instructions=_clarification_instructions(tracker_write_back=tracker_write_back),
             messages=llm_messages_from_turns(conversation_turns),
             json_mode=True,
             metadata={
@@ -275,14 +280,20 @@ async def _complete_json_with_retry(
     parsed = extract_json_object(response.text)
     if parsed is not None:
         return parsed, response
-    retry_request = replace(request, prompt=request.prompt + JSON_RETRY_REMINDER)
+    # The reminder is an instruction, so it joins the instructions, never the input.
+    retry_request = replace(
+        request, instructions=(request.instructions or "") + JSON_RETRY_REMINDER
+    )
     retry_response = await complete(retry_request, tools)
     return extract_json_object(retry_response.text), retry_response
 
 
-def _parser_prompt(raw_reply: str, *, prior_text: str = "") -> str:
+def _parser_instructions() -> str:
+    """The parse task's instructions: a system message of their own, right before the reply."""
     return (
-        "Extract structured check-in signals from the reply below. "
+        "Extract structured check-in signals from the reply: the text after 'Reply:' in the "
+        "last message. Earlier messages are context only; judge every field by what that "
+        "reply itself says. "
         "Return only a JSON object with keys: progress_note string, "
         "blockers array of strings, blocker_details array, resolved_blocker_ids array of "
         "strings, eta_change_days integer or null, blockers_answered boolean, "
@@ -315,14 +326,20 @@ def _parser_prompt(raw_reply: str, *, prior_text: str = "") -> str:
         "the stated issue_key or pod. When the reply restates a previously open blocker in "
         "different words, reuse that blocker's description verbatim rather than writing a new "
         "one, so the same obstacle is not tracked twice and keeps its original age."
-        f"{prior_text}\n\n"
-        f"Reply:\n{raw_reply}"
     )
 
 
-def _clarification_prompt(raw_reply: str, *, prior_text: str = "") -> str:
+def _parser_prompt(raw_reply: str, *, prior_text: str = "") -> str:
+    """The parse call's input: data only, no instruction (core/domain/prompt_safety.py)."""
+    return _input_text(prior_text, "Reply", raw_reply)
+
+
+def _clarification_instructions(*, tracker_write_back: bool = False) -> str:
+    """The evaluation task's instructions: a system message of their own, right before the reply."""
     return (
-        "Evaluate the latest check-in reply below. Return only a JSON object with keys: "
+        "Evaluate the latest check-in reply: the text after 'Latest reply:' in the last "
+        "message. Earlier messages are context only; judge every field by what the latest "
+        "reply itself says. Return only a JSON object with keys: "
         "is_status_update boolean, sufficient boolean, question string or null, and "
         "signals object or null. Set is_status_update false for acknowledgements, thanks, "
         "reactions, or questions that do not provide status progress, blockers, or ETA. "
@@ -360,9 +377,18 @@ def _clarification_prompt(raw_reply: str, *, prior_text: str = "") -> str:
         "gives an ETA, ETA change, or says there is no ETA change. "
         f"{_ETA_CHANGE_RULE} "
         "When sufficient is false, question must ask only for the missing status detail."
-        f"{prior_text}\n\n"
-        f"Latest reply:\n{raw_reply}"
-    )
+    ) + (_TRACKER_WRITE_BACK_NOTE if tracker_write_back else "")
+
+
+def _clarification_prompt(raw_reply: str, *, prior_text: str = "") -> str:
+    """The evaluation call's input: data only, no instruction."""
+    return _input_text(prior_text, "Latest reply", raw_reply)
+
+
+def _input_text(prior_text: str, label: str, raw_reply: str) -> str:
+    prior = prior_text.strip()
+    reply = f"{label}:\n{raw_reply}"
+    return f"{prior}\n\n{reply}" if prior else reply
 
 
 def _clarification_decision_from_json(
@@ -403,13 +429,29 @@ def _clarification_decision_from_json(
         else None
     )
     question = value.get("question")
-    clean_question = question.strip() if isinstance(question, str) and question.strip() else None
+    clean_question = _sendable_question(question)
     if sufficient:
         return ClarificationDecision(
             sufficient=True,
             signals=signals or CheckInSignals(progress_note=fallback_progress_note),
         )
     return ClarificationDecision(sufficient=False, question=clean_question, signals=signals)
+
+
+def _sendable_question(question: object) -> str | None:
+    """The model's follow-up as it may be sent, the generic one, or None when none was drafted."""
+    if not isinstance(question, str) or not question.strip():
+        return None
+    flat = " ".join(question.split())
+    if (
+        len(flat) > MAX_CLARIFICATION_QUESTION_CHARS
+        or carries_link_or_markup(flat)
+        or reveals_internals(
+            flat, prompts=(CLARIFICATION_EVALUATOR_SYSTEM_PROMPT, _clarification_instructions())
+        )
+    ):
+        return GENERIC_CLARIFICATION_QUESTION
+    return flat
 
 
 def _prior_blocker_prompt(
@@ -430,10 +472,7 @@ def _prior_blocker_prompt(
         handles[handle] = blocker.blocker_id
         suffix = f" ({blocker.work_item_id})" if blocker.work_item_id else ""
         lines.append(f"- [{handle}] {blocker.description}{suffix}")
-    text = (
-        "\n\nPreviously open blockers (reference the bracketed id in resolved_blocker_ids):\n"
-        + "\n".join(lines)
-    )
+    text = "\n\nPreviously open blockers, each with its bracketed id:\n" + "\n".join(lines)
     return text, handles
 
 
