@@ -219,7 +219,8 @@ async def test_a_researcher_is_held_to_its_model_call_budget_and_its_step_fails(
 
     # The budget is the rounds plus room for the notes: past it the step ends.
     assert len(llm.of("investigation_step")) == 3 + 2
-    assert EngineStepFailed(index=0, tools_used=("open_risks",)) in events
+    # It stopped at its budget, so it ran out of steps rather than failing.
+    assert EngineStepFailed(index=0, tools_used=("open_risks",), out_of_steps=True) in events
     assert isinstance(events[-1], EngineAnswer)
 
 

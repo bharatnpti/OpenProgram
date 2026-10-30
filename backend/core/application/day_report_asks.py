@@ -18,15 +18,19 @@ decision, answer, review). Its owner is the person who can do it:
   (:func:`readiness_decider`), the project's recorded owner, else a product
   owner, else for a pod a scrum master, else a manager.
 
-How long an ask has waited takes it up the project's escalation matrix; the
-highest level it reached whose contact is someone other than its owner is the
-one named. Asks describe work; nothing here ranks or scores anyone.
+How long an ask has waited takes it up the project's escalation matrix, from
+the level its owner stands at, or its asker when that is higher: the highest
+level above that it reached, whose contact is someone else, is the one named
+(:func:`escalated`). An ask never goes down or sideways: a manager's ask is
+never sent to a scrum master. When it is due but nobody stands above, the
+report says so ("Nobody above Asha Rao is told"). Asks describe work; nothing
+here ranks or scores anyone.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 
 from core.application.blocker_resolution import ResolvedBlocker
@@ -46,7 +50,7 @@ from core.domain.escalation_matrix import (
 )
 from core.domain.gates import GateItem, GateTemplate, ItemKind, ItemStatus, QuestionStatus
 from core.domain.graph import GraphNode
-from core.domain.risk import DriftFinding, RiskFinding
+from core.domain.risk import DriftFinding, RiskFinding, RiskRuleId
 
 MAX_TEXT = 160
 #: Roles whose sign-off is a decision, not a review.
@@ -74,6 +78,8 @@ class Team:
     product_owners: tuple[str, ...] = ()
     #: The members holding the scrum master's role whose part has it, by name.
     scrum_masters: tuple[str, ...] = ()
+    #: The members holding the manager's role whose part has it, by name.
+    managers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -102,6 +108,8 @@ class AskScope:
     #: The owner recorded on the project (its ``owner_id``), by name; None when
     #: it names nobody OpenProgram knows.
     owner: str | None = None
+    #: Every team each member is on, by member id, by name.
+    member_team_ids: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
     def task_by_key(self, key: str) -> str | None:
         return next(
@@ -115,6 +123,38 @@ class AskScope:
     def team_of_member(self, member_id: str | None) -> Team | None:
         team_id = self.member_teams.get(member_id or "")
         return self.all_teams.get(team_id or "")
+
+    def team_of_person(
+        self, member_id: str | None, *, task_id: str | None = None, repo: str | None = None
+    ) -> Team | None:
+        """The team an ask on this person climbs from: one of their own.
+
+        A person on several teams climbed from whichever one the graph listed
+        first, so a Storefront merge request of someone also on Payments went
+        to the Payments scrum master (B-V1-1). Of their teams, the first of:
+        the one holding the task, one whose repositories hold the merge
+        request (``repo``), one on this project; by name among equals. None
+        for a person on no team.
+        """
+        teams = [
+            self.all_teams[team_id]
+            for team_id in self.member_team_ids.get(member_id or "", ())
+            if team_id in self.all_teams
+        ]
+        if not teams:
+            return self.team_of_member(member_id)
+        holder = self.task_teams.get(task_id or "")
+        short = _repo_name(repo) if repo else None
+        return min(
+            teams,
+            key=lambda team: (
+                team.node.id != holder,
+                short is None or short not in _team_repos(team),
+                team.node.id not in self.teams,
+                team.node.name.casefold(),
+                team.node.id,
+            ),
+        )
 
     def assignee_name(self, task_id: str | None) -> str | None:
         return self.names.get(self.assignees.get(task_id or "", ""))
@@ -138,6 +178,12 @@ class Ask:
     escalation_label: str | None = None
     #: A question asked on an issue, which the report also lists under Open questions.
     open_question: bool = False
+    #: Who asked for it, by name, for a request or a question: it never goes
+    #: back to them, nor below or beside them.
+    asked_by: str | None = None
+    #: It waited long enough to go up, but nobody stands above this person
+    #: (its owner, or its asker when that is higher).
+    nobody_above: str | None = None
 
     def line(self) -> str:
         """'Fix: CHK-3: Test environment is down (waiting 1 day; reported by Asha).'
@@ -158,6 +204,8 @@ class Ask:
         line = f"{NEED_LABELS[self.need]}: {self.text}{aside}."
         if self.escalated_to:
             line += f" Escalated to {self.escalated_to} ({self.escalation_label})."
+        elif self.nobody_above:
+            line += f" Nobody above {self.nobody_above} is told."
         return line
 
     def brief(self) -> str:
@@ -175,8 +223,9 @@ def team_from(
     *,
     product_owners: Iterable[str] = (),
     scrum_masters: Iterable[str] = (),
+    managers: Iterable[str] = (),
 ) -> Team:
-    """A pod as the asks need it; ``product_owners`` and ``scrum_masters`` are member ids."""
+    """A pod as the asks need it; the role holders are member ids."""
     contacts = escalation_contacts_from_metadata(node.metadata)
     return Team(
         node=node,
@@ -184,6 +233,7 @@ def team_from(
         manager=_contact_name(contacts.manager, names),
         product_owners=_by_name(product_owners, names),
         scrum_masters=_by_name(scrum_masters, names),
+        managers=_by_name(managers, names),
     )
 
 
@@ -252,20 +302,74 @@ def readiness_decider(
 # ---- Escalation ------------------------------------------------------------------------
 
 
-def escalated(ask: Ask, matrix: EscalationMatrix, names: Mapping[str, str]) -> Ask:
-    """The ask with the highest level it reached whose contact is not its owner."""
+def escalated(ask: Ask, matrix: EscalationMatrix, scope: AskScope) -> Ask:
+    """The ask gone up the matrix from where its people stand, as far as its wait took it.
+
+    Its floor is the highest level its owner stands at, or its asker when
+    that is higher (:func:`standing`): 1 for someone on no rung. It goes only
+    above the floor, to the highest level it reached whose contact is named
+    and is neither of them. Taking the highest reached level whose contact
+    was not the owner sent a manager's ask down: Mina's review waiting on
+    Asha, the manager, reached the manager level (Asha herself) and the
+    scrum master level, so it went to Ira (BE-5).
+
+    An ask that reached a level, with nobody named on any level above its
+    floor that it could ever reach, says so instead: "Nobody above Asha Rao
+    is told." One with someone above whom it has not reached yet says nothing.
+    """
     if ask.waited_days is None:
         return ask
-    for reached in reversed(reached_levels(matrix, ask.need, ask.waited_days)):
-        contact = _level_contact(reached.level, ask.team, names)
-        if contact and contact != ask.owner:
+    reached = reached_levels(matrix, ask.need, ask.waited_days)
+    if not reached:
+        return ask
+    people = {person for person in (ask.owner, ask.asked_by) if person}
+    floor, top = 1, ask.owner
+    for person in (ask.owner, ask.asked_by):
+        if person and (stands := standing(person, matrix, scope)) > floor:
+            floor, top = stands, person
+    for level in reversed(reached):
+        if level.number <= floor:
+            break
+        contact = _level_contact(level.level, ask.team, scope.names)
+        if contact and contact not in people:
             return replace(
                 ask,
-                level=reached.number,
+                level=level.number,
                 escalated_to=contact,
-                escalation_label=reached.level.label,
+                escalation_label=level.level.label,
             )
-    return ask
+    someone_above = any(
+        bool(contact) and contact not in people
+        for number, level in enumerate(matrix.levels, start=2)
+        if number > floor and ask.need in level.after_days
+        for contact in (_level_contact(level, ask.team, scope.names),)
+    )
+    return replace(ask, nobody_above=top) if top and not someone_above else ask
+
+
+def standing(person: str, matrix: EscalationMatrix, scope: AskScope) -> int:
+    """The highest level of the matrix a person stands at, by name; 1 when at none.
+
+    A member level is its member. A scrum master level is anyone who is a
+    team's scrum master, by its escalation contact or the role; a manager
+    level, a team's manager the same way. Any team counts, not only the
+    ask's: a scrum master of another team is beside the ask's scrum master,
+    never below.
+    """
+    teams = list(scope.all_teams.values())
+    found = 1
+    for number, level in enumerate(matrix.levels, start=2):
+        if level.source is ContactSource.MEMBER:
+            stands = scope.names.get(level.member_id or "") == person
+        elif level.source is ContactSource.TEAM_SCRUM_MASTER:
+            stands = any(
+                person == team.scrum_master or person in team.scrum_masters for team in teams
+            )
+        else:
+            stands = any(person == team.manager or person in team.managers for team in teams)
+        if stands:
+            found = number
+    return found
 
 
 def _level_contact(
@@ -389,19 +493,28 @@ def request_ask(request: CrossPersonRequest, scope: AskScope, day: date) -> Ask 
         owner=counterpart,
         text=f"{on}{requester} asked for {_REQUEST_WORDS.get(request.kind, 'an answer')}",
         waited_days=max(0, (day - request.created_at.date()).days),
-        team=scope.team_of_member(request.counterpart_id) or scope.team_of_task(issue),
+        team=scope.team_of_person(request.counterpart_id, task_id=issue)
+        or scope.team_of_task(issue),
         issue_key=issue_label(issue, scope) if issue else None,
+        asked_by=scope.names.get(request.requester_id),
     )
 
 
 def signal_ask(finding: RiskFinding | DriftFinding, scope: AskScope, day: date) -> Ask:
     task_id = finding.entity_ref.id if finding.entity_ref.id in scope.tasks else None
+    # A merge request's risk names its repository: "repo#id".
+    repo = (
+        finding.evidence.identifier.rpartition("#")[0]
+        if isinstance(finding, RiskFinding) and finding.rule_id is RiskRuleId.PR_AGE
+        else None
+    )
     return Ask(
         need=NeedType.FIX,
         owner=scope.names.get(finding.owner_id or ""),
         text=trimmed(finding.reason).rstrip("."),
         waited_days=max(0, (day - finding.detected_at.date()).days),
-        team=scope.team_of_task(task_id) or scope.team_of_member(finding.owner_id),
+        team=scope.team_of_task(task_id)
+        or scope.team_of_person(finding.owner_id, repo=repo or None),
         issue_key=issue_label(task_id, scope) if task_id else None,
     )
 
@@ -549,18 +662,20 @@ def open_question_asks(board: GateBoardView, scope: AskScope, day: date) -> list
         }:
             continue
         task_id = scope.task_by_key(question.issue_key)
-        asked_by = question.asked_by_name or scope.names.get(question.asked_by, "someone")
+        asker = question.asked_by_name or scope.names.get(question.asked_by)
         partly = " (partly answered)" if question.status is QuestionStatus.PARTLY else ""
         asks.append(
             Ask(
                 need=NeedType.ANSWER,
                 owner=question.asked_to_name or scope.names.get(question.asked_to) or None,
                 text=f'{question.issue_key}: "{trimmed(question.summary, 120)}"',
-                detail=f"asked by {asked_by}{partly}",
+                detail=f"asked by {asker or 'someone'}{partly}",
                 waited_days=max(0, (day - question.asked_at.date()).days),
-                team=scope.team_of_member(question.asked_to) or scope.team_of_task(task_id),
+                team=scope.team_of_person(question.asked_to, task_id=task_id)
+                or scope.team_of_task(task_id),
                 issue_key=question.issue_key,
                 open_question=True,
+                asked_by=asker,
             )
         )
     return asks
@@ -584,6 +699,19 @@ def _contact_name(contact: EscalationContact | None, names: Mapping[str, str]) -
 
 def first_team(ids: Iterable[str], teams: Mapping[str, Team]) -> Team | None:
     return next((teams[team_id] for team_id in ids if team_id in teams), None)
+
+
+def _repo_name(repo: str) -> str:
+    """A repository by its last path part, ``acme/storefront-web`` as ``storefront-web``."""
+    return repo.strip().rstrip("/").rsplit("/", 1)[-1].casefold()
+
+
+def _team_repos(team: Team) -> set[str]:
+    """The repositories a pod holds (``github_repos``: comma or line separated)."""
+    value = team.node.metadata.get("github_repos")
+    if not isinstance(value, str):
+        return set()
+    return {_repo_name(item) for item in value.replace("\n", ",").split(",") if item.strip()}
 
 
 def issue_label(task_id: str | None, scope: AskScope) -> str | None:

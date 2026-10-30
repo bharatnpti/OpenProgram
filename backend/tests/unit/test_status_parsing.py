@@ -599,7 +599,8 @@ async def test_clarification_evaluator_parses_non_status_intent() -> None:
     decision = await evaluator.evaluate(
         tenant_id="demo",
         developer_id="dev-1",
-        raw_reply="Thanks!",
+        # Not one the rules can tell ("Thanks!" no longer reaches the model).
+        raw_reply="Can you send me the sprint board link again?",
         correlation_id="corr-1",
     )
 

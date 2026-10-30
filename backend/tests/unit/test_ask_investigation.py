@@ -122,6 +122,9 @@ async def _ask_service() -> AskService:
         Task(tenant_id="demo", id="CHK-103", name="3-D Secure", metadata={"key": "CHK-103"}),
     ):
         await store.upsert_node(node)
+    registry = ServiceRegistry(
+        Settings(_env_file=None, secret_key=SECRET_KEY, runtime_mode="memory"), graph_store=store
+    )
     return AskService(
         llm_provider=_Llm(),
         graph_repository=store,
@@ -143,11 +146,9 @@ async def _ask_service() -> AskService:
             rollup_repository=store,
             provider_config=RiskProviderConfig(default_no_pr_days=3, default_stale_days=30),
         ),
-        forecast_service=ServiceRegistry(
-            Settings(_env_file=None, secret_key=SECRET_KEY, runtime_mode="memory"),
-            graph_store=store,
-        ).forecast_service(),
+        forecast_service=registry.forecast_service(),
         delivery_scope_service=DeliveryScopeService(store, store),
+        release_readiness_service=registry.release_readiness_service(),
         model="test-model",
     )
 
@@ -359,10 +360,11 @@ def test_step_notes_read_the_object_wherever_it_is_and_lines_when_there_is_none(
 
 
 def test_the_answer_rules_keep_every_quick_rule_but_the_shape() -> None:
-    shape, no_forecast, *quick = INVESTIGATE_FORMAT_RULES
+    shape, no_forecast, first_action, *quick = INVESTIGATE_FORMAT_RULES
     assert tuple(quick) == ANSWER_FORMAT_RULES[1:]
     assert shape != ANSWER_FORMAT_RULES[0]
     assert "a colour is not a forecast" in no_forecast
+    assert first_action.startswith("When the question asks what to do")
     for rule in INVESTIGATE_FORMAT_RULES:
         assert rule in ANSWER_RULES
     assert "a red or amber status alone does not" in ANSWER_REMINDER

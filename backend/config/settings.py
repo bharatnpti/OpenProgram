@@ -207,6 +207,10 @@ class Settings(BaseSettings):
     litellm_model: str = "gpt-4o-mini"
     llm_provider: str = "litellm"
     llm_max_tool_iterations: int = 3
+    # A quick Ask's tool rounds before it must answer (ASK_MAX_TOOL_ITERATIONS in
+    # core/application/ask_service.py says why five). The check-in agents keep
+    # llm_max_tool_iterations.
+    ask_max_tool_iterations: int = 5
     # Investigate, Ask's deep mode (core/application/ask_investigation.py): how
     # many steps a question is split into, how many tool rounds each step may
     # take, and how long the whole investigation may run before it is stopped.
@@ -660,6 +664,7 @@ class Settings(BaseSettings):
     @field_validator(
         "checkin_max_clarifications",
         "llm_max_tool_iterations",
+        "ask_max_tool_iterations",
         "ask_investigate_max_tool_iterations",
     )
     @classmethod

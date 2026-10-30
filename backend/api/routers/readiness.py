@@ -8,13 +8,13 @@ dismiss, edit, create, reopen) takes act_on_readiness, and a scrum master acts
 only on the pods they run and the projects those pods work on. A blocking
 criterion is marked not applicable only by a manager or an admin. The
 criteria and the agent's switches are runtime config (manage_config). The
-tenant always comes from the principal.
+tenant always comes from the principal. Who reads and acts how far is
+core/application/readiness_access.py, the rule Ask's release_readiness tool keeps too.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable
-from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -40,8 +40,13 @@ from api.readiness_dtos import (
     ReadinessSettingsUpdateRequest,
 )
 from core.application.authorization import AuthorizationPolicy, Capability
-from core.application.delivery_scope import PROJECT_OUTSIDE_SCOPE
 from core.application.forecast_service import ForecastService
+from core.application.readiness_access import (
+    NOT_YOURS,
+    pod_viewer,
+    project_viewer,
+    scope_viewer,
+)
 from core.application.release_readiness_service import (
     FindingView,
     ReadinessConflict,
@@ -49,17 +54,14 @@ from core.application.release_readiness_service import (
     Viewer,
     create_failure_words,
 )
-from core.domain.auth import Principal, Role
+from core.domain.auth import Principal
 from core.domain.errors import AuthorizationDenied, GraphNotFound, IssueCreateFailed
 from core.domain.forecast import Release
 from core.domain.jira_writes import JiraWriteKind
-from core.domain.release_readiness import ReadinessError, ScopeKind, ScopeRef
+from core.domain.release_readiness import ReadinessError, ScopeRef
 from infra.registry import ServiceRegistry
 
 router = APIRouter(tags=["readiness"])
-
-_NOT_A_READER = "Release readiness is read by the people who decide on a release."
-_NOT_YOURS = "You can act on readiness only for pods you run and the projects they work on."
 
 
 def get_readiness_service(
@@ -215,7 +217,7 @@ async def history(
     try:
         scope, _project = await service.scope_of_finding(principal.tenant_id, finding_id)
         if not viewer.sees(scope):
-            raise AuthorizationDenied(_NOT_YOURS)
+            raise AuthorizationDenied(NOT_YOURS)
         actions = await service.history(principal.tenant_id, finding_id)
     except (GraphNotFound, AuthorizationDenied) as exc:
         raise _error(exc) from exc
@@ -374,9 +376,8 @@ async def preview_criterion(
 # ---- who may ---------------------------------------------------------------------------
 
 
-def _broad(principal: Principal) -> bool:
-    """Reaches every project and pod: an admin, a manager or a product owner."""
-    return any(principal.has_role(role) for role in (Role.ADMIN, Role.MGR, Role.PO))
+# The rule lives in core/application/readiness_access.py, which Ask's
+# release_readiness tool keeps too; these turn its refusal into a 403.
 
 
 async def _project_viewer(
@@ -387,57 +388,17 @@ async def _project_viewer(
     *,
     reading: bool,
 ) -> Viewer:
-    policy = AuthorizationPolicy()
-    may_act = policy.can(principal, Capability.ACT_ON_READINESS)
-    if _broad(principal):
-        return Viewer(subject=principal.subject, roles=principal.roles, may_act=may_act)
-    if principal.has_role(Role.SM):
-        runs = await forecasts.runs_project_pod(principal.tenant_id, project_id, principal.subject)
-        if runs:
-            pods = await service.pods_run_by(principal.tenant_id, project_id, principal.subject)
-            return Viewer(
-                subject=principal.subject,
-                roles=principal.roles,
-                may_act=may_act,
-                pods=frozenset(pods),
-                project_reach=True,
-            )
-    if reading and policy.can(principal, Capability.READ_PROJECT_PROGRESS):
-        # An executive reads the project's and releases' rows; nothing to act on,
-        # no drafts, and no pod's rows.
-        return Viewer(
-            subject=principal.subject,
-            roles=principal.roles,
-            may_act=False,
-            pods=frozenset(),
-            project_reach=False,
-            sees_drafts=False,
-        )
-    if reading and principal.has_role(Role.SM):
-        # A read, in the words of every scoped project read (delivery_scope).
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=PROJECT_OUTSIDE_SCOPE)
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail=_NOT_YOURS if may_act else _NOT_A_READER,
-    )
+    try:
+        return await project_viewer(principal, forecasts, service, project_id, reading=reading)
+    except AuthorizationDenied as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
 async def _pod_viewer(principal: Principal, forecasts: ForecastService, pod_id: str) -> Viewer:
-    policy = AuthorizationPolicy()
-    may_act = policy.can(principal, Capability.ACT_ON_READINESS)
-    if principal.has_role(Role.ADMIN) or principal.has_role(Role.MGR):
-        return Viewer(subject=principal.subject, roles=principal.roles, may_act=may_act)
-    if principal.has_role(Role.SM) and await forecasts.runs_pod(
-        principal.tenant_id, pod_id, principal.subject, date.today()
-    ):
-        return Viewer(
-            subject=principal.subject,
-            roles=principal.roles,
-            may_act=may_act,
-            pods=frozenset({pod_id}),
-            project_reach=False,
-        )
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_NOT_YOURS)
+    try:
+        return await pod_viewer(principal, forecasts, pod_id)
+    except AuthorizationDenied as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
 async def _finding_viewer(
@@ -477,12 +438,10 @@ async def _scope_viewer(
     *,
     reading: bool,
 ) -> Viewer:
-    if scope.kind is ScopeKind.POD:
-        if _broad(principal):
-            may_act = AuthorizationPolicy().can(principal, Capability.ACT_ON_READINESS)
-            return Viewer(subject=principal.subject, roles=principal.roles, may_act=may_act)
-        return await _pod_viewer(principal, forecasts, scope.id)
-    return await _project_viewer(principal, forecasts, service, project_id or "", reading=reading)
+    try:
+        return await scope_viewer(principal, forecasts, service, scope, project_id, reading=reading)
+    except AuthorizationDenied as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
 async def _release(

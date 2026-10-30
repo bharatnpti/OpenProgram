@@ -53,6 +53,7 @@ from core.application.person_names import (
     person_name,
     without_member_ids,
 )
+from core.application.reply_without_status import depends_on_own_work
 from core.application.risk_service import RISK_FACT_SOURCE
 from core.application.status_parsing import (
     ClarificationDecision,
@@ -426,6 +427,7 @@ class StatusCollector:
             reference_at=message.received_at,
         )
         prior_blockers = await self._prior_open_blockers(checkin, message.received_at)
+        messages_text = _checkin_messages_text(checkin, conversation_turns, message)
         decision = await self._clarification_evaluator.evaluate(
             tenant_id=message.tenant_id,
             developer_id=checkin.developer_id,
@@ -435,6 +437,8 @@ class StatusCollector:
             tools=tools,
             prior_blockers=prior_blockers,
             tracker_write_back=await self._tracker_write_back_open(checkin),
+            checkin_text=messages_text,
+            has_own_work=await self._own_work_for_reading(checkin, messages_text),
         )
         decision = await self._without_tracker_update_question(checkin, decision, earlier=earlier)
         decision = self._without_answered_follow_up(checkin, decision, earlier=earlier)
@@ -443,7 +447,6 @@ class StatusCollector:
         # A coordinator owes no ETA, and a reply of theirs that gives team
         # context is their whole status (N16). None for anyone else.
         coordinator = await self._coordinates_without_own_work(checkin)
-        messages_text = _checkin_messages_text(checkin, conversation_turns, message)
         team_context = _coordinator_team_context(
             coordinator, _merged_or_earlier(earlier, decision.signals), messages_text
         )
@@ -1241,6 +1244,27 @@ class StatusCollector:
             )
         except Exception:  # best effort: the question still goes out, naming keys only
             return []
+
+    async def _own_work_for_reading(self, checkin: CheckIn, text: str) -> bool | None:
+        """Whether the tracker lists open work for the person, read only when it decides ``text``.
+
+        Only a reply such as "nothing from me, no blockers" reads differently
+        for someone with no open work (reply_without_status), so for any other
+        reply the tracker is not read and None is returned. A read that fails
+        decides nothing either: None reads as if they had work.
+        """
+        if not depends_on_own_work(text):
+            return None
+        try:
+            assignee = await self._resolve_issue_tracker_assignee_id(
+                checkin.tenant_id, checkin.developer_id
+            )
+            issues = await self._issue_tracker.list_active_for(
+                UserRef(tenant_id=checkin.tenant_id, external_id=assignee)
+            )
+        except Exception:
+            return None
+        return bool(issues)
 
     async def _coordinates_without_own_work(self, checkin: CheckIn) -> bool:
         """Whether the person coordinates a team and has no issue of their own under way (N16).
@@ -3021,6 +3045,7 @@ class StatusCollector:
         )
         # Everything is read and recorded for the check-in's own day.
         prior_blockers = await self._prior_open_blockers(checkin, checkin.asked_at)
+        raw_reply = _checkin_messages_text(checkin, turns, message)
         decision = await self._clarification_evaluator.evaluate(
             tenant_id=message.tenant_id,
             developer_id=checkin.developer_id,
@@ -3030,6 +3055,8 @@ class StatusCollector:
             tools=tools,
             prior_blockers=prior_blockers,
             tracker_write_back=await self._tracker_write_back_open(checkin),
+            checkin_text=raw_reply,
+            has_own_work=await self._own_work_for_reading(checkin, raw_reply),
         )
         if not decision.is_status_update:
             _logger.info(
@@ -3056,7 +3083,6 @@ class StatusCollector:
             signals=signals,
             raw_reply=message.text,
         )
-        raw_reply = _checkin_messages_text(checkin, turns, message)
         merged = await self._without_eta_for_others_work(
             checkin, merge_checkin_signals(checkin.signals, signals)
         )
@@ -3415,6 +3441,7 @@ class StatusCollector:
             conversation_turns=turns,
             tools=tools,
             prior_blockers=prior_blockers,
+            has_own_work=await self._own_work_for_reading(checkin, raw_reply),
         )
         if not decision.is_status_update:
             if checkin.signals is None:

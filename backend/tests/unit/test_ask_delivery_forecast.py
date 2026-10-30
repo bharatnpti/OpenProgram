@@ -249,6 +249,22 @@ async def test_too_little_history_is_said_and_the_team_dates_decide() -> None:
     assert project["team_latest_date"] == "2026-11-20"
 
 
+async def test_it_counts_and_names_the_open_requirements_with_no_eta_or_due_date() -> None:
+    """Investigate once said one requirement had no ETA where Delivery counted six.
+
+    The count and the keys come from the same read, so an answer can quote
+    both: CHK-3 is open with neither a check-in ETA nor a due date.
+    """
+    service, store, _registry = await _forecasts()
+    view = (await service.project_delivery(TENANT, "checkout", TODAY)).project
+
+    (project,) = (await _run(_tool(service, store, Role.MGR), node_id="checkout"))["projects"]
+
+    assert project["open_without_date"] == view.team.undated == 1
+    assert project["open_without_date_keys"] == ["CHK-3"]
+    assert project["open_requirements"] == 3
+
+
 async def test_no_committed_date_says_so_and_judges_nothing() -> None:
     service, store, _registry = await _forecasts()
 

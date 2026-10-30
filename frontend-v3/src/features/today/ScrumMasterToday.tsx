@@ -14,7 +14,7 @@ import { useRole } from "../../app/role";
 import { useDayWords, useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { ChipPicker, Greeting, Panel, Row } from "../../components/ui/Bits";
-import { greetingTitle, plural, sourceLine, todayEyebrow } from "../../lib/words";
+import { countedElsewhere, greetingTitle, plural, sourceLine, todayEyebrow } from "../../lib/words";
 import { useAssistantSubject } from "../assistant/assistantContext";
 import { FactorsPanel } from "../delivery/NodeBits";
 import { PodDateStrips } from "../delivery/DeliveryStrips";
@@ -170,6 +170,8 @@ export function ScrumMasterToday() {
                         // A blocker the owner stated is the norm; one inferred from
                         // delivery signals says so.
                         b.source === "confirmed" ? null : sourceLine(b.source),
+                        // On a task this pod lists, but its colour is another pod's.
+                        countedElsewhere(b),
                       ]
                         .filter(Boolean)
                         .join(" · ")}

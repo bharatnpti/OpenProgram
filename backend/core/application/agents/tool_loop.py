@@ -13,17 +13,56 @@ from core.ports.tools import AgentTool
 _tracer = trace.get_tracer("openprogram.application.agents.tool_loop")
 _logger = structlog.get_logger(__name__)
 
+# What a tool call the cap left unrun says in place of its result. The answer
+# at the cap used to be written as if the calls had never been asked for, and
+# Ask said a project had no blockers while the read that would show them was
+# one of them.
+NOT_RUN = (
+    "Not run: the step limit was reached before this read, so nothing is known of what "
+    "it would have returned."
+)
+
+
+@dataclass(frozen=True, kw_only=True)
+class ToolLoopResult:
+    """The loop's last response, and the tool calls the cap left unrun."""
+
+    response: LlmResponse
+    #: Asked for after the last round the cap allows: never run, so never read.
+    unrun: tuple[LlmToolCall, ...] = ()
+
+    @property
+    def cap_reached(self) -> bool:
+        return bool(self.unrun)
+
 
 @dataclass(frozen=True)
 class ToolCallingAgent:
     llm_provider: LlmProvider
     max_tool_iterations: int = 3
+    #: Added to the system prompt of the answer written at the cap, when set:
+    #: how a caller's answer says what it could not check.
+    cap_notice: str | None = None
 
     async def run(
         self,
         request: LlmRequest,
         tools: Iterable[AgentTool] = (),
     ) -> LlmResponse:
+        return (await self.run_loop(request, tools)).response
+
+    async def run_loop(
+        self,
+        request: LlmRequest,
+        tools: Iterable[AgentTool] = (),
+    ) -> ToolLoopResult:
+        """Run tool rounds up to the cap, then answer, saying which calls never ran.
+
+        At the cap the model answers with no tools, from every result it got;
+        each call it asked for in the round past the cap is answered NOT_RUN, so
+        it knows that read did not happen.
+        """
+        tools = tuple(tools)
         tool_registry = {tool.name: tool for tool in tools}
         current_request = replace(request, tools=tuple(_llm_tool(tool) for tool in tools))
         previous_tool_calls: tuple[LlmToolCall, ...] = ()
@@ -41,7 +80,7 @@ class ToolCallingAgent:
                     span.set_attribute("tool_loop.cap_reached", True)
 
             if not response.tool_calls:
-                return response
+                return ToolLoopResult(response=response)
             if iteration >= max_iterations:
                 _logger.warning(
                     "tool_loop_cap_reached",
@@ -49,7 +88,18 @@ class ToolCallingAgent:
                     iteration=iteration,
                     tool_call_count=len(response.tool_calls),
                 )
-                return await self.llm_provider.complete(replace(current_request, tools=()))
+                unrun = response.tool_calls
+                final = replace(
+                    current_request,
+                    tools=(),
+                    tool_calls=(*previous_tool_calls, *unrun),
+                    tool_results=(
+                        *previous_tool_results,
+                        *(LlmToolResult(tool_call_id=call.id, content=NOT_RUN) for call in unrun),
+                    ),
+                    system=_with_notice(current_request.system, self.cap_notice),
+                )
+                return ToolLoopResult(response=await self.llm_provider.complete(final), unrun=unrun)
 
             tool_results = await _run_tool_calls(response.tool_calls, tool_registry)
             previous_tool_calls = (*previous_tool_calls, *response.tool_calls)
@@ -61,7 +111,13 @@ class ToolCallingAgent:
                 tool_results=previous_tool_results,
             )
 
-        return response
+        return ToolLoopResult(response=response)
+
+
+def _with_notice(system: str | None, notice: str | None) -> str | None:
+    if not notice:
+        return system
+    return f"{system} {notice}" if system else notice
 
 
 async def _run_tool_calls(

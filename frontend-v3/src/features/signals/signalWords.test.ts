@@ -49,10 +49,18 @@ const drift = (over: Partial<DriftFindingResponse> = {}): DriftFindingResponse =
 
 const none = { risks: [], drift: [] };
 
-test("the header counts open risks, and drift only when there is some", () => {
-  assert.equal(riskCountLine(7, 0), "7 open risks");
-  assert.equal(riskCountLine(1, 2), "1 open risk · 2 drift");
-  assert.equal(riskCountLine(0, 0), "0 open risks");
+test("the header counts open risks and watermelons, and drift only when there is some", () => {
+  const blocked = risk({ owner_status_has_blockers: true, is_watermelon: false });
+  const seven = [risk(), risk(), blocked, blocked, blocked, blocked, blocked];
+  assert.equal(riskCountLine({ risks: seven, drift: [] }), "7 open risks · 2 watermelons");
+  assert.equal(
+    riskCountLine({ risks: [risk()], drift: [drift(), drift()] }),
+    "1 open risk · 1 watermelon · 2 drift",
+  );
+  // None is said as none, so a reader can tell it from a count left out.
+  assert.equal(riskCountLine({ risks: [blocked], drift: [] }), "1 open risk · 0 watermelons");
+  assert.equal(riskCountLine(none), "0 open risks");
+  assert.equal(riskCountLine({ risks: [], drift: [drift()] }), "0 open risks · 1 drift");
 });
 
 test("rows run worst first, then oldest; each finding keeps its own evidence", () => {

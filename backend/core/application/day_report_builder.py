@@ -10,7 +10,8 @@
    threatens the delivery date.
 4. What we need, and from whom: every ask, grouped by the person who can do
    it, with its kind, how long it has waited, and whom it escalated to under
-   the project's escalation matrix (see ``day_report_asks``).
+   the project's escalation matrix, never below or beside its owner or asker,
+   or that nobody above is told (see ``day_report_asks``).
 5. Open questions: the questions asked on the project's issues, and whether
    the person asked has answered.
 
@@ -174,7 +175,7 @@ class DayReportBuilder:
     ) -> DayReport:
         facts = await self._facts(tenant_id, project_id, day, release_id)
         asks = [
-            escalated(ask, facts.matrix, facts.scope.names)
+            escalated(ask, facts.matrix, facts.scope)
             for ask in await self._asks(tenant_id, facts, day)
         ]
         scope = facts.scope
@@ -311,12 +312,14 @@ class DayReportBuilder:
         names = {node.id: node.name for node in nodes.values() if node.kind is NodeKind.DEVELOPER}
         product_owners = _role_holders(nodes.values(), contains, Role.PO)
         scrum_masters = _role_holders(nodes.values(), contains, Role.SM)
+        managers = _role_holders(nodes.values(), contains, Role.MGR)
         all_teams = {
             node.id: team_from(
                 node,
                 names,
                 product_owners=product_owners.get(node.id, ()),
                 scrum_masters=scrum_masters.get(node.id, ()),
+                managers=managers.get(node.id, ()),
             )
             for node in nodes.values()
             if node.kind is NodeKind.POD
@@ -327,12 +330,14 @@ class DayReportBuilder:
             if edge.from_node_id == project_id and edge.to_node_id in all_teams
         }
         member_teams: dict[str, str] = {}
+        member_team_ids: dict[str, set[str]] = {}
         task_teams: dict[str, str] = {}
         for edge in contains:
             if edge.from_node_id not in all_teams:
                 continue
             if edge.to_node_id in names:
                 member_teams.setdefault(edge.to_node_id, edge.from_node_id)
+                member_team_ids.setdefault(edge.to_node_id, set()).add(edge.from_node_id)
             elif edge.to_node_id in tasks:
                 task_teams.setdefault(edge.to_node_id, edge.from_node_id)
         assignees: dict[str, str] = {}
@@ -353,6 +358,12 @@ class DayReportBuilder:
             member_teams=member_teams,
             release_only=release is not None,
             owner=_member_name(project.metadata.get(PROJECT_OWNER_KEY), nodes.values()),
+            member_team_ids={
+                member: tuple(
+                    sorted(ids, key=lambda pod_id: (all_teams[pod_id].node.name.casefold(), pod_id))
+                )
+                for member, ids in member_team_ids.items()
+            },
         )
 
     async def _asks(self, tenant_id: str, facts: _Facts, day: date) -> list[Ask]:
@@ -760,6 +771,7 @@ def _owner_asks(
                     escalation_label=ask.escalation_label,
                     needed_most=id(ask) in most,
                     open_question=ask.open_question,
+                    nobody_above=ask.nobody_above,
                 )
                 for ask in items
             ),

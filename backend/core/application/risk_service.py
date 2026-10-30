@@ -123,15 +123,21 @@ class RiskService:
         self, tenant_id: str, project_id: str, as_of: date
     ) -> list[RiskFinding]:
         await self._ensure_project(tenant_id, project_id, as_of)
-        findings = await self._load_open_findings(tenant_id, project_id=project_id, as_of=as_of)
-        return await self._without_settled_requests(tenant_id, findings)
+        requests = self._merge_requests(tenant_id, as_of)
+        findings = await self._load_open_findings(
+            tenant_id, project_id=project_id, as_of=as_of, requests=requests
+        )
+        return await self._without_settled_requests(findings, requests)
 
     async def portfolio_risks(self, tenant_id: str, as_of: date) -> list[RiskFinding]:
-        findings = await self._load_open_findings(tenant_id, project_id=None, as_of=as_of)
-        return await self._without_settled_requests(tenant_id, findings)
+        requests = self._merge_requests(tenant_id, as_of)
+        findings = await self._load_open_findings(
+            tenant_id, project_id=None, as_of=as_of, requests=requests
+        )
+        return await self._without_settled_requests(findings, requests)
 
     async def _without_settled_requests(
-        self, tenant_id: str, findings: list[RiskFinding]
+        self, findings: list[RiskFinding], requests: _MergeRequests
     ) -> list[RiskFinding]:
         """Open findings, less ``pr_age`` ones whose merge request has merged or closed since.
 
@@ -143,7 +149,7 @@ class RiskService:
         """
         if not any(finding.rule_id is RiskRuleId.PR_AGE for finding in findings):
             return findings
-        latest = await self._latest_merge_requests(tenant_id)
+        latest = await requests.latest()
         return [
             finding
             for finding in findings
@@ -154,16 +160,15 @@ class RiskService:
 
     async def _latest_merge_requests(self, tenant_id: str) -> dict[tuple[str, str], FactEvent]:
         """The latest fact of every synced merge request, by ``(repo, id)``."""
-        facts = await self._time_series_repository.list_recent_facts(
-            tenant_id, sources=(MERGE_REQUEST_FACT_SOURCE,), limit=_RISK_FACT_SCAN_LIMIT
+        return await _latest_merge_requests(self._time_series_repository, tenant_id)
+
+    def _merge_requests(self, tenant_id: str, as_of: date) -> _MergeRequests:
+        return _MergeRequests(
+            graph_repository=self._graph_repository,
+            time_series_repository=self._time_series_repository,
+            tenant_id=tenant_id,
+            as_of=as_of,
         )
-        latest: dict[tuple[str, str], FactEvent] = {}
-        for fact in sorted(facts, key=lambda item: (item.observed_at, item.ingested_at)):
-            repo = _payload_str(fact.payload, "repo")
-            pr_id = _payload_str(fact.payload, "id")
-            if repo is not None and pr_id is not None:
-                latest[(repo, pr_id)] = fact
-        return latest
 
     # ---- drift / watermelon read APIs -----------------------------------
 
@@ -285,7 +290,7 @@ class RiskService:
             request = merge_request_label(fact) if fact is not None else finding.evidence.identifier
             for owner_id, issue in owned:
                 if await self._owner_has_relevant_blockers(
-                    tenant_id, owner_id, issue.id, as_of, blocker_cache
+                    tenant_id, owner_id, frozenset({issue.id}), as_of, blocker_cache
                 ):
                     continue
                 found.setdefault(
@@ -395,6 +400,7 @@ class RiskService:
                 as_of,
                 owner_cache,
                 blocker_cache,
+                task_keys={node.id for node in nodes if node.kind is NodeKind.TASK},
             )
         )
         return findings
@@ -431,6 +437,7 @@ class RiskService:
                         rule_id=RiskRuleId.FEATURE_NO_PR,
                         threshold_days=thresholds.feature_no_pr_days,
                         entity_ref=item.ref,
+                        issue_ids=frozenset({item.id}),
                         workstream_id=workstream.id if workstream is not None else None,
                         reason=(
                             f"{item.name} has been active for {_days(age_days)} "
@@ -451,6 +458,7 @@ class RiskService:
                         rule_id=RiskRuleId.STALE_WORK_ITEM,
                         threshold_days=thresholds.stale_days,
                         entity_ref=item.ref,
+                        issue_ids=frozenset({item.id}),
                         workstream_id=workstream.id if workstream is not None else None,
                         reason=f"{item.name} has had no state change in {_days(age_days)}.",
                         evidence=RiskEvidence(identifier=item.id),
@@ -474,6 +482,8 @@ class RiskService:
         as_of: date,
         owner_cache: dict[str, DeveloperStatus | None],
         blocker_cache: dict[str, tuple[ResolvedBlocker, ...]],
+        *,
+        task_keys: set[str],
     ) -> list[RiskFinding]:
         if not repo_scope:
             return []
@@ -519,6 +529,7 @@ class RiskService:
                     rule_id=RiskRuleId.PR_AGE,
                     threshold_days=thresholds.pr_age_days,
                     entity_ref=entity_ref,
+                    issue_ids=_request_issue_ids(entity_ref, fact, task_keys),
                     workstream_id=workstream.id if workstream is not None else None,
                     reason=(
                         f"Pull request '{title}' in {repo} has been open for {_days(age_days)}."
@@ -546,6 +557,7 @@ class RiskService:
         rule_id: RiskRuleId,
         threshold_days: int,
         entity_ref: EntityRef,
+        issue_ids: frozenset[str],
         workstream_id: str | None,
         reason: str,
         evidence: RiskEvidence,
@@ -555,9 +567,10 @@ class RiskService:
         owner_cache: dict[str, DeveloperStatus | None],
         blocker_cache: dict[str, tuple[ResolvedBlocker, ...]],
     ) -> RiskFinding:
+        """``issue_ids``: the work the finding is about, which a blocker must be on to vouch."""
         owner_status = await self._owner_status(tenant_id, owner_id, as_of, owner_cache)
         has_relevant_blockers = await self._owner_has_relevant_blockers(
-            tenant_id, owner_id, entity_ref.id, as_of, blocker_cache
+            tenant_id, owner_id, issue_ids, as_of, blocker_cache
         )
         return RiskFinding(
             tenant_id=tenant_id,
@@ -610,23 +623,25 @@ class RiskService:
         self,
         tenant_id: str,
         owner_id: str | None,
-        work_item_id: str,
+        issue_ids: frozenset[str],
         as_of: date,
         blocker_cache: dict[str, tuple[ResolvedBlocker, ...]],
     ) -> bool:
-        """True iff an open blocker of the owner can explain THIS work item.
+        """True iff an open blocker of the owner can explain THIS work.
 
-        Relevant means unattributed (it could be about anything, so the owner
-        keeps the benefit of the doubt) or attributed to the work item at
-        hand. A blocker attributed to a different work item no longer vouches
-        for this one.
+        ``issue_ids`` are the work items and issues the finding is about: its
+        own work item, and for a pull request the issues it names
+        (``_request_issue_ids``), never the person it is filed on. Relevant
+        means unattributed (it could be about anything, so the owner keeps the
+        benefit of the doubt) or attributed to one of them. A blocker
+        attributed to different work no longer vouches for this one.
         """
         if owner_id is None:
             return False
         blockers = await self._owner_open_blockers(tenant_id, owner_id, as_of, blocker_cache)
         return any(
             blocker.unattributed
-            or (blocker.work_item_ref is not None and blocker.work_item_ref.id == work_item_id)
+            or (blocker.work_item_ref is not None and blocker.work_item_ref.id in issue_ids)
             for blocker in blockers
         )
 
@@ -983,7 +998,7 @@ class RiskService:
             and owner_status is not None
             and owner_status.source in _GREEN_STATUS_SOURCES
             and not await self._owner_has_relevant_blockers(
-                tenant_id, owner_id, item.id, as_of, blocker_cache
+                tenant_id, owner_id, frozenset({item.id}), as_of, blocker_cache
             )
             and not self._has_recent_activity(repo, activity_by_repo, as_of)
             and age_days >= no_activity_days
@@ -1244,7 +1259,9 @@ class RiskService:
         *,
         project_id: str | None,
         as_of: date,
+        requests: _MergeRequests | None = None,
     ) -> list[RiskFinding]:
+        requests = requests or self._merge_requests(tenant_id, as_of)
         facts = await self._time_series_repository.list_recent_facts(
             tenant_id, sources=(RISK_FACT_SOURCE,), limit=_RISK_FACT_SCAN_LIMIT
         )
@@ -1267,7 +1284,7 @@ class RiskService:
             if _payload_str(fact.payload, "transition") != "opened":
                 continue
             finding = await self._finding_from_fact(
-                tenant_id, fact, as_of, owner_cache, blocker_cache, threshold_cache
+                tenant_id, fact, as_of, owner_cache, blocker_cache, threshold_cache, requests
             )
             if finding is not None:
                 findings.append(finding)
@@ -1284,6 +1301,7 @@ class RiskService:
         owner_cache: dict[str, DeveloperStatus | None],
         blocker_cache: dict[str, tuple[ResolvedBlocker, ...]],
         threshold_cache: dict[str | None, RiskThresholds],
+        requests: _MergeRequests,
     ) -> RiskFinding | None:
         rule_id_value = _payload_str(fact.payload, "rule_id")
         entity_kind_value = _payload_str(fact.payload, "entity_kind")
@@ -1301,8 +1319,15 @@ class RiskService:
         detected_at = _optional_datetime(detected_at_value) or fact.observed_at
         owner_id = _payload_str(fact.payload, "owner_id")
         owner_status = await self._owner_status(tenant_id, owner_id, as_of, owner_cache)
+        entity_ref = EntityRef(tenant_id=tenant_id, kind=entity_kind, id=entity_id)
+        # Only an owner's blocker can vouch, so the work is looked up only for one.
+        issue_ids = (
+            await requests.issue_ids(rule_id, entity_ref, identifier)
+            if owner_id is not None
+            else frozenset()
+        )
         has_relevant_blockers = await self._owner_has_relevant_blockers(
-            tenant_id, owner_id, entity_id, as_of, blocker_cache
+            tenant_id, owner_id, issue_ids, as_of, blocker_cache
         )
         current_age_days = max(0, (as_of - detected_at.date()).days) + (
             _payload_int(fact.payload, "age_days") or 0
@@ -1326,7 +1351,7 @@ class RiskService:
             tenant_id=tenant_id,
             rule_id=rule_id,
             severity=severity,
-            entity_ref=EntityRef(tenant_id=tenant_id, kind=entity_kind, id=entity_id),
+            entity_ref=entity_ref,
             workstream_id=workstream_id,
             reason=_reason_at_age(rule_id, reason, current_age_days),
             evidence=RiskEvidence(
@@ -1402,8 +1427,94 @@ def _compose_risk_key(rule_id: str, entity_kind: str, entity_id: str, evidence: 
 
 def _pull_request_ref(finding: RiskFinding) -> tuple[str, str]:
     """The ``(repo, id)`` a ``pr_age`` finding is about, from its ``repo#id`` evidence."""
-    repo, _, pr_id = finding.evidence.identifier.rpartition("#")
+    return _pull_request_ref_of(finding.evidence.identifier)
+
+
+def _pull_request_ref_of(identifier: str) -> tuple[str, str]:
+    repo, _, pr_id = identifier.rpartition("#")
     return repo, pr_id
+
+
+#: The kinds of node a finding can be about that a blocker can be raised on.
+_WORK_KINDS = frozenset({NodeKind.WORK_ITEM, NodeKind.TASK})
+
+
+def _own_issue_ids(entity_ref: EntityRef) -> frozenset[str]:
+    """The finding's own work: its entity, unless that is a person or a repository."""
+    return frozenset({entity_ref.id}) if entity_ref.kind in _WORK_KINDS else frozenset()
+
+
+def _request_issue_ids(
+    entity_ref: EntityRef, fact: FactEvent | None, task_keys: set[str]
+) -> frozenset[str]:
+    """The work a pull request's finding is about: its work item, and the issues it names.
+
+    A request no work item claims is filed on its author, and a person is no
+    work item: a blocker on IDP-6 never matched the author's id, so every such
+    request read as a watermelon. The issues it names are the keys in its
+    branch or title (``merge_request_links``), as its owner's rollup cell
+    reads them (``_pull_request_drift``).
+    """
+    named = merge_requests_by_issue_key([fact], task_keys) if fact is not None else {}
+    return _own_issue_ids(entity_ref) | frozenset(named)
+
+
+async def _latest_merge_requests(
+    time_series_repository: TimeSeriesRepository, tenant_id: str
+) -> dict[tuple[str, str], FactEvent]:
+    """The latest fact of every synced merge request, by ``(repo, id)``."""
+    facts = await time_series_repository.list_recent_facts(
+        tenant_id, sources=(MERGE_REQUEST_FACT_SOURCE,), limit=_RISK_FACT_SCAN_LIMIT
+    )
+    latest: dict[tuple[str, str], FactEvent] = {}
+    for fact in sorted(facts, key=lambda item: (item.observed_at, item.ingested_at)):
+        repo = _payload_str(fact.payload, "repo")
+        pr_id = _payload_str(fact.payload, "id")
+        if repo is not None and pr_id is not None:
+            latest[(repo, pr_id)] = fact
+    return latest
+
+
+class _MergeRequests:
+    """One read's merge requests and task keys, loaded once and only when a finding needs them."""
+
+    def __init__(
+        self,
+        *,
+        graph_repository: GraphRepository,
+        time_series_repository: TimeSeriesRepository,
+        tenant_id: str,
+        as_of: date,
+    ) -> None:
+        self._graph_repository = graph_repository
+        self._time_series_repository = time_series_repository
+        self._tenant_id = tenant_id
+        self._as_of = as_of
+        self._latest: dict[tuple[str, str], FactEvent] | None = None
+        self._task_keys: set[str] | None = None
+
+    async def latest(self) -> dict[tuple[str, str], FactEvent]:
+        if self._latest is None:
+            self._latest = await _latest_merge_requests(
+                self._time_series_repository, self._tenant_id
+            )
+        return self._latest
+
+    async def issue_ids(
+        self, rule_id: RiskRuleId, entity_ref: EntityRef, identifier: str
+    ) -> frozenset[str]:
+        """The work a recorded finding is about (``_request_issue_ids`` for a pull request)."""
+        if rule_id is not RiskRuleId.PR_AGE:
+            return _own_issue_ids(entity_ref)
+        fact = (await self.latest()).get(_pull_request_ref_of(identifier))
+        if fact is None:
+            return _own_issue_ids(entity_ref)
+        if self._task_keys is None:
+            tasks = await self._graph_repository.list_nodes(
+                self._tenant_id, NodeKind.TASK, as_of=self._as_of
+            )
+            self._task_keys = {node.id for node in tasks}
+        return _request_issue_ids(entity_ref, fact, self._task_keys)
 
 
 def _owns(

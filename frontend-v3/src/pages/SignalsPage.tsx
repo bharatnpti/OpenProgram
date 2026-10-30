@@ -48,9 +48,7 @@ export function SignalsPage() {
     queryFn: () => apiClient.portfolioRisks(),
     enabled: showsRisks,
   });
-  const counts = portfolio.data
-    ? riskCountLine(portfolio.data.risks.length, portfolio.data.drift.length)
-    : null;
+  const counts = portfolio.data ? riskCountLine(portfolio.data) : null;
 
   return (
     <>
