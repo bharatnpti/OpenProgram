@@ -339,14 +339,21 @@ def _parse_float(value: object) -> float | None:
 
 
 def _chat_messages(request: LlmRequest) -> list[dict[str, object]]:
+    if request.turns:
+        # An agent harness's conversation (Investigate) goes as it was kept, with
+        # its own system text and no fence: its middleware says rules in user
+        # turns, which MODEL_RULES would have the model ignore (docs/guardrails.md,
+        # open risks).
+        kept: list[dict[str, object]] = []
+        if request.system is not None:
+            kept.append({"role": "system", "content": request.system})
+        kept.extend(_turn_payload(turn) for turn in request.turns)
+        return kept
     # The system message is the only instruction a call carries; everything
     # else is input, fenced so it is read as data (core/domain/prompt_safety.py).
     messages: list[dict[str, object]] = [
         {"role": "system", "content": system_message(request.system)}
     ]
-    if request.turns:
-        messages.extend(_turn_payload(turn) for turn in request.turns)
-        return messages
     messages.extend(
         {
             "role": message.role,

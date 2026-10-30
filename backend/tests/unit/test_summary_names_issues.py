@@ -120,7 +120,9 @@ async def test_both_prompts_ask_for_the_keys_in_the_note() -> None:
     )
 
     for request in (*parser_llm.requests, *evaluator_llm.requests):
-        assert "names every issue key the reply names" in request.prompt
+        # The rule is an instruction, sent right before the reply; the input is the reply.
+        assert "names every issue key the reply names" in (request.instructions or "")
+        assert "names every issue key" not in request.prompt
 
 
 async def test_hanas_stored_summary_names_idp_9() -> None:

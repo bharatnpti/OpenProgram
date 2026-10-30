@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 
 import httpx
@@ -27,7 +27,7 @@ from core.domain.errors import (
     ProviderUnavailable,
 )
 from core.domain.graph import JsonScalar
-from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
+from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, LlmTurn, TokenUsage
 from core.domain.messaging import ChatUserRef, OutboundMessage
 from infra.adapters.chat.rate_limit import InMemoryRateLimiter
 from infra.adapters.chat.send_cap import InMemoryDailySendCap, RedisDailySendCap
@@ -85,6 +85,22 @@ async def test_a_request_over_the_size_ceiling_is_refused_before_it_is_sent() ->
     await provider.complete(_request("x" * 100))
 
     assert route.call_count == 1
+
+
+@respx.mock
+async def test_an_agent_harness_conversation_counts_toward_the_size_ceiling() -> None:
+    route = respx.post(f"{LITELLM}/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json=_completion(10))
+    )
+    provider = _guarded_provider(
+        LlmCallGuard(ledger=InMemoryTokenLedger(), daily_token_budget=0, max_request_chars=100)
+    )
+    kept = (LlmTurn(role="user", content="x" * 60), LlmTurn(role="assistant", content="y" * 41))
+
+    with pytest.raises(LlmRequestTooLarge):
+        await provider.complete(replace(_request(""), turns=kept))
+
+    assert route.call_count == 0
 
 
 @respx.mock

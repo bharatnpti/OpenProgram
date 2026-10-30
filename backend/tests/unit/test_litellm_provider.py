@@ -17,7 +17,7 @@ from core.domain.llm import (
     LlmTurn,
     TokenUsage,
 )
-from core.domain.prompt_safety import MODEL_RULES, fenced, system_message
+from core.domain.prompt_safety import MODEL_RULES, fenced
 from infra.adapters.llm import litellm_provider
 from infra.adapters.llm.fake import FakeLlmProvider
 from infra.adapters.llm.litellm_provider import (
@@ -426,7 +426,7 @@ async def test_litellm_sends_a_kept_conversation_in_its_own_order() -> None:
     )
 
     assert json.loads(route.calls[0].request.content)["messages"] == [
-        {"role": "system", "content": system_message("Rules.")},
+        {"role": "system", "content": "Rules."},
         {"role": "user", "content": "Why?"},
         {
             "role": "assistant",

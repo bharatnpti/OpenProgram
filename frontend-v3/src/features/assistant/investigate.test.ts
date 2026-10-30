@@ -42,7 +42,6 @@ test("the answer settles the message with its text, sources and every step", () 
     answer: {
       answer: "Payments Pod is late because:\n• CHK-103 blocked",
       references: ["pod-payments"],
-      tools_used: ["open_risks"],
       trace_id: "t",
       sources: [{ id: "pod-payments", kind: "pod", label: "Payments Pod" }],
       follow_ups: ["What blocks it?"],
@@ -63,7 +62,6 @@ test("an investigated answer never shows a follow-ups list written into it", () 
     answer: {
       answer: 'Payments Pod is late because:\n• CHK-103 blocked\nfollow_ups: ["What blocks it?"]',
       references: [],
-      tools_used: [],
       trace_id: "t",
       sources: [],
       follow_ups: [],
